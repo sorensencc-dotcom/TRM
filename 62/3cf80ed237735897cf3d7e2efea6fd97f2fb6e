@@ -1,0 +1,33 @@
+src/cli/commands/extract.ts
+  s_3b42eefe43889d::t_d2c3c74fcb6035 8,19-20,22
+tests/cli/integration.test.ts
+  s_5759a4a6e849a6::t_ce3d38ce17e991 30
+src/cli/index.ts
+  s_3b42eefe43889d::t_d2c3c74fcb6035 41,43
+tests/cli/extractWiring.test.ts
+  s_3b42eefe43889d::t_8e01514d935fef 1-67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "623cf80ed237735897cf3d7e2efea6fd97f2fb6e",
+  "prompts": {},
+  "sessions": {
+    "s_3b42eefe43889d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f732c-390a-7e63-941c-8cd2bbd81f39",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    },
+    "s_5759a4a6e849a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3907d804-0ddd-450b-80cf-b027b66fd331",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
