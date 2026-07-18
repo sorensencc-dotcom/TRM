@@ -1,0 +1,28 @@
+tests/cli/report.test.ts
+  s_0d9ddae18b26ab::t_2c2fcee82b11e8 53-69,77-84,86
+  s_39f270076f2a14::t_f034ec89cb6cb2 85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "c27c7ad678413c7800f2c302e9a5f5f86d32d7df",
+  "prompts": {},
+  "sessions": {
+    "s_0d9ddae18b26ab": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3ced89e-055b-429c-9ef0-8f25abece942",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    },
+    "s_39f270076f2a14": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7579-dc52-7990-a1df-dca071dbfb0b",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
