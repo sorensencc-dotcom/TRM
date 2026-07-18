@@ -26,7 +26,7 @@ export function runExtract(
   const metadataPath = path.join(dir, 'sources', 'metadata.json');
   const metadata: SourceMetadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));
 
-  const allFacts: Fact[] = [];
+  const collectedFacts: Fact[] = [];
   const summaries: string[] = [];
   for (const source of metadata.sources) {
     const rawFile = path.join(dir, 'sources', 'raw', `${source.id}.txt`);
@@ -34,9 +34,17 @@ export function runExtract(
     const rawText = fs.readFileSync(rawFile, 'utf-8');
     const sourceMeta = JSON.parse(fs.readFileSync(metadataPath, 'utf-8')).sources.find((s: any) => s.id === source.id);
     const { facts, summary } = runner.run(sourceMeta, rawText);
-    allFacts.push(...facts);
+    collectedFacts.push(...facts);
     summaries.push(summary);
   }
+
+  // Each runner numbers facts FCT-001.. independently per source (it has no
+  // visibility into other sources in this pass), so ids collide once concatenated
+  // across sources. Renumber globally, sequentially, in source order.
+  const allFacts: Fact[] = collectedFacts.map((fact, i) => ({
+    ...fact,
+    id: `FCT-${String(i + 1).padStart(3, '0')}`,
+  }));
 
   if (cliArgs.dryRun) return null;
 
