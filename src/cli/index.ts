@@ -7,8 +7,10 @@ import { runScore } from './commands/score';
 import { runCrosslink } from './commands/crosslink';
 import { runVersionBump } from './commands/versionBump';
 import { runValidate } from './commands/validate';
+import { assertSafeRoot } from '../core/rootSafety';
 
 const root = process.cwd();
+assertSafeRoot(root);
 const program = new Command();
 program.name('trm').version('0.1.0');
 
