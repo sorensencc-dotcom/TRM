@@ -7,6 +7,7 @@ import { runScore } from './commands/score';
 import { runCrosslink } from './commands/crosslink';
 import { runVersionBump } from './commands/versionBump';
 import { runValidate } from './commands/validate';
+import { runReport } from './commands/report';
 import { assertSafeRoot } from '../core/rootSafety';
 
 const root = process.cwd();
@@ -44,6 +45,15 @@ program
   .action((path, opts) => {
     const result = runExtract(root, path, { ...opts, dryRun: opts.dryRun, stub: opts.stub });
     console.log(result ? `${result.facts.length} fact(s) extracted` : '(dry-run)');
+  });
+
+program
+  .command('report <path>')
+  .option('--theme <theme>')
+  .action((path, opts) => {
+    const { bundlePath, htmlPath } = runReport(root, path, { theme: opts.theme });
+    console.log(bundlePath);
+    console.log(htmlPath);
   });
 
 program
