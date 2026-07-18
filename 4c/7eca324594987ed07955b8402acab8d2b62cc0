@@ -1,0 +1,32 @@
+tests/cli/integration.test.ts
+  s_a09cdcb0234534::t_1bb5a5c670205c 1-53
+src/cli/index.ts
+  s_a09cdcb0234534::t_5d1a26987bea20 1-30,32-39,41-48,51-83,85-91
+  s_5759a4a6e849a6::t_16fc90a552630d 50
+  s_5759a4a6e849a6::t_b267f735c7f2d3 31,40,49
+  s_5759a4a6e849a6::t_afc623820e8cd8 84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "4c7eca324594987ed07955b8402acab8d2b62cc0",
+  "prompts": {},
+  "sessions": {
+    "s_5759a4a6e849a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3907d804-0ddd-450b-80cf-b027b66fd331",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    },
+    "s_a09cdcb0234534": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f72db-31c7-7cb2-beb2-7ada06475911",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
