@@ -22,23 +22,36 @@ function readScores(root: string, topicPath: string): ScoreResult[] {
   return JSON.parse(fs.readFileSync(file, 'utf-8')).scores;
 }
 
+// Rollup-only wrapper: fact_id is only unique within a single node's score.json
+// (per Task 12's ScoringAdapter contract), so multiple nodes rolled up together
+// can have colliding fact_ids. topic_path disambiguates which node each score
+// came from. Never written to a per-node score.json -- that stays the closed
+// ScoreResult shape (spec §5) -- this only appears in --rollup's in-memory/console
+// output.
+export interface RolledUpScoreResult extends ScoreResult {
+  topic_path: string;
+}
+
 export function runScore(
   root: string,
   topicPath: string,
   cliArgs: { actor?: string; dryRun?: boolean; rollup?: boolean },
   adapter: ScoringAdapter = stubAdapter
-): { scores: ScoreResult[]; rolledUpFrom?: string[] } | null {
+): { scores: ScoreResult[] | RolledUpScoreResult[]; rolledUpFrom?: string[] } | null {
   const actor = resolveActor(root, cliArgs.actor);
   const meta = readTopicMeta(root, topicPath);
   const config = loadConfig(root);
 
   if (cliArgs.rollup) {
     const rolledUpFrom: string[] = [];
-    const scores: ScoreResult[] = [];
+    const scores: RolledUpScoreResult[] = [];
     const walk = (childPath: string) => {
       const childMeta = readTopicMeta(root, childPath);
-      scores.push(...readScores(root, childPath));
-      if (readScores(root, childPath).length > 0) rolledUpFrom.push(childPath);
+      const childScores = readScores(root, childPath);
+      if (childScores.length > 0) {
+        rolledUpFrom.push(childPath);
+        scores.push(...childScores.map((s) => ({ ...s, topic_path: childPath })));
+      }
       for (const child of childMeta.children) {
         walk(`${childPath}/${child}`);
       }
