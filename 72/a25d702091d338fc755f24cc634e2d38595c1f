@@ -1,0 +1,36 @@
+src/extraction/types.ts
+  s_d307e8d2787cd7::t_98f9c8d8f3314c 1-6
+tests/cli/extract.test.ts
+  s_d307e8d2787cd7::t_f1aae4b078f4f1 1-43
+src/extraction/stubRunner.ts
+  s_d307e8d2787cd7::t_98f9c8d8f3314c 1-15
+tests/extraction/stubRunner.test.ts
+  s_d307e8d2787cd7::t_f1aae4b078f4f1 1-12
+src/cli/commands/extract.ts
+  s_d307e8d2787cd7::t_98f9c8d8f3314c 1-38,40-55
+  s_5759a4a6e849a6::t_5736acca102bcb 39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "72a25d702091d338fc755f24cc634e2d38595c1f",
+  "prompts": {},
+  "sessions": {
+    "s_5759a4a6e849a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3907d804-0ddd-450b-80cf-b027b66fd331",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    },
+    "s_d307e8d2787cd7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f72cd-1924-7ce0-b753-35ae289b2408",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
