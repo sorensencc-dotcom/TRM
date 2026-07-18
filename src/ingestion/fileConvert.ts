@@ -12,9 +12,12 @@ const defaultConverters: FileConverters = {
   extractDocx: async (filePath) => (await mammoth.extractRawText({ path: filePath })).value,
   extractPdf: async (buffer) => {
     const parser = new PDFParse({ data: buffer });
-    const result = await parser.getText();
-    await parser.destroy();
-    return result.text;
+    try {
+      const result = await parser.getText();
+      return result.text;
+    } finally {
+      await parser.destroy();
+    }
   },
 };
 
