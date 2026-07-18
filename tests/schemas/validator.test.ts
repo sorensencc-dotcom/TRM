@@ -61,4 +61,34 @@ describe('validateAgainstSchema', () => {
     });
     expect(result.valid).toBe(true);
   });
+
+  it('rejects an extract.json fact with a category outside the fixed vocabulary', () => {
+    const result = validateAgainstSchema('extract', {
+      facts: [
+        {
+          id: 'FCT-001',
+          text: 'x',
+          source_id: 'SRC-001',
+          confidence: 0.5,
+          categories: ['not-a-real-category'],
+        },
+      ],
+    });
+    expect(result.valid).toBe(false);
+  });
+
+  it('accepts an extract.json fact with categories from the fixed vocabulary', () => {
+    const result = validateAgainstSchema('extract', {
+      facts: [
+        {
+          id: 'FCT-001',
+          text: 'x',
+          source_id: 'SRC-001',
+          confidence: 0.5,
+          categories: ['history', 'genealogy'],
+        },
+      ],
+    });
+    expect(result.valid).toBe(true);
+  });
 });

@@ -15,7 +15,13 @@
           "text": { "type": "string" },
           "source_id": { "type": "string" },
           "confidence": { "type": "number" },
-          "categories": { "type": "array", "items": { "type": "string" } }
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["history", "genealogy", "industry", "geopolitics", "biography"]
+            }
+          }
         }
       }
     }
