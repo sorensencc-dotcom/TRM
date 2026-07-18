@@ -7,6 +7,7 @@ import { runScore } from './commands/score';
 import { runCrosslink } from './commands/crosslink';
 import { runVersionBump } from './commands/versionBump';
 import { runValidate } from './commands/validate';
+import { runReport } from './commands/report';
 import { assertSafeRoot } from '../core/rootSafety';
 
 const root = process.cwd();
@@ -25,14 +26,15 @@ program
   });
 
 program
-  .command('ingest <path> <url>')
+  .command('ingest <path> [url]')
   .requiredOption('--type <type>')
   .requiredOption('--title <title>')
   .requiredOption('--origin <origin>')
   .option('--actor <actor>')
+  .option('--file <file>')
   .option('--dry-run')
-  .action((path, url, opts) => {
-    const entry = runIngest(root, path, { ...opts, url, dryRun: opts.dryRun });
+  .action(async (path, url, opts) => {
+    const entry = await runIngest(root, path, { ...opts, url, file: opts.file, dryRun: opts.dryRun });
     console.log(entry ? JSON.stringify(entry, null, 2) : '(dry-run, nothing written)');
   });
 
@@ -44,6 +46,15 @@ program
   .action((path, opts) => {
     const result = runExtract(root, path, { ...opts, dryRun: opts.dryRun, stub: opts.stub });
     console.log(result ? `${result.facts.length} fact(s) extracted` : '(dry-run)');
+  });
+
+program
+  .command('report <path>')
+  .option('--theme <theme>')
+  .action((path, opts) => {
+    const { bundlePath, htmlPath } = runReport(root, path, { theme: opts.theme });
+    console.log(bundlePath);
+    console.log(htmlPath);
   });
 
 program
