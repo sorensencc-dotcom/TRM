@@ -27,7 +27,7 @@ describe('full TRM lifecycle', () => {
     fs.mkdirSync(rawDir, { recursive: true });
     fs.writeFileSync(path.join(rawDir, 'SRC-001.txt'), 'Industrial expansion accelerated in the 1920s.\n');
 
-    const extracted = runExtract(root, 'cuba/industry/automotive', { actor });
+    const extracted = runExtract(root, 'cuba/industry/automotive', { actor, stub: true });
     expect(extracted?.facts.length).toBeGreaterThan(0);
 
     const scored = runScore(root, 'cuba/industry/automotive', { actor });

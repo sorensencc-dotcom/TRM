@@ -5,6 +5,7 @@ import { readTopicMeta } from '../../core/topicNode';
 import { Fact } from '../../scoring/types';
 import { ExtractionRunner } from '../../extraction/types';
 import { stubRunner } from '../../extraction/stubRunner';
+import { claudeCodeRunner } from '../../extraction/claudeCodeRunner';
 import { resolveActor } from '../../registry/actorRegistry';
 import { appendOperation } from '../../lineage/hasher';
 
@@ -15,9 +16,10 @@ interface SourceMetadata {
 export function runExtract(
   root: string,
   topicPath: string,
-  cliArgs: { actor?: string; dryRun?: boolean },
-  runner: ExtractionRunner = stubRunner
+  cliArgs: { actor?: string; dryRun?: boolean; stub?: boolean },
+  runnerOverride?: ExtractionRunner
 ): { facts: Fact[]; summary: string } | null {
+  const runner = runnerOverride ?? (cliArgs.stub ? stubRunner : claudeCodeRunner);
   const actor = resolveActor(root, cliArgs.actor);
   readTopicMeta(root, topicPath); // throws if node doesn't exist
   const dir = nodeDir(root, topicPath);

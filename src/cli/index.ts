@@ -38,8 +38,9 @@ program
   .command('extract <path>')
   .option('--actor <actor>')
   .option('--dry-run')
+  .option('--stub')
   .action((path, opts) => {
-    const result = runExtract(root, path, { ...opts, dryRun: opts.dryRun });
+    const result = runExtract(root, path, { ...opts, dryRun: opts.dryRun, stub: opts.stub });
     console.log(result ? `${result.facts.length} fact(s) extracted` : '(dry-run)');
   });
 
