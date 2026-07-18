@@ -1,0 +1,21 @@
+src/cli/commands/ingest.ts
+  s_0d9ddae18b26ab::t_cf08f2b4bd7486 18
+tests/cli/ingest.test.ts
+  s_0d9ddae18b26ab::t_09c53bb24861a9 63-73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "08c56df46e7de9b92ca9c1a048dc33e092934747",
+  "prompts": {},
+  "sessions": {
+    "s_0d9ddae18b26ab": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3ced89e-055b-429c-9ef0-8f25abece942",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
