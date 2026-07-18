@@ -1,0 +1,22 @@
+README.md
+  s_3e5d58d3fdd8c4::t_782d7a2db9e7ad 67,73
+  s_3e5d58d3fdd8c4::t_5bd69e5282ad5c 47
+  s_3e5d58d3fdd8c4::t_bba717d85ad6ce 34
+  s_3e5d58d3fdd8c4::t_fb51fd0e260758 1,3-33,35-46,48-66,68-72,74-99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "5c77e66fc36b16dd294228c7bc04596d387fe21e",
+  "prompts": {},
+  "sessions": {
+    "s_3e5d58d3fdd8c4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f9959fa1-4b91-4a6c-b913-92e744119cfa",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
