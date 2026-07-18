@@ -1,0 +1,36 @@
+src/cli/commands/crosslink.ts
+  s_32e12c33451eac::t_2c6d294f8398ac 1-43
+tests/cli/crosslink.test.ts
+  s_32e12c33451eac::t_28604033545fca 1-20,22-35
+  s_5759a4a6e849a6::t_a3b39822db4a79 21
+src/crosslinks/treatmentLink.ts
+  s_32e12c33451eac::t_2c6d294f8398ac 1-13
+tests/crosslinks/relatedTopics.test.ts
+  s_32e12c33451eac::t_28604033545fca 1-16
+src/crosslinks/relatedTopics.ts
+  s_32e12c33451eac::t_2c6d294f8398ac 1-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "399c0074f01863544a730ab251ab3d34935b8b2b",
+  "prompts": {},
+  "sessions": {
+    "s_32e12c33451eac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f72d4-26b5-7e32-8ede-bf6401d83e5f",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    },
+    "s_5759a4a6e849a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3907d804-0ddd-450b-80cf-b027b66fd331",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
