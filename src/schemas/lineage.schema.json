@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["topic", "hash", "operations"],
+  "additionalProperties": false,
+  "properties": {
+    "topic": { "type": "string" },
+    "hash": { "type": "string" },
+    "operations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "op", "hash", "actor", "timestamp"],
+        "properties": {
+          "id": { "type": "string" },
+          "op": { "type": "string" },
+          "hash": { "type": "string" },
+          "actor": { "type": "string" },
+          "timestamp": { "type": "string" }
+        }
+      }
+    }
+  }
+}

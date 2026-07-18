@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["scores"],
+  "additionalProperties": false,
+  "properties": {
+    "scores": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["fact_id", "relevance", "genealogy", "historical", "confidence", "novelty", "promotion_score", "promoted"],
+        "additionalProperties": false,
+        "properties": {
+          "fact_id": { "type": "string" },
+          "relevance": { "type": "number" },
+          "genealogy": { "type": "number" },
+          "historical": { "type": "number" },
+          "confidence": { "type": "number" },
+          "novelty": { "type": "number" },
+          "promotion_score": { "type": "number" },
+          "promoted": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

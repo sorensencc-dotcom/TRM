@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["related"],
+  "additionalProperties": false,
+  "properties": {
+    "related": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["topic", "relationship", "strength"],
+        "additionalProperties": false,
+        "properties": {
+          "topic": { "type": "string" },
+          "relationship": { "type": "string" },
+          "strength": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    }
+  }
+}

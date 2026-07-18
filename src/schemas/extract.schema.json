@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["facts"],
+  "additionalProperties": false,
+  "properties": {
+    "facts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "text", "source_id", "confidence", "categories"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "text": { "type": "string" },
+          "source_id": { "type": "string" },
+          "confidence": { "type": "number" },
+          "categories": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}
