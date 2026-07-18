@@ -1,0 +1,33 @@
+src/extraction/claudeCodeRunner.ts
+  s_5759a4a6e849a6::t_dfb3cd73d0699b 16-20
+  s_5759a4a6e849a6::t_a42d927a67b436 56
+  s_5759a4a6e849a6::t_6a635729829a67 57-58
+  s_5759a4a6e849a6::t_2e6cc2670b74e8 44-52
+  s_5759a4a6e849a6::t_9a8dc2fae042f2 81
+  s_5759a4a6e849a6::t_0e1c80509af47a 15,21-24
+tests/extraction/extractFacts.test.ts
+  s_5759a4a6e849a6::t_ce99d4b3836f11 5,7,11,18,24-26
+  s_5759a4a6e849a6::t_4d7e22039d4511 4,6
+tests/extraction/claudeCodeRunner.test.ts
+  s_5759a4a6e849a6::t_681c1a1ea02a00 52,63-66
+  s_5759a4a6e849a6::t_60e959d8886b7e 38-51
+src/extraction/prompts/extractFacts.ts
+  s_5759a4a6e849a6::t_f283cbdf8b9a66 6
+  s_5759a4a6e849a6::t_ecc66e0c1185a7 3-4,7-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "0dcf085d2da9fca1fc6cf7d55233246161f17c43",
+  "prompts": {},
+  "sessions": {
+    "s_5759a4a6e849a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3907d804-0ddd-450b-80cf-b027b66fd331",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
