@@ -26,14 +26,15 @@ program
   });
 
 program
-  .command('ingest <path> <url>')
+  .command('ingest <path> [url]')
   .requiredOption('--type <type>')
   .requiredOption('--title <title>')
   .requiredOption('--origin <origin>')
   .option('--actor <actor>')
+  .option('--file <file>')
   .option('--dry-run')
-  .action((path, url, opts) => {
-    const entry = runIngest(root, path, { ...opts, url, dryRun: opts.dryRun });
+  .action(async (path, url, opts) => {
+    const entry = await runIngest(root, path, { ...opts, url, file: opts.file, dryRun: opts.dryRun });
     console.log(entry ? JSON.stringify(entry, null, 2) : '(dry-run, nothing written)');
   });
 
