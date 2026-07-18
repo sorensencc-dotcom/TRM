@@ -50,11 +50,38 @@ describe('runReport', () => {
     expect(fs.existsSync(path.join(root, 'reports'))).toBe(false);
   });
 
+  it('rejects an unsupported theme before exportBundle ever runs', () => {
+    const root = makeRoot();
+    runCreate(root, 'charlie/cuba', { actor: 'ACTOR-001' });
+    const exportBundleModule = require('../../src/reporting/exportBundle');
+    const spy = jest.spyOn(exportBundleModule, 'exportBundle');
+    expect(() => runReport(root, 'charlie/cuba', { theme: 'bogus' })).toThrow(/theme/i);
+    expect(spy).not.toHaveBeenCalled();
+    expect(fs.existsSync(path.join(root, 'reports'))).toBe(false);
+    spy.mockRestore();
+  });
+
+  it('rejects an unsupported theme before exportBundle ever runs (topic need not even exist)', () => {
+    const root = makeRoot();
+    // Deliberately do NOT call runCreate — topic node does not exist.
+    expect(() => runReport(root, 'nonexistent/topic', { theme: 'bogus' })).toThrow(/theme/i);
+  });
+
   it('produces distinct filenames on two immediate successive calls', () => {
     const root = makeRoot();
     runCreate(root, 'charlie/cuba', { actor: 'ACTOR-001' });
     const first = runReport(root, 'charlie/cuba', {});
     const second = runReport(root, 'charlie/cuba', {});
+    expect(first.htmlPath).not.toBe(second.htmlPath);
+  });
+
+  it('produces distinct filenames on two calls at the exact same millisecond (random-suffix collision guard)', () => {
+    const root = makeRoot();
+    runCreate(root, 'charlie/cuba', { actor: 'ACTOR-001' });
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1700000000000);
+    const first = runReport(root, 'charlie/cuba', {});
+    const second = runReport(root, 'charlie/cuba', {});
+    nowSpy.mockRestore();
     expect(first.htmlPath).not.toBe(second.htmlPath);
   });
 });
