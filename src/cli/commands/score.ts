@@ -1,3 +1,4 @@
+import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { nodeDir } from '../../core/paths';
@@ -63,7 +64,13 @@ export function runScore(
   fs.writeFileSync(path.join(dir, 'score.json'), JSON.stringify({ scores }, null, 2));
 
   const now = new Date().toISOString();
-  appendOperation(root, topicPath, { op: 'SCORE', actor, timestamp: now, score_count: scores.length }, { score_count: scores.length });
+  const contentHash = crypto.createHash('sha256').update(JSON.stringify(scores)).digest('hex');
+  appendOperation(
+    root,
+    topicPath,
+    { op: 'SCORE', actor, timestamp: now, score_count: scores.length, content_hash: contentHash },
+    { score_count: scores.length, content_hash: contentHash }
+  );
 
   return { scores };
 }
