@@ -1,0 +1,25 @@
+src/cli/index.ts
+  s_0d9ddae18b26ab::t_39d1c1e964ff8a 10
+  s_0d9ddae18b26ab::t_492a91d4ecafa9 51-58
+  s_0d9ddae18b26ab::t_0cf0e424ecc998 50
+tests/cli/report.test.ts
+  s_0d9ddae18b26ab::t_a3362081970d62 1-60
+src/cli/commands/report.ts
+  s_0d9ddae18b26ab::t_24135216f14034 1-35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "61d76174c74642776743c5985f247900a4177bd2",
+  "prompts": {},
+  "sessions": {
+    "s_0d9ddae18b26ab": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3ced89e-055b-429c-9ef0-8f25abece942",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
