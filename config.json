@@ -1,0 +1,6 @@
+{
+  "default_scoring_adapter": "stub",
+  "promotion_threshold": 80,
+  "actor_source": "env",
+  "time_source": "system"
+}
