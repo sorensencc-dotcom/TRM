@@ -12,7 +12,16 @@ export interface ClaudeCliExec {
 const CLAUDE_BIN = process.platform === 'win32' ? 'claude.cmd' : 'claude';
 
 function defaultExec(args: string[], input: string): { stdout: string; status: number | null } {
-  const result = spawnSync(CLAUDE_BIN, args, { input, encoding: 'utf-8' });
+  // On Windows, spawnSync can't exec a .cmd wrapper directly (EINVAL) and shell:true
+  // mangles args containing spaces/quotes/& (broken concatenation-only escaping, not
+  // real quoting). Route through cmd.exe /c with an args array instead. This is safe
+  // here specifically because `args` is always the fixed, short, single-token flag
+  // list below -- the multi-line prompt+source content goes entirely through `input`
+  // (stdin), which is never touched by cmd.exe's command-line parsing.
+  const result =
+    process.platform === 'win32'
+      ? spawnSync('cmd.exe', ['/d', '/s', '/c', CLAUDE_BIN, ...args], { input, encoding: 'utf-8' })
+      : spawnSync(CLAUDE_BIN, args, { input, encoding: 'utf-8' });
   return { stdout: result.stdout ?? '', status: result.status };
 }
 
@@ -32,11 +41,21 @@ interface ClaudeCliEnvelope {
   is_error?: boolean;
 }
 
+// The model sometimes wraps its JSON answer in a markdown code fence despite the
+// prompt's "no prose outside the JSON" instruction. Strip a fence if present;
+// otherwise return the text unchanged so a genuinely bare JSON result still parses.
+function stripCodeFence(text: string): string {
+  const trimmed = text.trim();
+  const fenceMatch = trimmed.match(/^```(?:json)?\s*\n([\s\S]*?)\n```$/);
+  return fenceMatch ? fenceMatch[1] : trimmed;
+}
+
 export function createClaudeCodeRunner(exec: ClaudeCliExec = defaultExec): ExtractionRunner {
   return {
     run(source: SourceEntry, rawText: string): { facts: Fact[]; summary: string } {
-      const prompt = buildExtractPrompt(source.title);
-      const { stdout, status } = exec(['-p', prompt, '--output-format', 'json', '--model', 'sonnet'], rawText);
+      const prompt = buildExtractPrompt();
+      const stdinPayload = `${prompt}\n\n---SOURCE---\n\nSource title: ${source.title}\n\n${rawText}`;
+      const { stdout, status } = exec(['--print', '--output-format', 'json', '--model', 'sonnet'], stdinPayload);
 
       if (status !== 0) {
         throw new Error(`claude CLI exited with status ${status}`);
@@ -59,7 +78,7 @@ export function createClaudeCodeRunner(exec: ClaudeCliExec = defaultExec): Extra
 
       let parsed: RawExtractResult;
       try {
-        parsed = JSON.parse(envelope.result);
+        parsed = JSON.parse(stripCodeFence(envelope.result));
       } catch {
         throw new Error(`claude CLI result was not valid JSON: ${envelope.result.slice(0, 200)}`);
       }

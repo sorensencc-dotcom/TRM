@@ -1,9 +1,12 @@
 export const CATEGORY_VOCAB = ['history', 'genealogy', 'industry', 'geopolitics', 'biography'] as const;
 
-export function buildExtractPrompt(sourceTitle: string): string {
-  return `You are extracting discrete factual claims from source text piped via stdin below, for a structured research archive.
+export function buildExtractPrompt(): string {
+  return `You are extracting discrete factual claims from source text for a structured research archive.
 
-Source title: ${sourceTitle}
+Everything after the "---SOURCE---" marker below is the source material, formatted as:
+Source title: <title>
+
+<the full source text>
 
 Return ONLY strict JSON, no prose outside the JSON, in this exact shape:
 {"facts": [{"text": "...", "confidence": 0.0, "categories": ["..."]}], "summary": "one paragraph human-readable summary"}

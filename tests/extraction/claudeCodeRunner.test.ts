@@ -35,7 +35,21 @@ describe('createClaudeCodeRunner', () => {
     expect(result.summary).toBe('Two facts about the Cuban estate and 1959 expropriation.');
   });
 
-  it('passes the built prompt and raw text to exec', () => {
+  it('strips a markdown code fence around the result JSON', () => {
+    const raw = JSON.stringify({ facts: [{ text: 'Fenced fact.', confidence: 0.7, categories: [] }], summary: 'Fenced summary.' });
+    const exec: ClaudeCliExec = () => ({
+      stdout: envelope('```json\n' + raw + '\n```'),
+      status: 0,
+    });
+    const runner = createClaudeCodeRunner(exec);
+    const result = runner.run(source, 'raw text');
+
+    expect(result.facts).toHaveLength(1);
+    expect(result.facts[0].text).toBe('Fenced fact.');
+    expect(result.summary).toBe('Fenced summary.');
+  });
+
+  it('argv is fixed/short (no embedded prompt), full prompt+title+text go via stdin', () => {
     let capturedArgs: string[] = [];
     let capturedInput = '';
     const exec: ClaudeCliExec = (args, input) => {
@@ -46,11 +60,10 @@ describe('createClaudeCodeRunner', () => {
     const runner = createClaudeCodeRunner(exec);
     runner.run(source, 'the raw source text');
 
-    expect(capturedArgs).toContain('-p');
-    expect(capturedArgs).toContain('--output-format');
-    expect(capturedArgs).toContain('json');
-    expect(capturedArgs.some((a) => a.includes('Beats 7.3-7.4'))).toBe(true);
-    expect(capturedInput).toBe('the raw source text');
+    expect(capturedArgs).toEqual(['--print', '--output-format', 'json', '--model', 'sonnet']);
+    expect(capturedInput).toContain('---SOURCE---');
+    expect(capturedInput).toContain('Source title: Beats 7.3-7.4');
+    expect(capturedInput).toContain('the raw source text');
   });
 
   it('throws on non-zero exit status', () => {
