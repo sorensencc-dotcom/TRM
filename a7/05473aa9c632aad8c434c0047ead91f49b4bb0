@@ -1,0 +1,25 @@
+src/ingestion/imageExtract/index.ts
+  s_d7f8454f24fee1::t_a68be1fd44fdb8 1-11
+tests/ingestion/imageExtract/index.test.ts
+  s_d7f8454f24fee1::t_647750bbb4b200 1-38
+src/ingestion/imageExtract/IExtractor.ts
+  s_d7f8454f24fee1::t_647750bbb4b200 1-10
+src/ingestion/imageExtract/ReverseImageSearchExtractor.ts
+  s_d7f8454f24fee1::t_647750bbb4b200 1-207
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "a705473aa9c632aad8c434c0047ead91f49b4bb0",
+  "prompts": {},
+  "sessions": {
+    "s_d7f8454f24fee1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f76ac-5e67-7e22-9d11-78f4c08926ae",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
