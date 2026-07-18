@@ -82,4 +82,18 @@ describe('runIngest', () => {
     expect(entry).toBeNull();
     expect(fs.existsSync(path.join(root, 'topics', 'cuba', 'sources', 'metadata.json'))).toBe(false);
   });
+
+  it('a failing --file conversion does not register an orphaned source', async () => {
+    const root = makeRoot();
+    runCreate(root, 'cuba', { actor: 'ACTOR-001' });
+    const filePath = path.join(root, 'image.png');
+    fs.writeFileSync(filePath, 'not really an image', 'utf-8');
+
+    await expect(
+      runIngest(root, 'cuba', { actor: 'ACTOR-001', type: 'pdf', title: 'Overview', origin: 'LOC', file: filePath })
+    ).rejects.toThrow(/unsupported/i);
+
+    const metadataPath = path.join(root, 'topics', 'cuba', 'sources', 'metadata.json');
+    expect(fs.existsSync(metadataPath)).toBe(false);
+  });
 });

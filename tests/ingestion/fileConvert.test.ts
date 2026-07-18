@@ -3,6 +3,16 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { convertFileToText, FileConverters } from '../../src/ingestion/fileConvert';
 
+const mockDestroy = jest.fn().mockResolvedValue(undefined);
+const mockGetText = jest.fn().mockRejectedValue(new Error('malformed pdf'));
+
+jest.mock('pdf-parse', () => ({
+  PDFParse: jest.fn().mockImplementation(() => ({
+    getText: mockGetText,
+    destroy: mockDestroy,
+  })),
+}));
+
 function makeFile(name: string, content: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trm-fileconvert-'));
   const file = path.join(dir, name);
@@ -49,5 +59,11 @@ describe('convertFileToText', () => {
     const file = makeFile('empty.docx', 'ignored binary placeholder');
     const emptyConverters: FileConverters = { extractDocx: async () => '   ', extractPdf: async () => '' };
     await expect(convertFileToText(file, emptyConverters)).rejects.toThrow(/no extractable text/);
+  });
+
+  it('calls parser.destroy() even when getText() throws (default pdf-parse path)', async () => {
+    const file = makeFile('bad.pdf', 'binary placeholder');
+    await expect(convertFileToText(file)).rejects.toThrow('malformed pdf');
+    expect(mockDestroy).toHaveBeenCalledTimes(1);
   });
 });

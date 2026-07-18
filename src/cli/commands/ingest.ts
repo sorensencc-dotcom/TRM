@@ -20,10 +20,11 @@ export async function runIngest(
     throw new Error('trm ingest: either <url> or --file must be provided');
   }
 
+  const text = cliArgs.file ? await convertFileToText(cliArgs.file) : undefined;
+
   const entry = addSource(root, topicPath, actor, { type: cliArgs.type, title: cliArgs.title, origin: cliArgs.origin, url });
 
-  if (cliArgs.file) {
-    const text = await convertFileToText(cliArgs.file);
+  if (text !== undefined) {
     const rawPath = path.join(nodeDir(root, topicPath), 'sources', 'raw', `${entry.id}.txt`);
     fs.writeFileSync(rawPath, text);
   }
