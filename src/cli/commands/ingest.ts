@@ -15,7 +15,7 @@ export async function runIngest(
   const actor = resolveActor(root, cliArgs.actor);
   if (cliArgs.dryRun) return null;
 
-  const url = cliArgs.url ?? (cliArgs.file ? `local:${path.basename(cliArgs.file)}` : undefined);
+  const url = cliArgs.url || (cliArgs.file ? `local:${path.basename(cliArgs.file)}` : undefined);
   if (!url) {
     throw new Error('trm ingest: either <url> or --file must be provided');
   }

@@ -60,6 +60,17 @@ describe('runIngest', () => {
     ).rejects.toThrow(/either.*url.*--file/i);
   });
 
+  it('an empty-string url with --file still falls through to the local: derivation', async () => {
+    const root = makeRoot();
+    runCreate(root, 'cuba', { actor: 'ACTOR-001' });
+    const filePath = path.join(root, 'doc.txt');
+    fs.writeFileSync(filePath, 'Content.', 'utf-8');
+
+    const entry = await runIngest(root, 'cuba', { actor: 'ACTOR-001', type: 'pdf', title: 'Overview', origin: 'LOC', url: '', file: filePath });
+
+    expect(entry?.url).toBe('local:doc.txt');
+  });
+
   it('dry-run with --file writes nothing (no raw file, no metadata)', async () => {
     const root = makeRoot();
     runCreate(root, 'cuba', { actor: 'ACTOR-001' });
