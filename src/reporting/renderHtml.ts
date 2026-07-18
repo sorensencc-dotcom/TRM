@@ -34,6 +34,10 @@ h3 { font-size: 13pt; font-weight: 600; margin: 20px 0 8px; }
 .fact-meta { font-family: var(--font-ui); font-size: 8.5pt; color: var(--muted); display: block; margin-top: 2px; }
 `;
 
+function titleCase(value: string): string {
+  return value.replace(/\w\S*/g, (word) => word.charAt(0).toUpperCase() + word.slice(1));
+}
+
 function groupFactsByCategory(facts: ReportBundleFact[]): Map<string, ReportBundleFact[]> {
   const groups = new Map<string, ReportBundleFact[]>();
   for (const fact of facts) {
@@ -99,7 +103,7 @@ function renderFactsList(bundle: ReportBundle): string {
 </div>`
         )
         .join('');
-      return `<h3>${escapeHtml(category)}</h3>${items}`;
+      return `<h3>${escapeHtml(titleCase(category))}</h3>${items}`;
     })
     .join('');
   return `
@@ -129,8 +133,8 @@ export function renderHtml(bundle: ReportBundle): string {
 </div>
 ${renderStatsBar(bundle)}
 ${renderNarrative(bundle)}
-${renderEvidenceRegister(bundle)}
 ${renderFactsList(bundle)}
+${renderEvidenceRegister(bundle)}
 </body>
 </html>`;
 }
