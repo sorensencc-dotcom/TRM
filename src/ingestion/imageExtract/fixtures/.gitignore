@@ -1,0 +1,7 @@
+# Large image fixtures (generated at test time, not committed)
+photo-large.jpg
+*.jpg.tmp
+
+# Generated fixtures (kept to speed up repeated test runs)
+# Regenerate by running: bash generate-fixtures.sh
+

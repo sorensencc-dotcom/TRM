@@ -9,6 +9,7 @@
   "scripts": {
     "build": "tsc",
     "test": "jest",
+    "test:load": "ts-node src/ingestion/imageExtract/imageAnalyzer.load-test.ts",
     "typecheck": "tsc --noEmit",
     "trm": "ts-node src/cli/index.ts"
   },
