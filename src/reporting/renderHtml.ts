@@ -103,7 +103,7 @@ function renderFactsList(bundle: ReportBundle): string {
 </div>`
         )
         .join('');
-      return `<h3>${escapeHtml(titleCase(category))}</h3>${items}`;
+      return `<h3>${escapeHtml(category)}</h3>${items}`;
     })
     .join('');
   return `
