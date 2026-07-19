@@ -1,0 +1,21 @@
+src/ingestion/imageExtract/index.ts
+  s_da9e171b5de231::t_2f03da9ac31f04 2-5,7-19,21-25,27-30,33-46,49
+  s_da9e171b5de231::t_4e68a28b186e2e 47-48
+  s_da9e171b5de231::t_d5afb98f760846 51-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "44d6c1f0ff40ee654f99d40185ede242fbf482b1",
+  "prompts": {},
+  "sessions": {
+    "s_da9e171b5de231": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e27a7023-39e0-4852-b719-638e31b8ee55",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
