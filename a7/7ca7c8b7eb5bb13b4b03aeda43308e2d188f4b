@@ -1,0 +1,19 @@
+tsconfig.json
+  s_46b66c541c1f9a::t_c03bc87874d9c8 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "a77ca7c8b7eb5bb13b4b03aeda43308e2d188f4b",
+  "prompts": {},
+  "sessions": {
+    "s_46b66c541c1f9a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b73430ec-3696-428f-a3ec-c70accaf4191",
+        "model": "unknown"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
