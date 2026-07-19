@@ -1,0 +1,21 @@
+deploy/PHASE4-STAGE1-CHECKLIST.md
+  s_da9e171b5de231::t_615ab658c92ff0 1-214
+deploy/phase4-stage1-canary.yaml
+  s_da9e171b5de231::t_f69cc7ace5cdab 1-197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "ae1cc7ab4160cafd548c436ffce7eaab87e92e39",
+  "prompts": {},
+  "sessions": {
+    "s_da9e171b5de231": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e27a7023-39e0-4852-b719-638e31b8ee55",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
