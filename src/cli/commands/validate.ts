@@ -10,6 +10,7 @@ export interface ValidationReport {
   path: string;
   valid: boolean;
   errors: string[];
+  warnings: string[];
 }
 
 function checkSchema(root: string, topicPath: string, file: string, schema: SchemaName, errors: string[]): void {
@@ -39,8 +40,23 @@ function checkScoreNotHandEdited(root: string, topicPath: string, errors: string
   }
 }
 
+function checkMockImageSources(root: string, topicPath: string, warnings: string[]): void {
+  const rawDir = path.join(nodeDir(root, topicPath), 'sources', 'raw');
+  if (!fs.existsSync(rawDir)) return;
+  for (const file of fs.readdirSync(rawDir)) {
+    if (!file.endsWith('.json')) continue;
+    const filePath = path.join(rawDir, file);
+    const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    if (data.mock === true) {
+      const sourceId = path.basename(file, '.json');
+      warnings.push(`${sourceId} is mock image-extraction data, not a verified fact source`);
+    }
+  }
+}
+
 function validateNode(root: string, topicPath: string): ValidationReport {
   const errors: string[] = [];
+  const warnings: string[] = [];
   readTopicMeta(root, topicPath); // throws if node missing
 
   checkSchema(root, topicPath, 'topic.json', 'topic', errors);
@@ -53,8 +69,9 @@ function validateNode(root: string, topicPath: string): ValidationReport {
   if (!chainResult.valid) errors.push(`lineage: ${chainResult.error}`);
 
   checkScoreNotHandEdited(root, topicPath, errors);
+  checkMockImageSources(root, topicPath, warnings);
 
-  return { path: topicPath, valid: errors.length === 0, errors };
+  return { path: topicPath, valid: errors.length === 0, errors, warnings };
 }
 
 export function runValidate(root: string, topicPath: string, cliArgs: { recursive?: boolean }): ValidationReport[] {

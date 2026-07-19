@@ -49,4 +49,39 @@ describe('runValidate', () => {
     const reports = runValidate(root, 'cuba', { recursive: true });
     expect(reports.map((r) => r.path)).toEqual(['cuba', 'cuba/industry']);
   });
+
+  it('warns (but does not fail) when a source JSON is flagged mock: true', () => {
+    const root = makeRoot();
+    runCreate(root, 'cuba', { actor: 'ACTOR-001' });
+    writeExtract(root, 'cuba', [{ id: 'FCT-001', text: 'x', source_id: 'SRC-001', confidence: 0.9, categories: [] }]);
+    runScore(root, 'cuba', { actor: 'ACTOR-001' });
+
+    const rawDir = path.join(root, 'topics', 'cuba', 'sources', 'raw');
+    fs.mkdirSync(rawDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(rawDir, 'SRC-001.json'),
+      JSON.stringify({ mock: true, matches: [], metadata: { visionApiUsed: false } })
+    );
+
+    const [report] = runValidate(root, 'cuba', {});
+    expect(report.valid).toBe(true);
+    expect(report.warnings).toContain('SRC-001 is mock image-extraction data, not a verified fact source');
+  });
+
+  it('does not warn for a non-mock source JSON', () => {
+    const root = makeRoot();
+    runCreate(root, 'cuba', { actor: 'ACTOR-001' });
+    writeExtract(root, 'cuba', [{ id: 'FCT-001', text: 'x', source_id: 'SRC-001', confidence: 0.9, categories: [] }]);
+    runScore(root, 'cuba', { actor: 'ACTOR-001' });
+
+    const rawDir = path.join(root, 'topics', 'cuba', 'sources', 'raw');
+    fs.mkdirSync(rawDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(rawDir, 'SRC-001.json'),
+      JSON.stringify({ mock: false, matches: [], metadata: { visionApiUsed: true } })
+    );
+
+    const [report] = runValidate(root, 'cuba', {});
+    expect(report.warnings).toEqual([]);
+  });
 });
