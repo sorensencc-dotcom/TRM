@@ -86,12 +86,76 @@ describe('runIngest', () => {
   it('a failing --file conversion does not register an orphaned source', async () => {
     const root = makeRoot();
     runCreate(root, 'cuba', { actor: 'ACTOR-001' });
-    const filePath = path.join(root, 'image.png');
-    fs.writeFileSync(filePath, 'not really an image', 'utf-8');
+    const filePath = path.join(root, 'file.xyz');
+    fs.writeFileSync(filePath, 'not a real format', 'utf-8');
 
     await expect(
       runIngest(root, 'cuba', { actor: 'ACTOR-001', type: 'pdf', title: 'Overview', origin: 'LOC', file: filePath })
     ).rejects.toThrow(/unsupported/i);
+
+    const metadataPath = path.join(root, 'topics', 'cuba', 'sources', 'metadata.json');
+    expect(fs.existsSync(metadataPath)).toBe(false);
+  });
+
+  it('with --file pointing at a .png, writes an ExtractionResult JSON (not .txt) and flags mock: true', async () => {
+    const root = makeRoot();
+    runCreate(root, 'cuba', { actor: 'ACTOR-001' });
+    const filePath = path.join(root, 'photo.png');
+    fs.writeFileSync(filePath, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+
+    const entry = await runIngest(root, 'cuba', { actor: 'ACTOR-001', type: 'image', title: 'Photo', origin: 'LOC', file: filePath });
+
+    expect(entry?.url).toBe('local:photo.png');
+    const jsonPath = path.join(root, 'topics', 'cuba', 'sources', 'raw', 'SRC-001.json');
+    expect(fs.existsSync(jsonPath)).toBe(true);
+    const written = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+    expect(written.mock).toBe(true);
+    expect(written.metadata.visionApiUsed).toBe(false);
+    expect(Array.isArray(written.matches)).toBe(true);
+
+    const txtPath = path.join(root, 'topics', 'cuba', 'sources', 'raw', 'SRC-001.txt');
+    expect(fs.existsSync(txtPath)).toBe(false);
+  });
+
+  it('recognizes .jpg, .jpeg, .webp, .gif as image extensions too', async () => {
+    const root = makeRoot();
+    runCreate(root, 'cuba', { actor: 'ACTOR-001' });
+    for (const ext of ['jpg', 'jpeg', 'webp', 'gif']) {
+      const filePath = path.join(root, `photo.${ext}`);
+      fs.writeFileSync(filePath, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+      const entry = await runIngest(root, 'cuba', { actor: 'ACTOR-001', type: 'image', title: 'Photo', origin: 'LOC', file: filePath });
+      const jsonPath = path.join(root, 'topics', 'cuba', 'sources', 'raw', `${entry?.id}.json`);
+      expect(fs.existsSync(jsonPath)).toBe(true);
+    }
+  });
+
+  it('a corrupt/unrecognized image writes an error-flagged JSON, does not throw', async () => {
+    const root = makeRoot();
+    runCreate(root, 'cuba', { actor: 'ACTOR-001' });
+    const filePath = path.join(root, 'corrupt.png');
+    fs.writeFileSync(filePath, 'not actually image bytes', 'utf-8');
+
+    const entry = await runIngest(root, 'cuba', { actor: 'ACTOR-001', type: 'image', title: 'Photo', origin: 'LOC', file: filePath });
+
+    expect(entry?.id).toBe('SRC-001');
+    const jsonPath = path.join(root, 'topics', 'cuba', 'sources', 'raw', 'SRC-001.json');
+    expect(fs.existsSync(jsonPath)).toBe(true);
+    const written = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+    expect(written.mock).toBe(true);
+    expect(written.matches).toEqual([]);
+    expect(written.metadata.error).toMatch(/unsupported/i);
+  });
+
+  it('a failing image extraction does not register an orphaned source', async () => {
+    const root = makeRoot();
+    runCreate(root, 'cuba', { actor: 'ACTOR-001' });
+    const filePath = path.join(root, 'ghost.png');
+    // File path does not exist -> extractImage() throws before addSource() runs.
+    fs.rmSync(filePath, { force: true });
+
+    await expect(
+      runIngest(root, 'cuba', { actor: 'ACTOR-001', type: 'image', title: 'Photo', origin: 'LOC', file: filePath })
+    ).rejects.toThrow();
 
     const metadataPath = path.join(root, 'topics', 'cuba', 'sources', 'metadata.json');
     expect(fs.existsSync(metadataPath)).toBe(false);
