@@ -1,0 +1,197 @@
+# Phase 4 Stage 1: Canary Deployment (10% rollout)
+# Apply with: kubectl apply -f phase4-stage1-canary.yaml
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: phase4-stage1-env
+  namespace: default
+  labels:
+    phase: 4
+    stage: canary
+data:
+  ENABLE_IMAGE_ANALYSIS: "0.1"
+  CIC_INGESTION_URL: "http://cic-ingestion:3000"
+  LOG_LEVEL: "info"
+  LOG_IMAGE_ANALYSIS_DETAILS: "true"
+  METRICS_ENABLED: "true"
+  METRICS_PUSH_INTERVAL: "60s"
+  ALERT_ERROR_RATE_THRESHOLD: "0.05"
+  ALERT_ERROR_RATE_WINDOW: "300s"
+  ALERT_LATENCY_P99_THRESHOLD: "500"
+  ALERT_LATENCY_P99_WINDOW: "600s"
+  ALERT_FALLBACK_RATIO_THRESHOLD: "0.05"
+  ALERT_FALLBACK_RATIO_WINDOW: "900s"
+  CANARY_STAGE_DURATION: "72h"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trm-harvester-phase4-canary
+  namespace: default
+  labels:
+    app: trm-harvester
+    phase: 4
+    stage: canary
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: trm-harvester
+      phase: 4
+      stage: canary
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: trm-harvester
+        phase: 4
+        stage: canary
+      annotations:
+        phase4/stage: "canary"
+        phase4/rollout-percent: "10"
+    spec:
+      containers:
+      - name: trm-harvester
+        image: registry.company.com/trm-harvester:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 8080
+        - name: metrics
+          containerPort: 9090
+        envFrom:
+        - configMapRef:
+            name: phase4-stage1-env
+        env:
+        - name: VISION_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: vision-api-credentials
+              key: api-key
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: /etc/secrets/google-vision-sa.json
+        volumeMounts:
+        - name: google-vision-secret
+          mountPath: /etc/secrets
+          readOnly: true
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: 2000m
+            memory: 2Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+      volumes:
+      - name: google-vision-secret
+        secret:
+          secretName: google-vision-sa
+          defaultMode: 0400
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: trm-harvester-canary
+  namespace: default
+  labels:
+    app: trm-harvester
+    phase: 4
+    stage: canary
+spec:
+  type: ClusterIP
+  selector:
+    app: trm-harvester
+    phase: 4
+    stage: canary
+  ports:
+  - name: http
+    port: 8080
+    targetPort: http
+  - name: metrics
+    port: 9090
+    targetPort: metrics
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: trm-harvester-canary-pdb
+  namespace: default
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: trm-harvester
+      phase: 4
+      stage: canary
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: phase4-canary-alerts
+  namespace: default
+spec:
+  groups:
+  - name: phase4.canary
+    interval: 30s
+    rules:
+    - alert: ImageAnalysisHighErrorRate
+      expr: |
+        (1 - (rate(image_analysis_success_total{stage="canary"}[5m]) /
+              rate(image_analysis_requests_total{stage="canary"}[5m]))) > 0.05
+      for: 5m
+      labels:
+        severity: critical
+        phase4_stage: canary
+      annotations:
+        summary: "Phase 4 Canary: Error rate > 5%"
+        description: "Image analysis error rate is {{ $value | humanizePercentage }}"
+        runbook_url: "https://docs.company.com/phase4-runbook#high-error-rate"
+
+    - alert: ImageAnalysisHighLatency
+      expr: |
+        histogram_quantile(0.99, rate(image_analysis_latency_ms_bucket{stage="canary"}[5m])) > 500
+      for: 10m
+      labels:
+        severity: warning
+        phase4_stage: canary
+      annotations:
+        summary: "Phase 4 Canary: p99 latency > 500ms"
+        description: "p99 latency is {{ $value | humanize }}ms"
+        runbook_url: "https://docs.company.com/phase4-runbook#high-latency"
+
+    - alert: ImageAnalysisHighFallbackRatio
+      expr: |
+        (rate(image_analysis_fallback_total{stage="canary"}[5m]) /
+         rate(image_analysis_requests_total{stage="canary"}[5m])) > 0.05
+      for: 15m
+      labels:
+        severity: warning
+        phase4_stage: canary
+      annotations:
+        summary: "Phase 4 Canary: Vision API fallback ratio > 5%"
+        description: "Fallback ratio is {{ $value | humanizePercentage }}"
+        runbook_url: "https://docs.company.com/phase4-runbook#high-fallback-ratio"
