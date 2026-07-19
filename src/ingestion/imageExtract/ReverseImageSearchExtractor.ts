@@ -6,7 +6,7 @@
 
 import { IExtractor } from "./IExtractor";
 
-const log = (...args: any[]) => console.log("[trm-image-extract]", ...args);
+const log = (...args: any[]) => console.error("[trm-image-extract]", ...args);
 
 export interface ImageMatch {
   url: string;
