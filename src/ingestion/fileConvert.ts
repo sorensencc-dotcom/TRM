@@ -2,10 +2,12 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as mammoth from 'mammoth';
 import { PDFParse } from 'pdf-parse';
+import { extractEpub } from './epubExtract';
 
 export interface FileConverters {
   extractDocx: (filePath: string) => Promise<string>;
   extractPdf: (buffer: Buffer) => Promise<string>;
+  extractEpub: (filePath: string) => Promise<string>;
 }
 
 const defaultConverters: FileConverters = {
@@ -19,9 +21,10 @@ const defaultConverters: FileConverters = {
       await parser.destroy();
     }
   },
+  extractEpub: async (filePath) => extractEpub(filePath),
 };
 
-const SUPPORTED_EXTENSIONS = ['.txt', '.md', '.docx', '.pdf'];
+const SUPPORTED_EXTENSIONS = ['.txt', '.md', '.docx', '.pdf', '.epub'];
 
 export async function convertFileToText(
   filePath: string,
@@ -36,6 +39,8 @@ export async function convertFileToText(
     text = await converters.extractDocx(filePath);
   } else if (ext === '.pdf') {
     text = await converters.extractPdf(fs.readFileSync(filePath));
+  } else if (ext === '.epub') {
+    text = await converters.extractEpub(filePath);
   } else {
     throw new Error(
       `trm ingest --file: unsupported file extension "${ext}" (supported: ${SUPPORTED_EXTENSIONS.join(', ')})`

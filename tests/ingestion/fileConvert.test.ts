@@ -23,6 +23,7 @@ function makeFile(name: string, content: string): string {
 const fakeConverters: FileConverters = {
   extractDocx: async () => 'docx extracted text',
   extractPdf: async () => 'pdf extracted text',
+  extractEpub: async () => 'epub extracted text',
 };
 
 describe('convertFileToText', () => {
@@ -50,14 +51,24 @@ describe('convertFileToText', () => {
     expect(text).toBe('pdf extracted text');
   });
 
+  it('routes .epub through the injected extractEpub converter', async () => {
+    const file = makeFile('book.epub', 'ignored binary placeholder');
+    const text = await convertFileToText(file, fakeConverters);
+    expect(text).toBe('epub extracted text');
+  });
+
   it('throws on an unsupported extension, naming the extension and supported list', async () => {
     const file = makeFile('image.png', 'binary placeholder');
-    await expect(convertFileToText(file)).rejects.toThrow(/\.png.*\.txt.*\.md.*\.docx.*\.pdf/s);
+    await expect(convertFileToText(file)).rejects.toThrow(/\.png.*\.txt.*\.md.*\.docx.*\.pdf.*\.epub/s);
   });
 
   it('throws when the extracted text is empty', async () => {
     const file = makeFile('empty.docx', 'ignored binary placeholder');
-    const emptyConverters: FileConverters = { extractDocx: async () => '   ', extractPdf: async () => '' };
+    const emptyConverters: FileConverters = {
+      extractDocx: async () => '   ',
+      extractPdf: async () => '',
+      extractEpub: async () => '',
+    };
     await expect(convertFileToText(file, emptyConverters)).rejects.toThrow(/no extractable text/);
   });
 
