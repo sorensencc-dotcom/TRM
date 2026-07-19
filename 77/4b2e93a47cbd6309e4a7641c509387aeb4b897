@@ -1,0 +1,35 @@
+src/ingestion/imageExtract/fixtures/.gitignore
+  s_da9e171b5de231::t_f5be69acc9ff9d 1-7
+src/ingestion/imageExtract/imageAnalyzer.ts
+  s_da9e171b5de231::t_d05c2473aead30 1-209
+src/ingestion/imageExtract/imageAnalyzer.test.ts
+  s_da9e171b5de231::t_612bb2f83811ae 1-272
+src/ingestion/imageExtract/imageAnalyzer.msw.ts
+  s_da9e171b5de231::t_2464939bb2bf61 1-120
+src/ingestion/imageExtract/fixtures/generate-fixtures.sh
+  s_da9e171b5de231::t_255972b8fd8175 1-88
+src/ingestion/imageExtract/fixtures/README.md
+  s_da9e171b5de231::t_51182e81c5f168 1-73
+.env.example
+  s_da9e171b5de231::t_71c894291c4527 1-17
+src/ingestion/imageExtract/imageAnalyzer.load-test.ts
+  s_da9e171b5de231::t_b87ea326e2cd12 1-133
+package.json
+  s_da9e171b5de231::t_52ce728be99a5b 12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "774b2e93a47cbd6309e4a7641c509387aeb4b897",
+  "prompts": {},
+  "sessions": {
+    "s_da9e171b5de231": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e27a7023-39e0-4852-b719-638e31b8ee55",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
