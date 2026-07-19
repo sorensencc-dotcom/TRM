@@ -1,0 +1,19 @@
+src/reporting/renderHtml.ts
+  s_c94234f3b62ce7::t_fe7b3f59081653 106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "baba0e48895fd99ddfaeddbce74fe590fa403c94",
+  "prompts": {},
+  "sessions": {
+    "s_c94234f3b62ce7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4f63835a-03e5-40c7-adc1-781a165329b7",
+        "model": "unknown"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
