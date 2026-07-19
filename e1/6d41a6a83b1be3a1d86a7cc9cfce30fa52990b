@@ -1,0 +1,19 @@
+src/ingestion/imageExtract/ReverseImageSearchExtractor.ts
+  s_bc1a4294dabb39::t_8311be3cb08f3f 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "e16d41a6a83b1be3a1d86a7cc9cfce30fa52990b",
+  "prompts": {},
+  "sessions": {
+    "s_bc1a4294dabb39": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5eec4d43-33fc-4ebd-8523-e57970ebde53",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
