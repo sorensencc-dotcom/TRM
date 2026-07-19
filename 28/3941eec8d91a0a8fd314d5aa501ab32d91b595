@@ -1,0 +1,23 @@
+deploy/DEPLOY.md
+  s_da9e171b5de231::t_bcc2e457606306 1-258
+deploy/phase4-stage1-deploy.sh
+  s_da9e171b5de231::t_488d972a7a3ab2 1-147
+deploy/phase4-stage1-deploy.ps1
+  s_da9e171b5de231::t_21cbad20a5e9e9 1-156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "283941eec8d91a0a8fd314d5aa501ab32d91b595",
+  "prompts": {},
+  "sessions": {
+    "s_da9e171b5de231": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e27a7023-39e0-4852-b719-638e31b8ee55",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
