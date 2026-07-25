@@ -1,0 +1,19 @@
+docs/superpowers/specs/2026-07-25-trm-raw-source-json-envelope-design.md
+  s_a599b4094c137a::t_52f2350876b8d3 1-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "93aef50bdc44ddb842280a621da8ad76a6fec3f4",
+  "prompts": {},
+  "sessions": {
+    "s_a599b4094c137a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f1f7bf8b-761c-45e2-96e7-9703d4ac9325",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
