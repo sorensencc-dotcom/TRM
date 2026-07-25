@@ -27,7 +27,7 @@ describe('runIngest', () => {
     expect(fs.existsSync(metadataPath)).toBe(false);
   });
 
-  it('with --file and no url, writes the converted text to sources/raw/SRC-001.txt and derives a local: url', async () => {
+  it('with --file and no url, writes a text envelope to sources/raw/SRC-001.json and derives a local: url', async () => {
     const root = makeRoot();
     runCreate(root, 'cuba', { actor: 'ACTOR-001' });
     const filePath = path.join(root, 'doc.txt');
@@ -36,9 +36,13 @@ describe('runIngest', () => {
     const entry = await runIngest(root, 'cuba', { actor: 'ACTOR-001', type: 'pdf', title: 'Overview', origin: 'LOC', file: filePath });
 
     expect(entry?.url).toBe('local:doc.txt');
-    const rawPath = path.join(root, 'topics', 'cuba', 'sources', 'raw', 'SRC-001.txt');
+    const rawPath = path.join(root, 'topics', 'cuba', 'sources', 'raw', 'SRC-001.json');
     expect(fs.existsSync(rawPath)).toBe(true);
-    expect(fs.readFileSync(rawPath, 'utf-8')).toBe('Converted file content.');
+    const envelope = JSON.parse(fs.readFileSync(rawPath, 'utf-8'));
+    expect(envelope.kind).toBe('text');
+    expect(envelope.sourceId).toBe('SRC-001');
+    expect(envelope.text).toBe('Converted file content.');
+    expect(typeof envelope.capturedAt).toBe('string');
   });
 
   it('with --file AND an explicit url, the explicit url wins', async () => {
@@ -97,7 +101,7 @@ describe('runIngest', () => {
     expect(fs.existsSync(metadataPath)).toBe(false);
   });
 
-  it('with --file pointing at a .png, writes an ExtractionResult JSON (not .txt) and flags mock: true', async () => {
+  it('with --file pointing at a .png, writes an image envelope and flags mock: true', async () => {
     const root = makeRoot();
     runCreate(root, 'cuba', { actor: 'ACTOR-001' });
     const filePath = path.join(root, 'photo.png');
@@ -109,12 +113,10 @@ describe('runIngest', () => {
     const jsonPath = path.join(root, 'topics', 'cuba', 'sources', 'raw', 'SRC-001.json');
     expect(fs.existsSync(jsonPath)).toBe(true);
     const written = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
-    expect(written.mock).toBe(true);
-    expect(written.metadata.visionApiUsed).toBe(false);
-    expect(Array.isArray(written.matches)).toBe(true);
-
-    const txtPath = path.join(root, 'topics', 'cuba', 'sources', 'raw', 'SRC-001.txt');
-    expect(fs.existsSync(txtPath)).toBe(false);
+    expect(written.kind).toBe('image');
+    expect(written.image.mock).toBe(true);
+    expect(written.image.metadata.visionApiUsed).toBe(false);
+    expect(Array.isArray(written.image.matches)).toBe(true);
   });
 
   it('recognizes .jpg, .jpeg, .webp, .gif as image extensions too', async () => {
@@ -126,6 +128,8 @@ describe('runIngest', () => {
       const entry = await runIngest(root, 'cuba', { actor: 'ACTOR-001', type: 'image', title: 'Photo', origin: 'LOC', file: filePath });
       const jsonPath = path.join(root, 'topics', 'cuba', 'sources', 'raw', `${entry?.id}.json`);
       expect(fs.existsSync(jsonPath)).toBe(true);
+      const envelope = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+      expect(envelope.kind).toBe('image');
     }
   });
 
@@ -141,9 +145,10 @@ describe('runIngest', () => {
     const jsonPath = path.join(root, 'topics', 'cuba', 'sources', 'raw', 'SRC-001.json');
     expect(fs.existsSync(jsonPath)).toBe(true);
     const written = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
-    expect(written.mock).toBe(true);
-    expect(written.matches).toEqual([]);
-    expect(written.metadata.error).toMatch(/unsupported/i);
+    expect(written.kind).toBe('image');
+    expect(written.image.mock).toBe(true);
+    expect(written.image.matches).toEqual([]);
+    expect(written.image.metadata.error).toMatch(/unsupported/i);
   });
 
   it('a failing image extraction does not register an orphaned source', async () => {
