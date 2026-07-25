@@ -14,7 +14,28 @@ function makeImageFile(name: string, content: Buffer): string {
 }
 
 describe('extractImage', () => {
+  const realFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = realFetch;
+  });
+
   it('reads a PNG file and returns mock ExtractionResult with visionApiUsed false', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        matches: [
+          { url: 'https://mock.example.com/image-1', similarity: 85, source: 'mock' },
+        ],
+        metadata: {
+          format: 'png',
+          visionApiUsed: false,
+          latencyMs: 10,
+          apiProvider: 'mock',
+        },
+      }),
+    }) as unknown as typeof fetch;
+
     const file = makeImageFile('photo.png', PNG_MAGIC);
     const result = await extractImage(file);
 
