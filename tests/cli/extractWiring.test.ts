@@ -35,7 +35,9 @@ function setUpSource(root: string) {
   runIngest(root, 'cuba', { actor: 'ACTOR-001', type: 'text', title: 'x', origin: 'x', url: 'x' });
   const rawDir = path.join(root, 'topics', 'cuba', 'sources', 'raw');
   fs.mkdirSync(rawDir, { recursive: true });
-  fs.writeFileSync(path.join(rawDir, 'SRC-001.txt'), 'Some raw text.\n');
+  fs.writeFileSync(path.join(rawDir, 'SRC-001.json'), JSON.stringify({
+    sourceId: 'SRC-001', kind: 'text', capturedAt: '2026-07-25T00:00:00.000Z', text: 'Some raw text.\n',
+  }));
 }
 
 describe('runExtract default runner wiring', () => {

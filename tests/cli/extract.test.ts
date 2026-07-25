@@ -19,7 +19,9 @@ describe('runExtract', () => {
     runIngest(root, 'cuba', { actor: 'ACTOR-001', type: 'text', title: 'x', origin: 'x', url: 'x' });
     const rawDir = path.join(root, 'topics', 'cuba', 'sources', 'raw');
     fs.mkdirSync(rawDir, { recursive: true });
-    fs.writeFileSync(path.join(rawDir, 'SRC-001.txt'), 'Fact one.\nFact two.\n');
+    fs.writeFileSync(path.join(rawDir, 'SRC-001.json'), JSON.stringify({
+      sourceId: 'SRC-001', kind: 'text', capturedAt: '2026-07-25T00:00:00.000Z', text: 'Fact one.\nFact two.\n',
+    }));
 
     const result = runExtract(root, 'cuba', { actor: 'ACTOR-001' }, stubRunner);
     expect(result?.facts).toHaveLength(2);
@@ -35,8 +37,12 @@ describe('runExtract', () => {
     runIngest(root, 'cuba', { actor: 'ACTOR-001', type: 'text', title: 'b', origin: 'x', url: 'x' });
     const rawDir = path.join(root, 'topics', 'cuba', 'sources', 'raw');
     fs.mkdirSync(rawDir, { recursive: true });
-    fs.writeFileSync(path.join(rawDir, 'SRC-001.txt'), 'Fact one.\nFact two.\n');
-    fs.writeFileSync(path.join(rawDir, 'SRC-002.txt'), 'Fact three.\nFact four.\n');
+    fs.writeFileSync(path.join(rawDir, 'SRC-001.json'), JSON.stringify({
+      sourceId: 'SRC-001', kind: 'text', capturedAt: '2026-07-25T00:00:00.000Z', text: 'Fact one.\nFact two.\n',
+    }));
+    fs.writeFileSync(path.join(rawDir, 'SRC-002.json'), JSON.stringify({
+      sourceId: 'SRC-002', kind: 'text', capturedAt: '2026-07-25T00:00:00.000Z', text: 'Fact three.\nFact four.\n',
+    }));
 
     const result = runExtract(root, 'cuba', { actor: 'ACTOR-001' }, stubRunner);
     expect(result?.facts).toHaveLength(4);
@@ -52,10 +58,35 @@ describe('runExtract', () => {
     runIngest(root, 'cuba', { actor: 'ACTOR-001', type: 'text', title: 'x', origin: 'x', url: 'x' });
     const rawDir = path.join(root, 'topics', 'cuba', 'sources', 'raw');
     fs.mkdirSync(rawDir, { recursive: true });
-    fs.writeFileSync(path.join(rawDir, 'SRC-001.txt'), 'Fact one.\n');
+    fs.writeFileSync(path.join(rawDir, 'SRC-001.json'), JSON.stringify({
+      sourceId: 'SRC-001', kind: 'text', capturedAt: '2026-07-25T00:00:00.000Z', text: 'Fact one.\n',
+    }));
 
     const result = runExtract(root, 'cuba', { actor: 'ACTOR-001', dryRun: true }, stubRunner);
     expect(result).toBeNull();
     expect(fs.existsSync(path.join(root, 'topics', 'cuba', 'extracts', 'extract.json'))).toBe(false);
+  });
+
+  it('skips image-kind sources with a logged reason instead of silently dropping them', () => {
+    const root = makeRoot();
+    runCreate(root, 'cuba', { actor: 'ACTOR-001' });
+    runIngest(root, 'cuba', { actor: 'ACTOR-001', type: 'image', title: 'photo', origin: 'x', url: 'x' });
+    const rawDir = path.join(root, 'topics', 'cuba', 'sources', 'raw');
+    fs.mkdirSync(rawDir, { recursive: true });
+    fs.writeFileSync(path.join(rawDir, 'SRC-001.json'), JSON.stringify({
+      sourceId: 'SRC-001',
+      kind: 'image',
+      capturedAt: '2026-07-25T00:00:00.000Z',
+      image: { matches: [], metadata: { format: 'png', size: 1, processedAt: '2026-07-25T00:00:00.000Z', visionApiUsed: false }, mock: true },
+    }));
+
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = runExtract(root, 'cuba', { actor: 'ACTOR-001' }, stubRunner);
+
+    expect(result?.facts).toHaveLength(0);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('SRC-001'));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('no text content'));
+
+    warnSpy.mockRestore();
   });
 });

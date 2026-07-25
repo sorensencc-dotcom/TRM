@@ -1,3 +1,4 @@
+// C:\dev\trm\src\cli\commands\extract.ts
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { nodeDir } from '../../core/paths';
@@ -8,6 +9,7 @@ import { stubRunner } from '../../extraction/stubRunner';
 import { claudeCodeRunner } from '../../extraction/claudeCodeRunner';
 import { resolveActor } from '../../registry/actorRegistry';
 import { appendOperation } from '../../lineage/hasher';
+import { readRawEnvelope } from '../../core/rawSource';
 
 interface SourceMetadata {
   sources: { id: string }[];
@@ -29,11 +31,14 @@ export function runExtract(
   const collectedFacts: Fact[] = [];
   const summaries: string[] = [];
   for (const source of metadata.sources) {
-    const rawFile = path.join(dir, 'sources', 'raw', `${source.id}.txt`);
-    if (!fs.existsSync(rawFile)) continue;
-    const rawText = fs.readFileSync(rawFile, 'utf-8');
-    const sourceMeta = JSON.parse(fs.readFileSync(metadataPath, 'utf-8')).sources.find((s: any) => s.id === source.id);
-    const { facts, summary } = runner.run(sourceMeta, rawText);
+    const envelope = readRawEnvelope(root, topicPath, source.id);
+    if (!envelope) continue;
+    if (envelope.kind === 'image') {
+      console.warn(`[extract] skipping ${source.id}: no text content for fact extraction (kind=image)`);
+      continue;
+    }
+    const sourceMeta = metadata.sources.find((s: any) => s.id === source.id);
+    const { facts, summary } = runner.run(sourceMeta as any, envelope.text ?? '');
     collectedFacts.push(...facts);
     summaries.push(summary);
   }
