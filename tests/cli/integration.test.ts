@@ -25,7 +25,9 @@ describe('full TRM lifecycle', () => {
     runIngest(root, 'cuba/industry/automotive', { actor, type: 'text', title: 'Overview', origin: 'LOC', url: 'https://example.com' });
     const rawDir = path.join(root, 'topics', 'cuba', 'industry', 'automotive', 'sources', 'raw');
     fs.mkdirSync(rawDir, { recursive: true });
-    fs.writeFileSync(path.join(rawDir, 'SRC-001.txt'), 'Industrial expansion accelerated in the 1920s.\n');
+    fs.writeFileSync(path.join(rawDir, 'SRC-001.json'), JSON.stringify({
+      sourceId: 'SRC-001', kind: 'text', capturedAt: '2026-07-25T00:00:00.000Z', text: 'Industrial expansion accelerated in the 1920s.\n',
+    }));
 
     const extracted = runExtract(root, 'cuba/industry/automotive', { actor, stub: true });
     expect(extracted?.facts.length).toBeGreaterThan(0);
