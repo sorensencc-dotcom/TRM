@@ -1,0 +1,15 @@
+#!/bin/sh
+# Full jest suite gate before push. Installed via scripts/git-hooks/install.sh.
+# See memory/session-wrap notes 2026-07-25: manual full-suite runs at session
+# end were the only thing catching integration-test gaps -- this makes it automatic.
+
+echo "[pre-push] running full jest suite..."
+npx --prefix "$(git rev-parse --show-toplevel)" jest --config "$(git rev-parse --show-toplevel)/jest.config.cjs"
+status=$?
+
+if [ $status -ne 0 ]; then
+  echo "[pre-push] jest failed, push blocked."
+  exit 1
+fi
+
+exit 0
