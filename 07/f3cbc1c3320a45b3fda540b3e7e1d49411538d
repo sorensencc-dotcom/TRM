@@ -1,0 +1,19 @@
+docs/superpowers/plans/2026-07-25-raw-source-json-envelope.md
+  s_a599b4094c137a::t_7a33da430a4503 367-368
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "07f3cbc1c3320a45b3fda540b3e7e1d49411538d",
+  "prompts": {},
+  "sessions": {
+    "s_a599b4094c137a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f1f7bf8b-761c-45e2-96e7-9703d4ac9325",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
