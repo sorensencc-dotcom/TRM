@@ -1,0 +1,23 @@
+scripts/git-hooks/pre-push
+  s_efdbb1824bdec2::t_cb0aff3e9358c6 1-15
+tsconfig.json
+  s_efdbb1824bdec2::t_453620ccdbee4a 5
+scripts/git-hooks/install.sh
+  s_efdbb1824bdec2::t_3cb50705bb360a 1-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "9d2411a1083ec5093ea2b1392249296ff70c3a31",
+  "prompts": {},
+  "sessions": {
+    "s_efdbb1824bdec2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "13c7c03c-343a-4699-af54-e7d508c2d0f9",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
