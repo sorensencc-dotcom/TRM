@@ -1,0 +1,19 @@
+tests/ingestion/imageExtract/index.test.ts
+  s_e0edbb5b6ad50b::t_7dbf9c6b1a94e3 17-22,24-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "7434a65c01e2e5af8b13a1626d5ebcc5e7bea8ab",
+  "prompts": {},
+  "sessions": {
+    "s_e0edbb5b6ad50b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "47da2b69-f21c-4825-afc7-f62ba763fc94",
+        "model": "unknown"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
