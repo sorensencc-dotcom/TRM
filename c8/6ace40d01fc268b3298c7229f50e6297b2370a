@@ -1,0 +1,19 @@
+tests/cli/integration.test.ts
+  s_a599b4094c137a::t_61a620d6082d2c 28-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "c86ace40d01fc268b3298c7229f50e6297b2370a",
+  "prompts": {},
+  "sessions": {
+    "s_a599b4094c137a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f1f7bf8b-761c-45e2-96e7-9703d4ac9325",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
