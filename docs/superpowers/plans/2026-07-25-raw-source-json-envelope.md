@@ -360,11 +360,12 @@ to:
 
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
     const result = runExtract(root, 'cuba', { actor: 'ACTOR-001' }, stubRunner);
-    warnSpy.mockRestore();
 
     expect(result?.facts).toHaveLength(0);
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('SRC-001'));
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('no text content'));
+
+    warnSpy.mockRestore();
   });
 ```
 
