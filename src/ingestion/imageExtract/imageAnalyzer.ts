@@ -24,6 +24,17 @@ export interface AnalysisResult {
   };
 }
 
+export interface OcrResult {
+  text: string;
+  metadata: {
+    format: string;
+    size: number;
+    processedAt: string;
+    latencyMs: number;
+    error?: string;
+  };
+}
+
 export class ImageAnalyzer extends IExtractor {
   private cicIngestionUrl: string;
   private requestTimeout: number;
@@ -71,6 +82,36 @@ export class ImageAnalyzer extends IExtractor {
     }
   }
 
+  async ocr(imageBuffer: any): Promise<OcrResult> {
+    const startTime = Date.now();
+    log('ImageAnalyzer.ocr() starting');
+
+    try {
+      if (!imageBuffer) {
+        return this._createOcrErrorResult('Image buffer is required');
+      }
+
+      const buffer = this._normalizeBuffer(imageBuffer);
+      if (!buffer) {
+        return this._createOcrErrorResult('Invalid image buffer format');
+      }
+
+      const format = this._detectFormat(buffer);
+      if (!format) {
+        return this._createOcrErrorResult('Unsupported image format');
+      }
+
+      const result = await this._callOcrServiceWithRetry(buffer, format);
+      const totalLatency = Date.now() - startTime;
+
+      log(`ImageAnalyzer.ocr() completed. Total latency: ${totalLatency}ms`);
+      return result;
+    } catch (error) {
+      log('ImageAnalyzer.ocr() failed:', error);
+      return this._createOcrErrorResult(`OCR failed: ${(error as Error).message}`);
+    }
+  }
+
   private async _callServiceWithRetry(buffer: Buffer, format: string): Promise<AnalysisResult> {
     let lastError: Error | null = null;
 
@@ -90,6 +131,27 @@ export class ImageAnalyzer extends IExtractor {
     }
 
     throw lastError || new Error('Service call failed after all retries');
+  }
+
+  private async _callOcrServiceWithRetry(buffer: Buffer, format: string): Promise<OcrResult> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= this.retryAttempts; attempt++) {
+      try {
+        return await this._callOcrService(buffer, format);
+      } catch (error) {
+        lastError = error as Error;
+        log(`OCR attempt ${attempt}/${this.retryAttempts} failed: ${lastError.message}`);
+
+        if (attempt < this.retryAttempts) {
+          // Exponential backoff: 100ms, 200ms, 400ms
+          const delay = Math.pow(2, attempt - 1) * 100;
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    throw lastError || new Error('OCR service call failed after all retries');
   }
 
   private async _callService(buffer: Buffer, format: string): Promise<AnalysisResult> {
@@ -131,6 +193,55 @@ export class ImageAnalyzer extends IExtractor {
           visionApiUsed: data.metadata?.visionApiUsed ?? false,
           latencyMs: data.metadata?.latencyMs ?? 0,
           apiProvider: data.metadata?.apiProvider || 'unknown',
+        },
+      };
+    } catch (error) {
+      if ((error as Error).name === 'AbortError') {
+        throw new Error(`Service request timeout (${this.requestTimeout}ms)`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  private async _callOcrService(buffer: Buffer, format: string): Promise<OcrResult> {
+    const base64Image = buffer.toString('base64');
+    const requestId = this._generateRequestId();
+
+    const requestBody = {
+      imageBuffer: base64Image,
+      format,
+      requestId,
+    };
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.requestTimeout);
+
+    try {
+      const endpoint = `${this.cicIngestionUrl}/api/analyze/ocr`;
+      log(`POST ${endpoint} (requestId: ${requestId})`);
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Service returned ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json() as any;
+      return {
+        text: data.text || '',
+        metadata: {
+          format: data.metadata?.format || format,
+          size: buffer.length,
+          processedAt: data.metadata?.processedAt || new Date().toISOString(),
+          latencyMs: data.metadata?.latencyMs ?? 0,
         },
       };
     } catch (error) {
@@ -202,6 +313,19 @@ export class ImageAnalyzer extends IExtractor {
         visionApiUsed: false,
         latencyMs: 0,
         apiProvider: 'error',
+        error,
+      },
+    };
+  }
+
+  private _createOcrErrorResult(error: string): OcrResult {
+    return {
+      text: '',
+      metadata: {
+        format: 'unknown',
+        size: 0,
+        processedAt: new Date().toISOString(),
+        latencyMs: 0,
         error,
       },
     };
