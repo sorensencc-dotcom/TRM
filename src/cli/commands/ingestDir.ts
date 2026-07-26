@@ -1,0 +1,302 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import pLimit from 'p-limit';
+import { hashFile } from '../../core/contentHash';
+import { visionPool, claudePool } from '../../core/concurrency';
+import * as manifestStore from '../../core/manifestStore';
+import * as failedStore from '../../core/failedStore';
+import { classifyImage, ImageKind } from '../../ingestion/imageExtract/classify';
+import { ImageAnalyzer } from '../../ingestion/imageExtract/imageAnalyzer';
+import { convertFileToText } from '../../ingestion/fileConvert';
+import { addSource, SourceEntry } from '../../core/sourceIngest';
+import { writeRawEnvelope, RawSourceEnvelope } from '../../core/rawSource';
+import { ExtractionRunner } from '../../extraction/types';
+import { stubRunner } from '../../extraction/stubRunner';
+import { claudeCodeRunner } from '../../extraction/claudeCodeRunner';
+import { resolveActor } from '../../registry/actorRegistry';
+import { readTopicMeta } from '../../core/topicNode';
+import { regenerateExtractJson } from '../../core/regenerateExtractJson';
+
+const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
+
+export interface IngestDirOptions {
+  actor?: string;
+  type?: string;
+  title?: string;
+  origin?: string;
+  url?: string;
+  dir?: string;
+  kind?: ImageKind;
+  force?: boolean;
+  retryFailed?: boolean;
+  stub?: boolean;
+}
+
+export interface IngestDirSummary {
+  totalFiles: number;
+  totalProcessed: number;
+  successCount: number;
+  duplicateCount: number;
+  failureCount: number;
+}
+
+export async function runIngestDir(
+  root: string,
+  targetPath: string,
+  cliArgs: IngestDirOptions = {},
+  runnerOverride?: ExtractionRunner
+): Promise<IngestDirSummary> {
+  const actor = resolveActor(root, cliArgs.actor);
+  const runner = runnerOverride ?? (cliArgs.stub ? stubRunner : claudeCodeRunner);
+  const storeLock = pLimit(1);
+
+  let targetTopicPath = targetPath;
+  let dirToWalk = cliArgs.dir ?? targetPath;
+
+  // Determine topicPath vs directory path
+  try {
+    readTopicMeta(root, targetPath);
+    targetTopicPath = targetPath;
+  } catch {
+    if (fs.existsSync(targetPath) && fs.statSync(targetPath).isDirectory()) {
+      targetTopicPath = path.basename(targetPath);
+      dirToWalk = targetPath;
+    }
+  }
+
+  interface FileWorkItem {
+    filePath: string;
+    expectedHash?: string;
+  }
+
+  let workItems: FileWorkItem[] = [];
+
+  if (cliArgs.retryFailed) {
+    const failedEntries = failedStore.readFailed(root, targetTopicPath);
+    workItems = failedEntries.map((e) => ({
+      filePath: e.sourcePath,
+      expectedHash: e.hash,
+    }));
+  } else {
+    if (!fs.existsSync(dirToWalk) || !fs.statSync(dirToWalk).isDirectory()) {
+      throw new Error(`Directory does not exist: ${dirToWalk}`);
+    }
+    const entries = fs.readdirSync(dirToWalk);
+    for (const name of entries) {
+      const fullPath = path.join(dirToWalk, name);
+      if (fs.statSync(fullPath).isFile()) {
+        workItems.push({ filePath: fullPath });
+      }
+    }
+  }
+
+  const totalFiles = workItems.length;
+  let duplicateCount = 0;
+  let successCount = 0;
+  let failureCount = 0;
+
+  const cicIngestionUrl = process.env.CIC_INGESTION_URL || 'http://localhost:3000';
+  const analyzer = new ImageAnalyzer(cicIngestionUrl, 5000, 3);
+
+  // Bounds the whole per-file pipeline (hash + read + classify + addSource),
+  // not just the vision/claude calls -- without this, "thousands of files"
+  // means thousands of concurrent full-file reads in memory at once, which is
+  // the exact resource-exhaustion problem this phase exists to prevent.
+  // Deliberately separate from visionPool/claudePool: this bounds I/O-level
+  // fan-out, those bound the external-service call rate.
+  const ioLimit = pLimit(Number(process.env.TRM_IO_CONCURRENCY) || 8);
+
+  await Promise.all(
+    workItems.map((item) => ioLimit(async () => {
+      const { filePath } = item;
+      let hash = item.expectedHash;
+      if (!hash) {
+        try {
+          hash = await hashFile(filePath);
+        } catch (err) {
+          console.error(`[ingest-dir] Failed to hash file ${filePath}: ${(err as Error).message}`);
+          failureCount++;
+          return;
+        }
+      }
+
+      // Dedup check (bypassed by --force)
+      if (!cliArgs.force && manifestStore.isDone(root, targetTopicPath, hash)) {
+        console.error(`[ingest-dir] Skipping duplicate: ${path.basename(filePath)} (${hash.slice(0, 8)})`);
+        duplicateCount++;
+        return;
+      }
+
+      const isImage = IMAGE_EXTENSIONS.has(path.extname(filePath).toLowerCase());
+
+      try {
+        if (isImage) {
+          const kind = await classifyImage(filePath, { kind: cliArgs.kind });
+
+          if (kind === 'text-doc') {
+            // text-doc: OCR -> extraction path
+            const buffer = await fs.promises.readFile(filePath);
+
+            // The OCR call itself is a Vision-API HTTP call, but running under claudePool
+            // as it directly prepares input for the subsequent Claude extraction step.
+            const ocrResult = await claudePool(() => analyzer.ocr(buffer));
+            if (ocrResult.metadata.error) {
+              throw new Error(`OCR failed: ${ocrResult.metadata.error}`);
+            }
+
+            const tempSource: SourceEntry = {
+              id: 'SRC-TEMP',
+              type: cliArgs.type ?? 'image',
+              title: cliArgs.title ?? path.basename(filePath),
+              origin: cliArgs.origin ?? 'local',
+              url: cliArgs.url || `local:${path.basename(filePath)}`,
+              added_at: new Date().toISOString(),
+              actor,
+            };
+
+            const { facts, summary } = await claudePool(() =>
+              Promise.resolve(runner.run(tempSource, ocrResult.text))
+            );
+
+            await storeLock(async () => {
+              const entry = addSource(root, targetTopicPath, actor, {
+                type: cliArgs.type ?? 'image',
+                title: cliArgs.title ?? path.basename(filePath),
+                origin: cliArgs.origin ?? 'local',
+                url: cliArgs.url || `local:${path.basename(filePath)}`,
+                contentHash: hash,
+              });
+
+              const updatedFacts = facts.map((f) => ({ ...f, source_id: entry.id }));
+
+              const envelope: RawSourceEnvelope = {
+                sourceId: entry.id,
+                kind: 'image',
+                capturedAt: new Date().toISOString(),
+                text: ocrResult.text,
+                image: {
+                  matches: [],
+                  metadata: {
+                    format: ocrResult.metadata.format,
+                    size: ocrResult.metadata.size,
+                    processedAt: ocrResult.metadata.processedAt,
+                    visionApiUsed: true,
+                  },
+                  mock: false,
+                  ocrText: ocrResult.text,
+                },
+                ocrText: ocrResult.text,
+              };
+
+              writeRawEnvelope(root, targetTopicPath, envelope);
+              manifestStore.markDone(root, targetTopicPath, hash!, filePath);
+              manifestStore.writeExtract(root, targetTopicPath, hash!, { facts: updatedFacts, summary });
+              failedStore.clearFailure(root, targetTopicPath, hash!);
+            });
+          } else {
+            // photo: reverse-image search path
+            const buffer = await fs.promises.readFile(filePath);
+            const analysisResult = await visionPool(() => analyzer.extract(buffer));
+
+            if (analysisResult.metadata.error) {
+              throw new Error(`Vision analysis failed: ${analysisResult.metadata.error}`);
+            }
+
+            await storeLock(async () => {
+              const entry = addSource(root, targetTopicPath, actor, {
+                type: cliArgs.type ?? 'image',
+                title: cliArgs.title ?? path.basename(filePath),
+                origin: cliArgs.origin ?? 'local',
+                url: cliArgs.url || `local:${path.basename(filePath)}`,
+                contentHash: hash,
+              });
+
+              const envelope: RawSourceEnvelope = {
+                sourceId: entry.id,
+                kind: 'image',
+                capturedAt: new Date().toISOString(),
+                image: {
+                  ...analysisResult,
+                  mock: !analysisResult.metadata.visionApiUsed,
+                },
+              };
+
+              writeRawEnvelope(root, targetTopicPath, envelope);
+              manifestStore.markDone(root, targetTopicPath, hash!, filePath);
+              manifestStore.writeExtract(root, targetTopicPath, hash!, { facts: [], summary: '' });
+              failedStore.clearFailure(root, targetTopicPath, hash!);
+            });
+          }
+        } else {
+          // non-image: convertFileToText -> extraction
+          const text = await convertFileToText(filePath);
+
+          const tempSource: SourceEntry = {
+            id: 'SRC-TEMP',
+            type: cliArgs.type ?? 'document',
+            title: cliArgs.title ?? path.basename(filePath),
+            origin: cliArgs.origin ?? 'local',
+            url: cliArgs.url || `local:${path.basename(filePath)}`,
+            added_at: new Date().toISOString(),
+            actor,
+          };
+
+          const { facts, summary } = await claudePool(() =>
+            Promise.resolve(runner.run(tempSource, text))
+          );
+
+          await storeLock(async () => {
+            const entry = addSource(root, targetTopicPath, actor, {
+              type: cliArgs.type ?? 'document',
+              title: cliArgs.title ?? path.basename(filePath),
+              origin: cliArgs.origin ?? 'local',
+              url: cliArgs.url || `local:${path.basename(filePath)}`,
+              contentHash: hash,
+            });
+
+            const updatedFacts = facts.map((f) => ({ ...f, source_id: entry.id }));
+
+            const envelope: RawSourceEnvelope = {
+              sourceId: entry.id,
+              kind: 'text',
+              capturedAt: new Date().toISOString(),
+              text,
+            };
+
+            writeRawEnvelope(root, targetTopicPath, envelope);
+            manifestStore.markDone(root, targetTopicPath, hash!, filePath);
+            manifestStore.writeExtract(root, targetTopicPath, hash!, { facts: updatedFacts, summary });
+            failedStore.clearFailure(root, targetTopicPath, hash!);
+          });
+        }
+
+        successCount++;
+      } catch (err) {
+        const errorMsg = (err as Error).message || String(err);
+        console.error(`[ingest-dir] Error processing ${path.basename(filePath)}: ${errorMsg}`);
+
+        await storeLock(async () => {
+          manifestStore.markFailed(root, targetTopicPath, hash!, filePath, errorMsg);
+          failedStore.appendFailure(root, targetTopicPath, hash!, filePath, errorMsg);
+        });
+
+        failureCount++;
+      }
+    }))
+  );
+
+  regenerateExtractJson(root, targetTopicPath);
+
+  const totalProcessed = successCount + failureCount;
+  console.log(
+    `[ingest-dir] Batch complete: ${totalFiles} total files, ${successCount} succeeded, ${duplicateCount} duplicates skipped, ${failureCount} failed.`
+  );
+
+  return {
+    totalFiles,
+    totalProcessed,
+    successCount,
+    duplicateCount,
+    failureCount,
+  };
+}

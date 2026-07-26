@@ -13,6 +13,7 @@ export interface RawImagePayload {
     implementation?: string;
   };
   mock: boolean;
+  ocrText?: string;
 }
 
 export interface RawSourceEnvelope {
@@ -21,6 +22,7 @@ export interface RawSourceEnvelope {
   capturedAt: string;
   text?: string;
   image?: RawImagePayload;
+  ocrText?: string;
 }
 
 export function rawSourcePath(root: string, topicPath: string, sourceId: string): string {

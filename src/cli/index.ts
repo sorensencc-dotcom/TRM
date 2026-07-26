@@ -2,6 +2,7 @@
 import { Command } from 'commander';
 import { runCreate } from './commands/create';
 import { runIngest } from './commands/ingest';
+import { runIngestDir } from './commands/ingestDir';
 import { runExtract } from './commands/extract';
 import { runScore } from './commands/score';
 import { runCrosslink } from './commands/crosslink';
@@ -36,6 +37,21 @@ program
   .action(async (path, url, opts) => {
     const entry = await runIngest(root, path, { ...opts, url, file: opts.file, dryRun: opts.dryRun });
     console.log(entry ? JSON.stringify(entry, null, 2) : '(dry-run, nothing written)');
+  });
+
+program
+  .command('ingest-dir <path>')
+  .option('--actor <actor>')
+  .option('--type <type>')
+  .option('--title <title>')
+  .option('--origin <origin>')
+  .option('--kind <kind>')
+  .option('--force')
+  .option('--retry-failed')
+  .option('--stub')
+  .action(async (path, opts) => {
+    const summary = await runIngestDir(root, path, opts);
+    console.log(JSON.stringify(summary, null, 2));
   });
 
 program
