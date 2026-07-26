@@ -1,0 +1,109 @@
+.context/retros/2026-07-25-1.json
+  s_a599b4094c137a::t_e13b61bc01bc7b 1-28
+.ijfw/sessions/session_2026-07-25_18-21-03.md
+  s_e0edbb5b6ad50b::t_29e8729af74d56 1-5
+.ijfw/memory/project-journal.md
+  s_e0edbb5b6ad50b::t_29e8729af74d56 1-10
+  s_e0edbb5b6ad50b::t_0a2366c8376102 11-13
+  s_7256e7379f3ea4::t_bb142eaed1ff0f 14-18
+.ijfw/metrics/sessions.jsonl
+  s_e0edbb5b6ad50b::t_29e8729af74d56 1-17
+  s_e0edbb5b6ad50b::t_8d0c468f94a1ae 18-20
+  s_7256e7379f3ea4::t_c75051798ff0d1 21-24
+.ijfw/.layout-version
+  s_5759a4a6e849a6::t_00aac4fd80f5a9 1
+.ijfw/.dream-state-v2.json
+  s_7256e7379f3ea4::t_d5dac521c9c5c3 1-38
+.ijfw/.dream-state.json
+  s_7256e7379f3ea4::t_be1caae44949b6 1
+.ijfw/.session-edits.jsonl
+  s_7256e7379f3ea4::t_f617e53bee0fa5 1-5
+.ijfw/sessions/session_2026-07-25_01-27-04.md
+  s_a599b4094c137a::t_21e237767054db 1-5
+.ijfw/sessions/session_2026-07-25_18-09-33.md
+  s_e0edbb5b6ad50b::t_e4fa4445fee432 1-5
+.ijfw/sessions/session_2026-07-25_18-13-14.md
+  s_efdbb1824bdec2::t_99ed18d47331a1 1-5
+.ijfw/sessions/session_2026-07-26_00-44-23.md
+  s_7256e7379f3ea4::t_0ca38111bd9de4 1-5
+.ijfw/sessions/session_2026-07-26_00-58-30.md
+  s_7256e7379f3ea4::t_605c9f7f5821ce 1-5
+.ijfw/sessions/session_2026-07-26_01-47-39.md
+  s_7256e7379f3ea4::t_e0e5e99764db66 1-5
+.ijfw/.profile-derive-cursor.json
+  s_7256e7379f3ea4::t_edeca1729e8e41 1
+.ijfw/.session-counter
+  s_7256e7379f3ea4::t_db25ca930e6116 1
+.ijfw/.session-counter-id
+  s_7256e7379f3ea4::t_f9464099d460b8 1
+.ijfw/.session-marker-ts
+  s_7256e7379f3ea4::t_26fbfc1fb6600e 1
+.ijfw/metrics/.transcript-cursor.json
+  s_7256e7379f3ea4::t_d903239d5b3970 1
+.ijfw/sessions/session_2026-07-18_21-43-48.md
+  s_7256e7379f3ea4::t_8f2f8a05a41089 1-5
+.ijfw/sessions/session_2026-07-18_23-26-32.md
+  s_7256e7379f3ea4::t_2969ed6eb0367c 1-5
+.ijfw/sessions/session_2026-07-18_23-33-39.md
+  s_7256e7379f3ea4::t_7ba8846c973c1e 1-5
+.ijfw/sessions/session_2026-07-19_00-40-50.md
+  s_7256e7379f3ea4::t_bdb4ad920b3017 1-5
+.ijfw/sessions/session_2026-07-25_18-27-43.md
+  s_7256e7379f3ea4::t_0a8d5f1311d69d 1-5
+.ijfw/sessions/session_2026-07-25_18-27-48.md
+  s_7256e7379f3ea4::t_55da40a4b3165f 1-5
+.ijfw/sessions/session_2026-07-25_19-50-06.md
+  s_7256e7379f3ea4::t_c0b2454f304f21 1-5
+.ijfw/sessions/session_2026-07-26_00-34-55.md
+  s_7256e7379f3ea4::t_38ff68cab4d6b3 1-5
+.ijfw/sessions/session_2026-07-26_01-05-51.md
+  s_7256e7379f3ea4::t_b84e8d02eff4c3 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "d0e0565c4e68e2266a4dd8ec944d049c97bf946a",
+  "prompts": {},
+  "sessions": {
+    "s_5759a4a6e849a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3907d804-0ddd-450b-80cf-b027b66fd331",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    },
+    "s_7256e7379f3ea4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5c3de151-f9f9-4d7d-94d7-0812072a588e",
+        "model": "unknown"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    },
+    "s_a599b4094c137a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f1f7bf8b-761c-45e2-96e7-9703d4ac9325",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    },
+    "s_e0edbb5b6ad50b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "47da2b69-f21c-4825-afc7-f62ba763fc94",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    },
+    "s_efdbb1824bdec2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "13c7c03c-343a-4699-af54-e7d508c2d0f9",
+        "model": "unknown"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
