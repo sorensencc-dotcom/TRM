@@ -15,6 +15,13 @@ Test fixtures used in imageAnalyzer integration tests and load tests.
 - **photo-empty.bin** — Empty file (tests null handling)
 - **photo-wrong-ext.jpg** — PNG magic bytes in .jpg file (tests format detection)
 
+### Classification Fixtures (Committed)
+- **photo-valid-landscape.png** — 1200x800 PNG (ratio 0.67), classifies as `photo`
+- **text-doc-valid-scanned-page.png** — 850x1200 PNG (ratio 1.41, A4-ish), classifies as `text-doc`
+  - Used by `classify.ts`'s auto-classifier (aspect-ratio heuristic, see its
+    doc comment); IHDR dimensions are real, pixel data is a placeholder --
+    `classifyImage` only reads the header.
+
 ### Large Images (Generated, .gitignore'd)
 - **photo-large.jpg** — 2MB JPEG (not committed to git)
   - Generated on first test run via `generate-fixtures.sh`
