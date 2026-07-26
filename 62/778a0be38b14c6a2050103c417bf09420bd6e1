@@ -1,0 +1,19 @@
+tests/core/concurrency.test.ts
+  s_7256e7379f3ea4::t_d642793d6a8502 1-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "62778a0be38b14c6a2050103c417bf09420bd6e1",
+  "prompts": {},
+  "sessions": {
+    "s_7256e7379f3ea4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5c3de151-f9f9-4d7d-94d7-0812072a588e",
+        "model": "unknown"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
