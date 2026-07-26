@@ -12,6 +12,7 @@ export interface SourceEntry {
   url: string;
   added_at: string;
   actor: string;
+  contentHash?: string;
 }
 
 function metadataPath(root: string, topicPath: string): string {
