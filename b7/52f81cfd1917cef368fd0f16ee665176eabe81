@@ -1,0 +1,37 @@
+src/ingestion/imageExtract/classify.ts
+  s_0704e88a1f3df3::t_19f71aca4e5791 1-83
+src/ingestion/imageExtract/fixtures/README.md
+  s_7256e7379f3ea4::t_b66eaa58111938 18-24
+src/core/failedStore.ts
+  s_7256e7379f3ea4::t_fc6197884f25cd 1-62
+tests/ingestion/imageExtract/classify.test.ts
+  s_7256e7379f3ea4::t_b1f77662e3bd34 1-32
+tests/core/failedStore.test.ts
+  s_7256e7379f3ea4::t_fbd658401d2c88 1-63
+src/ingestion/imageExtract/fixtures/photo-corrupt.png
+  s_7256e7379f3ea4::t_935b7808c944e8 1-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "b752f81cfd1917cef368fd0f16ee665176eabe81",
+  "prompts": {},
+  "sessions": {
+    "s_0704e88a1f3df3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "de2f1c5c-6819-41a4-9422-e6d06c50274d",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    },
+    "s_7256e7379f3ea4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5c3de151-f9f9-4d7d-94d7-0812072a588e",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
