@@ -1,0 +1,44 @@
+package.json
+  s_e3c03c66cb196b::t_6c4bfc580a2f18 31-32
+tests/core/manifestStore.test.ts
+  s_7256e7379f3ea4::t_b7576ec34e80d3 37
+  s_7256e7379f3ea4::t_352d7c145615af 11
+  s_7256e7379f3ea4::t_61d1a5ebb1ac09 8-10
+  s_7256e7379f3ea4::t_2504ff7125f09a 12-14,34-36
+  s_7256e7379f3ea4::t_76a1286e341186 38-40
+  s_7256e7379f3ea4::t_bc64a502cec21d 1-7,15-33,41-79
+tests/core/contentHash.test.ts
+  s_7256e7379f3ea4::t_effd2d170ae00c 1-82
+src/core/sourceIngest.ts
+  s_7256e7379f3ea4::t_7a086b1d70d66c 15
+src/core/manifestStore.ts
+  s_7256e7379f3ea4::t_8ac7f5a63541a5 1-98
+src/core/concurrency.ts
+  s_e3c03c66cb196b::t_6c4bfc580a2f18 1-11
+src/core/contentHash.ts
+  s_7256e7379f3ea4::t_5f77da6f27f008 1-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "bafb9380de94e2ac03ac4d5dbbf504113891680b",
+  "prompts": {},
+  "sessions": {
+    "s_7256e7379f3ea4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5c3de151-f9f9-4d7d-94d7-0812072a588e",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    },
+    "s_e3c03c66cb196b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9cbf-f02a-7473-944b-ed8ee7735570",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
