@@ -17,7 +17,8 @@
           "origin": { "type": "string" },
           "url": { "type": "string" },
           "added_at": { "type": "string" },
-          "actor": { "type": "string" }
+          "actor": { "type": "string" },
+          "contentHash": { "type": "string" }
         }
       }
     }

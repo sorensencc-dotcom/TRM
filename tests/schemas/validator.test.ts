@@ -91,4 +91,54 @@ describe('validateAgainstSchema', () => {
     });
     expect(result.valid).toBe(true);
   });
+
+  describe('metadata.json', () => {
+    const baseSource = {
+      id: 'SRC-001',
+      type: 'image',
+      title: 'test title',
+      origin: 'test origin',
+      url: 'local:test.jpg',
+      added_at: '2026-07-27T00:00:00.000Z',
+      actor: 'ACTOR-001',
+    };
+
+    it('accepts a source with no contentHash (plain `trm ingest` shape)', () => {
+      const result = validateAgainstSchema('metadata', { sources: [baseSource] });
+      expect(result.valid).toBe(true);
+      expect(result.errors).toEqual([]);
+    });
+
+    it('accepts a source with contentHash (regression: `trm ingest-dir` image shape, previously rejected)', () => {
+      const result = validateAgainstSchema('metadata', {
+        sources: [{ ...baseSource, contentHash: 'a'.repeat(64) }],
+      });
+      expect(result.valid).toBe(true);
+      expect(result.errors).toEqual([]);
+    });
+
+    it('rejects a source missing a required field', () => {
+      const { actor: _actor, ...missingActor } = baseSource;
+      const result = validateAgainstSchema('metadata', { sources: [missingActor] });
+      expect(result.valid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
+    });
+
+    it('rejects a source with an unknown extra property (closed schema)', () => {
+      const result = validateAgainstSchema('metadata', {
+        sources: [{ ...baseSource, notInSchema: 'nope' }],
+      });
+      expect(result.valid).toBe(false);
+    });
+
+    it('rejects a metadata.json missing the top-level sources array', () => {
+      const result = validateAgainstSchema('metadata', {});
+      expect(result.valid).toBe(false);
+    });
+
+    it('accepts an empty sources array', () => {
+      const result = validateAgainstSchema('metadata', { sources: [] });
+      expect(result.valid).toBe(true);
+    });
+  });
 });

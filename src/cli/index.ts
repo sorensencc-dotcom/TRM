@@ -45,6 +45,7 @@ program
   .option('--type <type>')
   .option('--title <title>')
   .option('--origin <origin>')
+  .option('--dir <dir>')
   .option('--kind <kind>')
   .option('--force')
   .option('--retry-failed')
