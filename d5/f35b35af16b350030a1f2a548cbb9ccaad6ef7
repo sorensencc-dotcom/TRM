@@ -1,0 +1,26 @@
+src/schemas/metadata.schema.json
+  s_26f50ac8184d58::t_a2e7c71ab845c9 20-21
+src/cli/index.ts
+  s_26f50ac8184d58::t_f375991f46bfa7 48
+tests/ingestion/imageExtract/classify.test.ts
+  s_26f50ac8184d58::t_04bc48a75fd1ab 34-129
+  s_26f50ac8184d58::t_cf91c66f397b5e 1-2
+tests/schemas/validator.test.ts
+  s_26f50ac8184d58::t_d9e7a81bf8fbfb 94-143
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "d5f35b35af16b350030a1f2a548cbb9ccaad6ef7",
+  "prompts": {},
+  "sessions": {
+    "s_26f50ac8184d58": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "658bbda9-9a8f-4470-a925-f9cd6c15a5ba",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
