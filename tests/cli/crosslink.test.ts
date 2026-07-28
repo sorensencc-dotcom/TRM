@@ -32,4 +32,26 @@ describe('runCrosslink', () => {
     const treatment = JSON.parse(fs.readFileSync(path.join(root, 'topics', 'cuba', 'crosslinks', 'treatment.json'), 'utf-8'));
     expect(treatment.treatment_sections).toEqual(['01_charlie']);
   });
+
+  it('writes a tags-only CROSSLINK lineage op when no relatedTopic/treatmentSections given', () => {
+    const root = makeRoot();
+    runCreate(root, 'cuba', { actor: 'ACTOR-001' });
+    runCrosslink(root, 'cuba', { actor: 'ACTOR-001', tags: ['trm-feedback-report:v1'] });
+
+    const lineage = JSON.parse(fs.readFileSync(path.join(root, 'topics', 'cuba', 'lineage', 'lineage.json'), 'utf-8'));
+    const lastOp = lineage.operations[lineage.operations.length - 1];
+    expect(lastOp.op).toBe('CROSSLINK');
+    expect(lastOp.tags).toEqual(['trm-feedback-report:v1']);
+  });
+
+  it('attaches tags alongside a relatedTopic CROSSLINK op', () => {
+    const root = makeRoot();
+    runCreate(root, 'cuba', { actor: 'ACTOR-001' });
+    runCreate(root, 'willys', { actor: 'ACTOR-001' });
+    runCrosslink(root, 'cuba', { actor: 'ACTOR-001', relatedTopic: 'willys', tags: ['trm-feedback-report:v1'] });
+
+    const lineage = JSON.parse(fs.readFileSync(path.join(root, 'topics', 'cuba', 'lineage', 'lineage.json'), 'utf-8'));
+    const lastOp = lineage.operations[lineage.operations.length - 1];
+    expect(lastOp.tags).toEqual(['trm-feedback-report:v1']);
+  });
 });

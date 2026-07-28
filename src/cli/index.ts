@@ -91,6 +91,7 @@ program
   .option('--relationship <text>')
   .option('--treatment-sections <sections>', 'comma-separated', (v) => v.split(','))
   .option('--promotion-reason <text>')
+  .option('--tags <tags>', 'comma-separated', (v) => v.split(','))
   .action((path, opts) => {
     runCrosslink(root, path, {
       actor: opts.actor,
@@ -98,6 +99,7 @@ program
       relationship: opts.relationship,
       treatmentSections: opts.treatmentSections,
       promotionReason: opts.promotionReason,
+      tags: opts.tags,
     });
     console.log('crosslink written');
   });

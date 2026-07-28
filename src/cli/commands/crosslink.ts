@@ -15,11 +15,13 @@ export function runCrosslink(
     treatmentSections?: string[];
     promotionReason?: string;
     promotedFacts?: string[];
+    tags?: string[];
   }
 ): void {
   const actor = resolveActor(root, cliArgs.actor);
   const meta = readTopicMeta(root, topicPath);
   const now = new Date().toISOString();
+  const tagFields = cliArgs.tags ? { tags: cliArgs.tags } : {};
 
   if (cliArgs.relatedTopic) {
     const otherMeta = readTopicMeta(root, cliArgs.relatedTopic);
@@ -29,7 +31,14 @@ export function runCrosslink(
       relationship: cliArgs.relationship ?? '',
       strength,
     });
-    appendOperation(root, topicPath, { op: 'CROSSLINK', actor, timestamp: now, related_topic: cliArgs.relatedTopic }, { related_topic: cliArgs.relatedTopic });
+    appendOperation(
+      root,
+      topicPath,
+      { op: 'CROSSLINK', actor, timestamp: now, related_topic: cliArgs.relatedTopic, ...tagFields },
+      { related_topic: cliArgs.relatedTopic, ...tagFields }
+    );
+  } else if (cliArgs.tags) {
+    appendOperation(root, topicPath, { op: 'CROSSLINK', actor, timestamp: now, ...tagFields }, { ...tagFields });
   }
 
   if (cliArgs.treatmentSections) {
