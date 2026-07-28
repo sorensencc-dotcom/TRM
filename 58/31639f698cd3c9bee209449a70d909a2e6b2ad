@@ -1,0 +1,24 @@
+src/cli/commands/validate.ts
+  s_a20a044fda74f9::t_304de16b45468a 9-15,19-20,23,29,33,39,46,50,59,65-66,76
+tests/cli/validate.test.ts
+  s_a20a044fda74f9::t_88780b2310f18c 44,46-69
+  s_a20a044fda74f9::t_e9115bb2778d40 94-97
+  s_a20a044fda74f9::t_e599e4cc2143d0 43
+  s_a20a044fda74f9::t_c54ad1193deb1d 45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "5831639f698cd3c9bee209449a70d909a2e6b2ad",
+  "prompts": {},
+  "sessions": {
+    "s_a20a044fda74f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3d3c6af5-d66a-4183-aa8b-60284c53847c",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
