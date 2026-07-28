@@ -1,0 +1,23 @@
+src/schemas/extract.schema.json
+  s_a20a044fda74f9::t_b9ff4c216f9b2f 24-27
+src/scoring/types.ts
+  s_a20a044fda74f9::t_874459062888c7 9
+tests/schemas/validator.test.ts
+  s_a20a044fda74f9::t_5b97a330e7c0a4 95-110
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "c381885e68e27245116851dd04b5ca2f28b01733",
+  "prompts": {},
+  "sessions": {
+    "s_a20a044fda74f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3d3c6af5-d66a-4183-aa8b-60284c53847c",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
