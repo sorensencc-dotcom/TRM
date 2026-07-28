@@ -8,6 +8,7 @@ import { runScore } from './commands/score';
 import { runCrosslink } from './commands/crosslink';
 import { runVersionBump } from './commands/versionBump';
 import { runValidate } from './commands/validate';
+import { runFeedbackStats } from './commands/feedbackStats';
 import { runReport } from './commands/report';
 import { assertSafeRoot } from '../core/rootSafety';
 
@@ -119,6 +120,15 @@ program
     const reports = runValidate(root, path, opts);
     console.log(JSON.stringify(reports, null, 2));
     if (reports.some((r) => !r.valid)) process.exitCode = 1;
+  });
+
+program
+  .command('feedback-stats <path>')
+  .option('--recursive')
+  .option('--latency-budget-ms <ms>', 'override the OCR latency budget in ms (default 90000)', (v) => Number(v))
+  .action((path, opts) => {
+    const stats = runFeedbackStats(root, path, { recursive: opts.recursive, latencyBudgetMs: opts.latencyBudgetMs });
+    console.log(JSON.stringify(stats, null, 2));
   });
 
 program.parse();
