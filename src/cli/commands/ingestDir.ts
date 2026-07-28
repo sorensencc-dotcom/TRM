@@ -16,6 +16,7 @@ import { claudeCodeRunner } from '../../extraction/claudeCodeRunner';
 import { resolveActor } from '../../registry/actorRegistry';
 import { readTopicMeta } from '../../core/topicNode';
 import { regenerateExtractJson } from '../../core/regenerateExtractJson';
+import { appendOcrTiming } from '../../core/ocrTimingLog';
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
 
@@ -143,6 +144,18 @@ export async function runIngestDir(
             // The OCR call itself is a Vision-API HTTP call, but running under claudePool
             // as it directly prepares input for the subsequent Claude extraction step.
             const ocrResult = await claudePool(() => analyzer.ocr(buffer));
+
+            appendOcrTiming(root, {
+              schema_version: 1,
+              topic: targetTopicPath,
+              file: path.basename(filePath),
+              source_type: path.extname(filePath).toLowerCase().replace('.', '') || 'unknown',
+              ms: ocrResult.metadata.latencyMs,
+              retries: ocrResult.metadata.retries ?? 0,
+              outcome: ocrResult.metadata.error ? 'failure' : 'success',
+              ts: new Date().toISOString(),
+            });
+
             if (ocrResult.metadata.error) {
               throw new Error(`OCR failed: ${ocrResult.metadata.error}`);
             }

@@ -162,6 +162,40 @@ describe('runIngestDir', () => {
     expect(extractPayload?.summary).toBeTruthy();
   });
 
+  it('records OCR latency and retry count to ocr-timing.jsonl', async () => {
+    const root = makeRoot();
+    runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+    const dir = path.join(root, 'input-dir');
+    fs.mkdirSync(dir);
+    fs.copyFileSync(TEXT_DOC_FIXTURE, path.join(dir, 'scanned.png'));
+
+    let callCount = 0;
+    global.fetch = jest.fn().mockImplementation(async (url: string) => {
+      if (url.includes('/api/analyze/ocr')) {
+        callCount++;
+        if (callCount === 1) {
+          return { ok: false, status: 500, text: async () => 'transient failure' };
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            text: 'Scanned doc page with historical records.',
+            metadata: { format: 'png', size: 59, processedAt: new Date().toISOString(), latencyMs: 15 },
+          }),
+        };
+      }
+      return { ok: false, status: 404, text: async () => 'Not found' };
+    }) as any;
+
+    await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, kind: 'text-doc', stub: true });
+
+    const timingFile = path.join(root, '.trm-ops', 'ocr-timing.jsonl');
+    const lines = fs.readFileSync(timingFile, 'utf-8').trim().split('\n').map((l) => JSON.parse(l));
+    expect(lines.length).toBe(1);
+    expect(lines[0]).toMatchObject({ schema_version: 1, topic: 'topic1', file: 'scanned.png', source_type: 'png', ms: 15, retries: 1, outcome: 'success' });
+  });
+
   it('a photo-shaped fixture produces zero facts but a stored vision-analysis result', async () => {
     const root = makeRoot();
     runCreate(root, 'topic1', { actor: 'ACTOR-001' });

@@ -31,6 +31,7 @@ export interface OcrResult {
     size: number;
     processedAt: string;
     latencyMs: number;
+    retries?: number;
     error?: string;
   };
 }
@@ -108,7 +109,9 @@ export class ImageAnalyzer extends IExtractor {
       return result;
     } catch (error) {
       log('ImageAnalyzer.ocr() failed:', error);
-      return this._createOcrErrorResult(`OCR failed: ${(error as Error).message}`);
+      const result = this._createOcrErrorResult(`OCR failed: ${(error as Error).message}`);
+      result.metadata.retries = (error as Error & { retries?: number }).retries ?? 0;
+      return result;
     }
   }
 
@@ -138,7 +141,9 @@ export class ImageAnalyzer extends IExtractor {
 
     for (let attempt = 1; attempt <= this.retryAttempts; attempt++) {
       try {
-        return await this._callOcrService(buffer, format);
+        const result = await this._callOcrService(buffer, format);
+        result.metadata.retries = attempt - 1;
+        return result;
       } catch (error) {
         lastError = error as Error;
         log(`OCR attempt ${attempt}/${this.retryAttempts} failed: ${lastError.message}`);
@@ -151,7 +156,9 @@ export class ImageAnalyzer extends IExtractor {
       }
     }
 
-    throw lastError || new Error('OCR service call failed after all retries');
+    const finalError = lastError || new Error('OCR service call failed after all retries');
+    (finalError as Error & { retries?: number }).retries = this.retryAttempts - 1;
+    throw finalError;
   }
 
   private async _callService(buffer: Buffer, format: string): Promise<AnalysisResult> {
