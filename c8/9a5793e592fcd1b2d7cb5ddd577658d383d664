@@ -1,0 +1,24 @@
+src/cli/commands/feedbackStats.ts
+  s_a20a044fda74f9::t_9714df8af2e234 1-149
+tests/cli/feedbackStats.test.ts
+  s_a20a044fda74f9::t_712ea441896565 1-102
+src/cli/index.ts
+  s_a20a044fda74f9::t_6aedf7d40e6066 125-133
+  s_a20a044fda74f9::t_f27269710f30fa 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "c89a5793e592fcd1b2d7cb5ddd577658d383d664",
+  "prompts": {},
+  "sessions": {
+    "s_a20a044fda74f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3d3c6af5-d66a-4183-aa8b-60284c53847c",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
