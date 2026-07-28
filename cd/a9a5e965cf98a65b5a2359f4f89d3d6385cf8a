@@ -1,0 +1,30 @@
+src/core/ocrTimingLog.ts
+  s_a20a044fda74f9::t_ad0ed4116556e7 1-33
+tests/cli/ingestDir.test.ts
+  s_a20a044fda74f9::t_9efe4861e85398 165-198
+src/cli/commands/ingestDir.ts
+  s_a20a044fda74f9::t_33fba602e05b6b 19
+  s_a20a044fda74f9::t_53ad189ecc612b 147-158
+tests/core/ocrTimingLog.test.ts
+  s_a20a044fda74f9::t_99710f42fab005 1-26
+src/ingestion/imageExtract/imageAnalyzer.ts
+  s_a20a044fda74f9::t_213ded1e707ccb 144-146,159-161
+  s_a20a044fda74f9::t_08497c197ca85c 112-114
+  s_a20a044fda74f9::t_a1f67bdd51ff29 34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "cda9a5e965cf98a65b5a2359f4f89d3d6385cf8a",
+  "prompts": {},
+  "sessions": {
+    "s_a20a044fda74f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3d3c6af5-d66a-4183-aa8b-60284c53847c",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
