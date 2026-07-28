@@ -96,7 +96,10 @@ export async function runIngestDir(
   let failureCount = 0;
 
   const cicIngestionUrl = process.env.CIC_INGESTION_URL || 'http://localhost:3000';
-  const analyzer = new ImageAnalyzer(cicIngestionUrl, 5000, 3);
+  // Real Vision DOCUMENT_TEXT_DETECTION under concurrent load has been observed
+  // taking 60s+ per call (archive-photo batches) -- 5000ms was tuned for the
+  // mock path and starved every real-OCR call under the pool's concurrency.
+  const analyzer = new ImageAnalyzer(cicIngestionUrl, 90000, 2);
 
   // Bounds the whole per-file pipeline (hash + read + classify + addSource),
   // not just the vision/claude calls -- without this, "thousands of files"
