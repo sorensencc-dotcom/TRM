@@ -40,7 +40,33 @@ describe('runValidate', () => {
 
     const [report] = runValidate(root, 'cuba', {});
     expect(report.valid).toBe(false);
-    expect(report.errors.some((e) => /score\.json/.test(e))).toBe(true);
+    expect(report.errors.some((e) => e.type === 'hand_edited' && /score\.json/.test(e.message))).toBe(true);
+  });
+
+  it('tags a broken lineage chain as lineage_error', () => {
+    const root = makeRoot();
+    runCreate(root, 'cuba', { actor: 'ACTOR-001' });
+    const lineagePath = path.join(root, 'topics', 'cuba', 'lineage', 'lineage.json');
+    const lineage = JSON.parse(fs.readFileSync(lineagePath, 'utf-8'));
+    lineage.operations[0].hash = 'tampered';
+    fs.writeFileSync(lineagePath, JSON.stringify(lineage, null, 2));
+
+    const [report] = runValidate(root, 'cuba', {});
+    expect(report.valid).toBe(false);
+    expect(report.errors.some((e) => e.type === 'lineage_error')).toBe(true);
+  });
+
+  it('tags a schema-invalid extract.json as schema_error', () => {
+    const root = makeRoot();
+    runCreate(root, 'cuba', { actor: 'ACTOR-001' });
+    const extractDir = path.join(root, 'topics', 'cuba', 'extracts');
+    fs.mkdirSync(extractDir, { recursive: true });
+    // missing required "confidence" field -> fails the 'extract' schema
+    fs.writeFileSync(path.join(extractDir, 'extract.json'), JSON.stringify({ facts: [{ id: 'FCT-001', text: 'x', source_id: 'SRC-001', categories: [] }] }));
+
+    const [report] = runValidate(root, 'cuba', {});
+    expect(report.valid).toBe(false);
+    expect(report.errors.some((e) => e.type === 'schema_error' && /extract\.json/.test(e.message))).toBe(true);
   });
 
   it('recurses into descendants when --recursive is set', () => {
@@ -65,7 +91,10 @@ describe('runValidate', () => {
 
     const [report] = runValidate(root, 'cuba', {});
     expect(report.valid).toBe(true);
-    expect(report.warnings).toContain('SRC-001 is mock image-extraction data, not a verified fact source');
+    expect(report.warnings).toContainEqual({
+      type: 'mock_source',
+      message: 'SRC-001 is mock image-extraction data, not a verified fact source',
+    });
   });
 
   it('does not warn for a non-mock source JSON', () => {

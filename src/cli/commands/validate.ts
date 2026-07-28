@@ -6,41 +6,48 @@ import { readTopicMeta } from '../../core/topicNode';
 import { readLineage, validateChain } from '../../lineage/hasher';
 import { validateAgainstSchema, SchemaName } from '../../schemas/validator';
 
+export type ValidationIssueType = 'schema_error' | 'lineage_error' | 'hand_edited' | 'mock_source';
+
+export interface ValidationIssue {
+  type: ValidationIssueType;
+  message: string;
+}
+
 export interface ValidationReport {
   path: string;
   valid: boolean;
-  errors: string[];
-  warnings: string[];
+  errors: ValidationIssue[];
+  warnings: ValidationIssue[];
 }
 
-function checkSchema(root: string, topicPath: string, file: string, schema: SchemaName, errors: string[]): void {
+function checkSchema(root: string, topicPath: string, file: string, schema: SchemaName, errors: ValidationIssue[]): void {
   const filePath = path.join(nodeDir(root, topicPath), file);
   if (!fs.existsSync(filePath)) return;
   const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
   const result = validateAgainstSchema(schema, data);
   if (!result.valid) {
-    errors.push(`${file}: ${result.errors.join('; ')}`);
+    errors.push({ type: 'schema_error', message: `${file}: ${result.errors.join('; ')}` });
   }
 }
 
-function checkScoreNotHandEdited(root: string, topicPath: string, errors: string[]): void {
+function checkScoreNotHandEdited(root: string, topicPath: string, errors: ValidationIssue[]): void {
   const scorePath = path.join(nodeDir(root, topicPath), 'extracts', 'score.json');
   if (!fs.existsSync(scorePath)) return;
   const lineage = readLineage(root, topicPath);
   const lastScoreOp = [...lineage.operations].reverse().find((op) => op.op === 'SCORE');
   if (!lastScoreOp) {
-    errors.push('score.json exists but no SCORE lineage operation was recorded');
+    errors.push({ type: 'hand_edited', message: 'score.json exists but no SCORE lineage operation was recorded' });
     return;
   }
   const scoreContent = JSON.parse(fs.readFileSync(scorePath, 'utf-8'));
   const expectedHash = crypto.createHash('sha256').update(JSON.stringify(scoreContent.scores)).digest('hex');
   const recordedHash = lastScoreOp.content_hash;
   if (recordedHash && recordedHash !== expectedHash) {
-    errors.push('score.json contents do not match the hash recorded at the last SCORE operation — hand-edited');
+    errors.push({ type: 'hand_edited', message: 'score.json contents do not match the hash recorded at the last SCORE operation — hand-edited' });
   }
 }
 
-function checkMockImageSources(root: string, topicPath: string, warnings: string[]): void {
+function checkMockImageSources(root: string, topicPath: string, warnings: ValidationIssue[]): void {
   const rawDir = path.join(nodeDir(root, topicPath), 'sources', 'raw');
   if (!fs.existsSync(rawDir)) return;
   for (const file of fs.readdirSync(rawDir)) {
@@ -49,14 +56,14 @@ function checkMockImageSources(root: string, topicPath: string, warnings: string
     const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
     if (data.mock === true) {
       const sourceId = path.basename(file, '.json');
-      warnings.push(`${sourceId} is mock image-extraction data, not a verified fact source`);
+      warnings.push({ type: 'mock_source', message: `${sourceId} is mock image-extraction data, not a verified fact source` });
     }
   }
 }
 
 function validateNode(root: string, topicPath: string): ValidationReport {
-  const errors: string[] = [];
-  const warnings: string[] = [];
+  const errors: ValidationIssue[] = [];
+  const warnings: ValidationIssue[] = [];
   readTopicMeta(root, topicPath); // throws if node missing
 
   checkSchema(root, topicPath, 'topic.json', 'topic', errors);
@@ -66,7 +73,7 @@ function validateNode(root: string, topicPath: string): ValidationReport {
   checkSchema(root, topicPath, path.join('crosslinks', 'related_topics.json'), 'related_topics', errors);
 
   const chainResult = validateChain(root, topicPath);
-  if (!chainResult.valid) errors.push(`lineage: ${chainResult.error}`);
+  if (!chainResult.valid) errors.push({ type: 'lineage_error', message: `lineage: ${chainResult.error}` });
 
   checkScoreNotHandEdited(root, topicPath, errors);
   checkMockImageSources(root, topicPath, warnings);
