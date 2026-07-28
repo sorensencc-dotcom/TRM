@@ -21,6 +21,10 @@
               "type": "string",
               "enum": ["history", "genealogy", "industry", "geopolitics", "biography"]
             }
+          },
+          "flags": {
+            "type": "array",
+            "items": { "type": "string" }
           }
         }
       }

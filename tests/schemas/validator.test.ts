@@ -92,6 +92,22 @@ describe('validateAgainstSchema', () => {
     expect(result.valid).toBe(true);
   });
 
+  it('accepts an extract.json fact carrying an optional flags array', () => {
+    const result = validateAgainstSchema('extract', {
+      facts: [
+        { id: 'FCT-001', text: 'x', source_id: 'SRC-001', confidence: 0.4, categories: ['history'], flags: ['VERIFY'] },
+      ],
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it('still accepts an extract.json fact with no flags field at all', () => {
+    const result = validateAgainstSchema('extract', {
+      facts: [{ id: 'FCT-001', text: 'x', source_id: 'SRC-001', confidence: 0.4, categories: [] }],
+    });
+    expect(result.valid).toBe(true);
+  });
+
   describe('metadata.json', () => {
     const baseSource = {
       id: 'SRC-001',

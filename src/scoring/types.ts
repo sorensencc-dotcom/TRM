@@ -6,6 +6,7 @@ export interface Fact {
   source_id: string;
   confidence: number;
   categories: string[];
+  flags?: string[];
 }
 
 export interface ScoreResult {
