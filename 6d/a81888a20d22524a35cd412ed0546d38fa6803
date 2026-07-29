@@ -1,0 +1,21 @@
+tests/sync/lock.test.ts
+  s_3cb77ca2d954a4::t_09fe2dee400934 1-81
+src/sync/lock.ts
+  s_3cb77ca2d954a4::t_b16fece7345b1f 1-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "6da81888a20d22524a35cd412ed0546d38fa6803",
+  "prompts": {},
+  "sessions": {
+    "s_3cb77ca2d954a4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bfa349d7-255c-4670-b61b-8d21f54dac3b",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
