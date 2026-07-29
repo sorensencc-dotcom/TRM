@@ -32,6 +32,11 @@ describe('reportFileName', () => {
     const name = reportFileName('willow-run', 'abc-123', '2026-07-28T18:00:00.000Z', true);
     expect(name).toBe('TRM_SYNC_REPORT_DRYRUN_willow-run_20260728T180000_abc-123.md');
   });
+
+  it('preserves time-of-day digits when timestamp has no milliseconds', () => {
+    const name = reportFileName('willow-run', 'abc-123', '2026-07-28T18:00:00Z', false);
+    expect(name).toBe('TRM_SYNC_REPORT_willow-run_20260728T180000_abc-123.md');
+  });
 });
 
 describe('buildReportMarkdown', () => {

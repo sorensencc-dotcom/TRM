@@ -40,7 +40,7 @@ export interface ReportInput {
 }
 
 function timestampSlug(isoTimestamp: string): string {
-  return isoTimestamp.replace(/[-:]/g, '').replace(/\.?\d*Z$/, '');
+  return isoTimestamp.replace(/[-:]/g, '').replace(/(\.\d+)?Z$/, '');
 }
 
 export function reportFileName(scope: string, runId: string, runAt: string, dryRun: boolean): string {
