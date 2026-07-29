@@ -4,13 +4,11 @@ import * as crypto from 'node:crypto';
 import { validateAgainstSchema } from '../../schemas/validator';
 import { factKey } from '../../sync/factIdentity';
 import { loadDependencyMap } from '../../sync/dependencyMap';
-import { matchFact } from '../../sync/matching';
+import { matchFact, MATCH_CONFIG_VERSION } from '../../sync/matching';
 import { readCursor, writeCursor, diffNewFactKeys, Cursor } from '../../sync/cursorStore';
 import { acquireLock, releaseLock, forceRecoverLock, LockConflictError, LockUnrecoverableError } from '../../sync/lock';
 import { writeReport, ReportInput, TopicFactReport, SkippedTopic, CursorResetNote } from '../../sync/reportWriter';
 import { Fact } from '../../scoring/types';
-
-const MATCH_CONFIG_VERSION = 1;
 
 export interface SyncTreatmentOptions {
   vaultRoot: string;
