@@ -144,4 +144,59 @@ describe('runSyncTreatment', () => {
     expect(md).toMatch(/## Cursor resets/);
     expect(md).toMatch(/willow-run/);
   });
+
+  it('produces byte-identical report content across two runs given the same fixture state', () => {
+    writeTopicExtract(vaultRoot, 'willow-run', [
+      { id: 'FCT-001', text: 'Sorensen visits Willow Run.', source_id: 'SRC-001', confidence: 0.9, categories: ['biography'] },
+    ]);
+
+    const first = runSyncTreatment({ vaultRoot, narrativeRoot, topic: 'willow-run', dryRun: true });
+    const firstBody = fs.readFileSync(first.reportPath, 'utf-8').replace(/runId: .*/, 'runId: X').replace(/runAt: .*/, 'runAt: X');
+
+    fs.rmSync(path.join(vaultRoot, 'topics', 'charlie', 'willow-run', '.sync-cursor.json'), { force: true });
+    const second = runSyncTreatment({ vaultRoot, narrativeRoot, topic: 'willow-run', dryRun: true });
+    const secondBody = fs.readFileSync(second.reportPath, 'utf-8').replace(/runId: .*/, 'runId: X').replace(/runAt: .*/, 'runAt: X');
+
+    expect(firstBody).toBe(secondBody);
+  });
+
+  it('exits 2 and reports the failure when a cursor write fails after the report is written', () => {
+    writeTopicExtract(vaultRoot, 'willow-run', [
+      { id: 'FCT-001', text: 'Sorensen visits Willow Run.', source_id: 'SRC-001', confidence: 0.9, categories: ['biography'] },
+    ]);
+
+    // Windows: a directory's read-only attribute does not reliably block file creation inside it
+    // the way POSIX permission bits do, so the cursor write may still succeed. Force the failure
+    // deterministically instead by making fs.writeFileSync throw only for the cursor's temp file
+    // (the atomic-write helper writes to "<cursorPath>.tmp-..." before renaming into place), so the
+    // report write (already completed by this point) and the lock file write are unaffected.
+    // `import * as fs` bindings compiled by ts-jest expose a non-configurable getter, so
+    // Object.defineProperty/jest.spyOn on that binding throws "Cannot redefine property".
+    // Grabbing the module via a runtime require() instead returns the real, mutable module
+    // object that every other file's static `fs` import reads through to live, so mutating
+    // it here propagates to atomicWrite.ts without needing to touch this file's own binding.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const rawFs = require('fs');
+    const realWriteFileSync = rawFs.writeFileSync;
+    const cursorPath = path.join(vaultRoot, 'topics', 'charlie', 'willow-run', '.sync-cursor.json');
+    Object.defineProperty(rawFs, 'writeFileSync', {
+      configurable: true,
+      writable: true,
+      value: (file: fs.PathOrFileDescriptor, data: string | NodeJS.ArrayBufferView, options?: fs.WriteFileOptions) => {
+        if (typeof file === 'string' && file.startsWith(`${cursorPath}.tmp-`)) {
+          throw new Error('disk full');
+        }
+        return realWriteFileSync(file, data, options);
+      },
+    });
+
+    try {
+      const result = runSyncTreatment({ vaultRoot, narrativeRoot, topic: 'willow-run' });
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr.some((line) => line.includes('cursor write failed'))).toBe(true);
+      expect(fs.existsSync(result.reportPath)).toBe(true);
+    } finally {
+      Object.defineProperty(rawFs, 'writeFileSync', { configurable: true, writable: true, value: realWriteFileSync });
+    }
+  });
 });
