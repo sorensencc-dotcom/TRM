@@ -1,0 +1,24 @@
+tests/cli/syncTreatmentCli.test.ts
+  s_3cb77ca2d954a4::t_d5b0029c97b87f 1-32,36-43
+  s_3cb77ca2d954a4::t_02f61eda0493a3 35
+  s_3cb77ca2d954a4::t_2999768f1a0b73 33-34
+src/cli/index.ts
+  s_3cb77ca2d954a4::t_de5cc49f1db9c1 12
+  s_3cb77ca2d954a4::t_b0cd41078153ca 123-145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "1036df8db534b6368ac04708db0defcd3029ea61",
+  "prompts": {},
+  "sessions": {
+    "s_3cb77ca2d954a4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bfa349d7-255c-4670-b61b-8d21f54dac3b",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
