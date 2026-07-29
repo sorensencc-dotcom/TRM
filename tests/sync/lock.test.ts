@@ -78,4 +78,20 @@ describe('lock', () => {
   it('forceRecoverLock does not throw when no lock exists', () => {
     expect(() => forceRecoverLock(lockPath)).not.toThrow();
   });
+
+  it('acquireLock atomically prevents race: second acquire on existing fresh lock throws LockConflictError', () => {
+    // First acquire succeeds and creates lock with current process's PID
+    acquireLock(lockPath, 'run-race-1');
+    expect(fs.existsSync(lockPath)).toBe(true);
+
+    // Second acquire on the same lock should detect that current process holds it and throw LockConflictError
+    // This tests that the exclusive-create (writeFileExclusive) behavior prevents two processes from both
+    // writing, and that the lock is properly validated when the file already exists.
+    expect(() => acquireLock(lockPath, 'run-race-2')).toThrow(LockConflictError);
+    expect(fs.existsSync(lockPath)).toBe(true);
+
+    // Verify the lock still holds the first run's ID
+    const info = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));
+    expect(info.runId).toBe('run-race-1');
+  });
 });

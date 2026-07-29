@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
+import { writeFileExclusive, writeFileAtomic } from '../core/atomicWrite';
 
 export interface LockInfo {
   pid: number;
@@ -37,17 +38,28 @@ function readLockInfo(lockPath: string): LockInfo | null {
   };
 }
 
-function writeLock(lockPath: string, runId: string): void {
+function makeLockContents(runId: string): string {
   const info: LockInfo = { pid: process.pid, hostname: os.hostname(), runId, startedAt: new Date().toISOString() };
-  fs.writeFileSync(lockPath, JSON.stringify(info, null, 2));
+  return JSON.stringify(info, null, 2);
 }
 
 export function acquireLock(lockPath: string, runId: string): void {
-  if (!fs.existsSync(lockPath)) {
-    writeLock(lockPath, runId);
-    return;
+  const lockContents = makeLockContents(runId);
+
+  // Try to create the lock file exclusively (atomic). If another process wins the race and creates
+  // it first, writeFileExclusive will throw, and we'll read and validate the existing lock.
+  try {
+    writeFileExclusive(lockPath, lockContents);
+    return; // Successfully acquired fresh lock
+  } catch (err: unknown) {
+    // If the lock file does not exist after the exception, then this is a real error (permission, disk, etc.).
+    // If the lock file exists, then another process (or stale lock) created it, and we proceed to validate it.
+    if (!fs.existsSync(lockPath)) {
+      throw err; // Some other error occurred, not a file-exists condition
+    }
   }
 
+  // Lock file already exists; read and validate it
   const info = readLockInfo(lockPath);
   if (!info) {
     throw new LockUnrecoverableError(
@@ -66,7 +78,8 @@ export function acquireLock(lockPath: string, runId: string): void {
     throw new LockConflictError(`"${lockPath}" is held by pid ${info.pid} (run "${info.runId}") on this host`);
   }
 
-  writeLock(lockPath, runId);
+  // Dead pid on same host; reclaim the lock with atomic overwrite.
+  writeFileAtomic(lockPath, lockContents);
 }
 
 export function releaseLock(lockPath: string): void {
