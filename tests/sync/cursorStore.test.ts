@@ -57,6 +57,14 @@ describe('readCursor', () => {
     expect(wasReset).toBe(true);
     expect(resetReason).toMatch(/lastSyncedFactKeys/);
   });
+
+  it('resets when cursor file contains the literal null value', () => {
+    fs.writeFileSync(cursorPath, 'null');
+    const { cursor, wasReset, resetReason } = readCursor(cursorPath);
+    expect(cursor.lastSyncedFactKeys).toEqual([]);
+    expect(wasReset).toBe(true);
+    expect(resetReason).toMatch(/non-object/);
+  });
 });
 
 describe('diffNewFactKeys', () => {

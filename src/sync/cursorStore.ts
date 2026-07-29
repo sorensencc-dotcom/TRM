@@ -36,6 +36,14 @@ export function readCursor(cursorPath: string): CursorReadResult {
     return { cursor: emptyCursor(), wasReset: true, resetReason: `cursor JSON parse failure at "${cursorPath}"` };
   }
 
+  if (typeof parsed !== 'object' || parsed === null) {
+    return {
+      cursor: emptyCursor(),
+      wasReset: true,
+      resetReason: `cursor JSON parsed to non-object value at "${cursorPath}"`,
+    };
+  }
+
   const candidate = parsed as Partial<Cursor>;
 
   if (candidate.cursorVersion !== CURSOR_VERSION) {
