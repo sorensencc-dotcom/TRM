@@ -9,6 +9,7 @@ import { runCrosslink } from './commands/crosslink';
 import { runVersionBump } from './commands/versionBump';
 import { runValidate } from './commands/validate';
 import { runReport } from './commands/report';
+import { runSyncTreatment } from './commands/syncTreatment';
 import { assertSafeRoot } from '../core/rootSafety';
 
 const root = process.cwd();
@@ -117,6 +118,29 @@ program
     const reports = runValidate(root, path, opts);
     console.log(JSON.stringify(reports, null, 2));
     if (reports.some((r) => !r.valid)) process.exitCode = 1;
+  });
+
+program
+  .command('sync-treatment [topic]')
+  .requiredOption('--narrative-root <path>', 'path to the charlie-deep-research narrative repo')
+  .option('--vault-root <path>', 'defaults to the current working directory, same as every other trm command')
+  .option('--dependency-map <path>', 'defaults to <narrative-root>/treatment/CIC_SOURCING_DEPENDENCY_MAP_v1.json')
+  .option('--dry-run')
+  .option('--force-recover-lock')
+  .action((topic, opts) => {
+    const vaultRoot = opts.vaultRoot ?? root;
+    const result = runSyncTreatment({
+      vaultRoot,
+      narrativeRoot: opts.narrativeRoot,
+      dependencyMapPath: opts.dependencyMap,
+      topic,
+      dryRun: opts.dryRun,
+      forceRecoverLock: opts.forceRecoverLock,
+    });
+    console.log(result.reportPath);
+    console.log(`new facts / skipped topics reported — see ${result.reportPath}`);
+    for (const line of result.stderr) console.error(line);
+    process.exitCode = result.exitCode;
   });
 
 program.parse();
