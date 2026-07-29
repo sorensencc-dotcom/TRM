@@ -1,0 +1,21 @@
+tests/sync/dependencyMap.test.ts
+  s_3cb77ca2d954a4::t_0fc4ca15ea9f24 1-78
+src/sync/dependencyMap.ts
+  s_3cb77ca2d954a4::t_9292f5178bed7a 1-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "0605f5c61bfb7403a05e7d9ce4729311ee7be3bd",
+  "prompts": {},
+  "sessions": {
+    "s_3cb77ca2d954a4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bfa349d7-255c-4670-b61b-8d21f54dac3b",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
