@@ -11,6 +11,7 @@ import { runValidate } from './commands/validate';
 import { runReport } from './commands/report';
 import { runSyncTreatment } from './commands/syncTreatment';
 import { assertSafeRoot } from '../core/rootSafety';
+import { LockConflictError, LockUnrecoverableError } from '../sync/lock';
 
 const root = process.cwd();
 assertSafeRoot(root);
@@ -129,18 +130,27 @@ program
   .option('--force-recover-lock')
   .action((topic, opts) => {
     const vaultRoot = opts.vaultRoot ?? root;
-    const result = runSyncTreatment({
-      vaultRoot,
-      narrativeRoot: opts.narrativeRoot,
-      dependencyMapPath: opts.dependencyMap,
-      topic,
-      dryRun: opts.dryRun,
-      forceRecoverLock: opts.forceRecoverLock,
-    });
-    console.log(result.reportPath);
-    console.log(`new facts / skipped topics reported — see ${result.reportPath}`);
-    for (const line of result.stderr) console.error(line);
-    process.exitCode = result.exitCode;
+    try {
+      const result = runSyncTreatment({
+        vaultRoot,
+        narrativeRoot: opts.narrativeRoot,
+        dependencyMapPath: opts.dependencyMap,
+        topic,
+        dryRun: opts.dryRun,
+        forceRecoverLock: opts.forceRecoverLock,
+      });
+      console.log(result.reportPath);
+      console.log(`new facts / skipped topics reported — see ${result.reportPath}`);
+      for (const line of result.stderr) console.error(line);
+      process.exitCode = result.exitCode;
+    } catch (err) {
+      if (err instanceof LockConflictError || err instanceof LockUnrecoverableError) {
+        console.error(err.message);
+        process.exitCode = 1;
+      } else {
+        throw err;
+      }
+    }
   });
 
 program.parse();

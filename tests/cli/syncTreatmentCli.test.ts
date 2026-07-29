@@ -40,4 +40,40 @@ describe('trm sync-treatment CLI', () => {
       fs.rmSync(narrativeRoot, { recursive: true, force: true });
     }
   });
+
+  it('exits non-zero and prints clean error message when lock file exists and is unrecoverable', () => {
+    const vaultRoot = makeVault();
+    const narrativeRoot = makeNarrative();
+    const lockPath = path.join(vaultRoot, '.sync-treatment.lock');
+
+    // Create a stale lock file from a different host
+    const staleLockInfo = {
+      pid: 99999,
+      hostname: 'other-host',
+      runId: 'stale-run-id',
+      startedAt: new Date().toISOString(),
+    };
+    fs.writeFileSync(lockPath, JSON.stringify(staleLockInfo, null, 2));
+
+    try {
+      execFileSync(
+        'ts-node',
+        ['src/cli/index.ts', 'sync-treatment', 'willow-run', '--vault-root', vaultRoot, '--narrative-root', narrativeRoot],
+        { cwd: path.resolve(__dirname, '..', '..'), encoding: 'utf-8', shell: true, env: { ...process.env, TRM_ALLOW_GIT_ROOT: '1' } }
+      );
+      // Should not reach here
+      expect(true).toBe(false);
+    } catch (err) {
+      // execFileSync throws when exit code is non-zero
+      const error = err as any;
+      expect(error.status).toBe(1);
+      // stderr should contain the error message but NOT stack trace frames
+      const stderr = error.stderr?.toString() ?? '';
+      expect(stderr).toContain('is held by a different host');
+      expect(stderr).not.toMatch(/at /); // No stack trace frames
+    } finally {
+      fs.rmSync(vaultRoot, { recursive: true, force: true });
+      fs.rmSync(narrativeRoot, { recursive: true, force: true });
+    }
+  });
 });
