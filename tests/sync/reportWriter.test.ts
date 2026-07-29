@@ -38,7 +38,7 @@ describe('buildReportMarkdown', () => {
   it('includes frontmatter with all required fields', () => {
     const md = buildReportMarkdown(baseInput());
     expect(md).toMatch(/^---\n/);
-    expect(md).toMatch(/topic: willow-run/);
+    expect(md).toMatch(/topic: "willow-run"/);
     expect(md).toMatch(/runId: abc-123/);
     expect(md).toMatch(/matchVersion: 1/);
     expect(md).toMatch(/partialRun: false/);
@@ -139,6 +139,56 @@ describe('buildReportMarkdown', () => {
       })
     );
     expect(md).toMatch(/\[willow-run\] FCT-014/);
+  });
+
+  it('safely escapes colons in scope field (YAML frontmatter round-trip)', () => {
+    const colonTopic = 'weird: topic';
+    const md = buildReportMarkdown(baseInput({ scope: colonTopic }));
+    // Check that the scope appears quoted in frontmatter (JSON.stringify escaping)
+    expect(md).toMatch(/topic: "weird: topic"/);
+    // Verify frontmatter block is intact (not broken by colon)
+    const frontmatterMatch = md.match(/^---\n([\s\S]*?)\n---/m);
+    expect(frontmatterMatch).toBeTruthy();
+    // The frontmatter should be parseable YAML (no unescaped colons breaking the structure)
+    expect(frontmatterMatch![0]).toContain('topic: "weird: topic"');
+  });
+
+  it('safely escapes colons in vaultSnapshot keys (YAML round-trip)', () => {
+    const colonTopic = 'vault: topic';
+    const md = buildReportMarkdown(
+      baseInput({
+        vaultSnapshot: { [colonTopic]: '2026-07-28T17:00:00.000Z' },
+        topicsProcessed: [colonTopic],
+      })
+    );
+    // Check that the vault snapshot key appears quoted in YAML
+    expect(md).toMatch(/vaultSnapshot:/);
+    expect(md).toMatch(/"vault: topic": "/);
+    // Verify frontmatter is still valid (not broken by unescaped colons)
+    const frontmatterMatch = md.match(/^---\n([\s\S]*?)\n---/m);
+    expect(frontmatterMatch).toBeTruthy();
+  });
+
+  it('escapes pipe and backtick in displayId, sourceId, and fact topic when all-scope', () => {
+    const md = buildReportMarkdown(
+      baseInput({
+        scope: 'all',
+        newFacts: [
+          {
+            topic: 'weird|topic',
+            factKey: 'deadbeef',
+            displayId: 'FCT|014',
+            sourceId: 'SRC`001',
+            factConfidence: 0.85,
+            text: 'x',
+            matches: [],
+          },
+        ],
+      })
+    );
+    // Expect pipes and backticks to be escaped with backslashes in the fact block
+    expect(md).toMatch(/\[weird\\|topic\] FCT\\|014/);
+    expect(md).toMatch(/Source: SRC\\`001/);
   });
 });
 

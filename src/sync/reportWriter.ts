@@ -40,7 +40,7 @@ export interface ReportInput {
 }
 
 function timestampSlug(isoTimestamp: string): string {
-  return isoTimestamp.replace(/[-:]/g, '').replace(/\.\d+Z$/, '').replace('T', 'T');
+  return isoTimestamp.replace(/[-:]/g, '').replace(/\.?\d*Z$/, '');
 }
 
 export function reportFileName(scope: string, runId: string, runAt: string, dryRun: boolean): string {
@@ -67,13 +67,13 @@ function yamlStringList(items: string[]): string {
 
 function buildFrontmatter(input: ReportInput): string {
   const vaultSnapshotLines = Object.entries(input.vaultSnapshot)
-    .map(([topic, mtime]) => `  ${topic}: ${JSON.stringify(mtime)}`)
+    .map(([topic, mtime]) => `  ${JSON.stringify(topic)}: ${JSON.stringify(mtime)}`)
     .join('\n');
   const topicsSkippedList = yamlStringList(input.topicsSkipped.map((s) => s.topic));
 
   return [
     '---',
-    `topic: ${input.scope}`,
+    `topic: ${JSON.stringify(input.scope)}`,
     `runId: ${input.runId}`,
     `runAt: ${input.runAt}`,
     'vaultSnapshot:',
@@ -104,10 +104,10 @@ function buildCursorResetSection(resets: CursorResetNote[]): string {
 }
 
 function buildFactBlock(fact: TopicFactReport, scope: string): string {
-  const idLine = scope === 'all' ? `[${fact.topic}] ${fact.displayId}` : fact.displayId;
+  const idLine = scope === 'all' ? `[${escapeInline(fact.topic)}] ${escapeInline(fact.displayId)}` : escapeInline(fact.displayId);
   const lines = [
     idLine,
-    `Source: ${fact.sourceId}`,
+    `Source: ${escapeInline(fact.sourceId)}`,
     `Fact confidence: ${fact.factConfidence}`,
     'Text:',
     indentBlock(fact.text),
