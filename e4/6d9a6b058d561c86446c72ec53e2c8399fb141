@@ -1,0 +1,21 @@
+src/sync/factIdentity.ts
+  s_3cb77ca2d954a4::t_3dd0a6b0875dcf 1-30
+tests/sync/factIdentity.test.ts
+  s_3cb77ca2d954a4::t_c8942ebaab8adb 1-52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "e46d9a6b058d561c86446c72ec53e2c8399fb141",
+  "prompts": {},
+  "sessions": {
+    "s_3cb77ca2d954a4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bfa349d7-255c-4670-b61b-8d21f54dac3b",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
