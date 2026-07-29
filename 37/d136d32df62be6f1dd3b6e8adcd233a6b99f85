@@ -1,0 +1,64 @@
+src/sync/cursorStore.ts
+  s_a20a044fda74f9::t_f4fe7c1daae440 1-84
+src/sync/lock.ts
+  s_a20a044fda74f9::t_f4fe7c1daae440 1-91
+tests/cli/syncTreatmentCli.test.ts
+  s_a20a044fda74f9::t_f4fe7c1daae440 1-79
+tests/cli/syncTreatment.test.ts
+  s_a20a044fda74f9::t_f4fe7c1daae440 1-202
+tests/sync/lock.test.ts
+  s_a20a044fda74f9::t_f4fe7c1daae440 1-97
+tests/sync/dependencyMap.test.ts
+  s_a20a044fda74f9::t_f4fe7c1daae440 1-78
+src/sync/dependencyMap.ts
+  s_a20a044fda74f9::t_f4fe7c1daae440 1-77
+src/sync/matching.ts
+  s_a20a044fda74f9::t_f4fe7c1daae440 1-53
+tests/sync/reportWriter.test.ts
+  s_a20a044fda74f9::t_f4fe7c1daae440 1-224
+src/core/manifestStore.ts
+  s_a20a044fda74f9::t_f4fe7c1daae440 4
+tests/core/atomicWrite.test.ts
+  s_a20a044fda74f9::t_f4fe7c1daae440 1-61
+src/sync/factIdentity.ts
+  s_a20a044fda74f9::t_f4fe7c1daae440 1-30
+src/sync/reportWriter.ts
+  s_a20a044fda74f9::t_f4fe7c1daae440 1-158
+tests/sync/matching.test.ts
+  s_a20a044fda74f9::t_f4fe7c1daae440 1-109
+tests/sync/factIdentity.test.ts
+  s_a20a044fda74f9::t_f4fe7c1daae440 1-52
+src/core/atomicWrite.ts
+  s_a20a044fda74f9::t_f4fe7c1daae440 1-24
+tests/sync/cursorStore.test.ts
+  s_a20a044fda74f9::t_f4fe7c1daae440 1-110
+src/cli/commands/syncTreatment.ts
+  s_a20a044fda74f9::t_f4fe7c1daae440 1-221
+src/cli/index.ts
+  s_3cb77ca2d954a4::t_9ea3560bca1e23 136
+  s_a20a044fda74f9::t_576a98543655e8 13,15,137-167
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "37d136d32df62be6f1dd3b6e8adcd233a6b99f85",
+  "prompts": {},
+  "sessions": {
+    "s_3cb77ca2d954a4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bfa349d7-255c-4670-b61b-8d21f54dac3b",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    },
+    "s_a20a044fda74f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3d3c6af5-d66a-4183-aa8b-60284c53847c",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
