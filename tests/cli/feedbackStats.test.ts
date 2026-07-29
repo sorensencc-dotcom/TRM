@@ -56,6 +56,18 @@ describe('runFeedbackStats', () => {
     expect(stats.ocr_latency.timeout_rate).toBeCloseTo(0.5);
   });
 
+  it('excludes failed OCR calls from latency percentiles so a high-ms failure does not flip over_budget', () => {
+    const root = makeRoot();
+    runCreate(root, 'cuba', { actor: 'ACTOR-001' });
+    appendOcrTiming(root, { schema_version: 1, topic: 'cuba', file: 'a.jpg', source_type: 'jpg', ms: 1000, retries: 0, outcome: 'success', ts: new Date().toISOString() });
+    appendOcrTiming(root, { schema_version: 1, topic: 'cuba', file: 'b.jpg', source_type: 'jpg', ms: 95000, retries: 2, outcome: 'failure', ts: new Date().toISOString() });
+
+    const stats = runFeedbackStats(root, 'cuba', { latencyBudgetMs: 90000 });
+    expect(stats.ocr_latency.p50).toBe(1000);
+    expect(stats.ocr_latency.over_budget).toBe(false);
+    expect(stats.ocr_latency.timeout_rate).toBeCloseTo(0.5);
+  });
+
   it('computes fact_density from source text length, excluding image-only sources with no text', () => {
     const root = makeRoot();
     runCreate(root, 'cuba', { actor: 'ACTOR-001' });

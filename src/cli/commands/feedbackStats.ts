@@ -116,7 +116,7 @@ export function runFeedbackStats(
   }
 
   const relevantTiming = readOcrTiming(root).filter((e) => topicPaths.includes(e.topic));
-  const latencies = relevantTiming.map((e) => e.ms).sort((a, b) => a - b);
+  const latencies = relevantTiming.filter((e) => e.outcome === 'success').map((e) => e.ms).sort((a, b) => a - b);
   const timeoutCount = relevantTiming.filter((e) => e.outcome === 'failure').length;
   const hasOcrTiming = relevantTiming.length > 0;
   const p90 = percentile(latencies, 90);
