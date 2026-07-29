@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { nodeDir } from './paths';
+import { writeFileAtomic } from './atomicWrite';
 
 export type ManifestStatus = 'done' | 'failed';
 
@@ -32,18 +33,6 @@ function readManifest(root: string, topicPath: string): ManifestFile {
   const file = manifestPath(root, topicPath);
   if (!fs.existsSync(file)) return { entries: {} };
   return JSON.parse(fs.readFileSync(file, 'utf-8'));
-}
-
-/**
- * Atomic write: write to a temp file in the same directory, then rename.
- * Rename is atomic on the same filesystem, so a kill mid-write never leaves
- * a half-written manifest.json or extracts/<hash>.json on disk.
- */
-function writeFileAtomic(file: string, contents: string): void {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
-  fs.writeFileSync(tmp, contents);
-  fs.renameSync(tmp, file);
 }
 
 function writeManifestEntry(root: string, topicPath: string, entry: ManifestEntry): void {
