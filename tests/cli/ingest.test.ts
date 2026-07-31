@@ -102,21 +102,34 @@ describe('runIngest', () => {
   });
 
   it('with --file pointing at a .png, writes an image envelope and flags mock: true', async () => {
-    const root = makeRoot();
-    runCreate(root, 'cuba', { actor: 'ACTOR-001' });
-    const filePath = path.join(root, 'photo.png');
-    fs.writeFileSync(filePath, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    // Points ImageAnalyzer at an unreachable address so the mock-fallback path is
+    // deterministic; relying on nothing listening at the default localhost:3000
+    // makes this test flaky whenever a real Vision API dev server is running.
+    const previousUrl = process.env.CIC_INGESTION_URL;
+    process.env.CIC_INGESTION_URL = 'http://127.0.0.1:1';
+    try {
+      const root = makeRoot();
+      runCreate(root, 'cuba', { actor: 'ACTOR-001' });
+      const filePath = path.join(root, 'photo.png');
+      fs.writeFileSync(filePath, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
 
-    const entry = await runIngest(root, 'cuba', { actor: 'ACTOR-001', type: 'image', title: 'Photo', origin: 'LOC', file: filePath });
+      const entry = await runIngest(root, 'cuba', { actor: 'ACTOR-001', type: 'image', title: 'Photo', origin: 'LOC', file: filePath });
 
-    expect(entry?.url).toBe('local:photo.png');
-    const jsonPath = path.join(root, 'topics', 'cuba', 'sources', 'raw', 'SRC-001.json');
-    expect(fs.existsSync(jsonPath)).toBe(true);
-    const written = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
-    expect(written.kind).toBe('image');
-    expect(written.image.mock).toBe(true);
-    expect(written.image.metadata.visionApiUsed).toBe(false);
-    expect(Array.isArray(written.image.matches)).toBe(true);
+      expect(entry?.url).toBe('local:photo.png');
+      const jsonPath = path.join(root, 'topics', 'cuba', 'sources', 'raw', 'SRC-001.json');
+      expect(fs.existsSync(jsonPath)).toBe(true);
+      const written = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+      expect(written.kind).toBe('image');
+      expect(written.image.mock).toBe(true);
+      expect(written.image.metadata.visionApiUsed).toBe(false);
+      expect(Array.isArray(written.image.matches)).toBe(true);
+    } finally {
+      if (previousUrl === undefined) {
+        delete process.env.CIC_INGESTION_URL;
+      } else {
+        process.env.CIC_INGESTION_URL = previousUrl;
+      }
+    }
   });
 
   it('recognizes .jpg, .jpeg, .webp, .gif as image extensions too', async () => {
