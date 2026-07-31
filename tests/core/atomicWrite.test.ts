@@ -34,6 +34,16 @@ describe('atomicWrite', () => {
     expect(fs.readFileSync(file, 'utf-8')).toBe('v2');
   });
 
+  it('concurrent writes leave a complete, parseable JSON document', async () => {
+    const file = path.join(dir, 'manifest.json');
+    const payloads = Array.from({ length: 20 }, (_, i) => JSON.stringify({ entries: { [`hash-${i}`]: { status: 'done' } } }));
+    await Promise.all(payloads.map((payload) => Promise.resolve().then(() => writeFileAtomic(file, payload))));
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+    expect(parsed.entries).toBeDefined();
+    expect(Object.values(parsed.entries)[0]).toEqual({ status: 'done' });
+    expect(fs.readdirSync(dir).filter((entry) => entry.includes('.tmp-'))).toEqual([]);
+  });
+
   it('writeFileExclusive succeeds when the file does not exist', () => {
     const file = path.join(dir, 'report.md');
     writeFileExclusive(file, 'content');

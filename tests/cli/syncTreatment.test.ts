@@ -114,6 +114,8 @@ describe('runSyncTreatment', () => {
     expect(md).toMatch(/willow-run/);
   });
 
+  it.todo('near-identical facts from separate source documents are collapsed or flagged by a production dedup/scoring entry point; none exists in current src/scoring or src/registry');
+
   it('--dry-run writes a report but does not update the cursor', () => {
     writeTopicExtract(vaultRoot, 'willow-run', [
       { id: 'FCT-001', text: 'Sorensen visits Willow Run.', source_id: 'SRC-001', confidence: 0.9, categories: ['biography'] },
