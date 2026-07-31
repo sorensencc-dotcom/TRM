@@ -1,0 +1,23 @@
+tests/core/regenerateExtractJson.test.ts
+  s_3c6fcea09292cf::t_975e3aef734e6f 7,58-86
+tests/cli/syncTreatment.test.ts
+  s_3c6fcea09292cf::t_975e3aef734e6f 117-118
+tests/core/atomicWrite.test.ts
+  s_3c6fcea09292cf::t_975e3aef734e6f 37-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "b9f50dcc7961a3870d0d3fa01e936bd994e0cc2e",
+  "prompts": {},
+  "sessions": {
+    "s_3c6fcea09292cf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb54c-7a81-7d92-bd29-8f081b30cc1f",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
