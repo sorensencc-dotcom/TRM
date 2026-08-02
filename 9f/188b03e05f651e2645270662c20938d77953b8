@@ -1,0 +1,21 @@
+docs/superpowers/specs/2026-08-02-intake-triage-manifest-design.md
+  s_d92a162c4798dd::t_9f1974560a6115 4-15
+docs/superpowers/plans/2026-08-02-intake-triage-manifest.md
+  s_d92a162c4798dd::t_7fdce5c92cfba6 1-951
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "9f188b03e05f651e2645270662c20938d77953b8",
+  "prompts": {},
+  "sessions": {
+    "s_d92a162c4798dd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "360deef7-8c42-43b7-bd32-1c055da8344d",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
