@@ -1,7 +1,18 @@
 # Intake Triage Manifest — Design
 
 Date: 2026-08-02
-Status: Approved (brainstorming), pending implementation plan
+Status: Approved (brainstorming); implementation plan refined the vision-classifier
+section below — see `docs/superpowers/plans/2026-08-02-intake-triage-manifest.md`.
+Refinement: instead of a new `/api/analyze/classify` endpoint and a new
+`visionClassifier.ts`, plan-time file-structure mapping found `classify.ts`
+already had a signature-stable placeholder (`classifyImage()`, aspect-ratio
+heuristic) explicitly documented as "swap the body for a real cheap-vision-call
+classifier... without touching callers." The plan fills that in using labels
+`cic-ingestion`'s `/api/analyze/image` already computes via `LABEL_DETECTION`
+but was discarding before responding — same "new cic-ingestion capability via
+the existing HTTP pattern" category as approved, smaller diff, reuses the
+extension point the codebase already committed to instead of adding a second
+vision-call pathway.
 
 ## Problem
 
