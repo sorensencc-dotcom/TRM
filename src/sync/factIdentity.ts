@@ -26,5 +26,7 @@ export function tokenize(text: string): string[] {
 }
 
 export function factKey(fact: { source_id: string; text: string }): string {
-  return crypto.createHash('sha256').update(`${fact.source_id}|${normalize(fact.text)}`).digest('hex');
+  const normalized = normalize(fact.text);
+  const keyText = normalized.length > 0 ? normalized : fact.text.trim();
+  return crypto.createHash('sha256').update(`${fact.source_id}|${keyText}`).digest('hex');
 }

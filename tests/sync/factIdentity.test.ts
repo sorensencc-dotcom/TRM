@@ -49,4 +49,19 @@ describe('factKey', () => {
     const key = factKey({ source_id: 'SRC-001', text: 'x' });
     expect(key).toMatch(/^[0-9a-f]{64}$/);
   });
+
+  it('keeps distinct keys for different all-punctuation/non-Latin text from the same source (regression: empty-normalize collision)', () => {
+    const a = factKey({ source_id: 'SRC-016', text: '"' });
+    const b = factKey({ source_id: 'SRC-016', text: 'реакто' });
+    const c = factKey({ source_id: 'SRC-016', text: '%' });
+    expect(a).not.toBe(b);
+    expect(a).not.toBe(c);
+    expect(b).not.toBe(c);
+  });
+
+  it('still merges identical all-punctuation text from the same source', () => {
+    const a = factKey({ source_id: 'SRC-016', text: '"' });
+    const b = factKey({ source_id: 'SRC-016', text: '"' });
+    expect(a).toBe(b);
+  });
 });
