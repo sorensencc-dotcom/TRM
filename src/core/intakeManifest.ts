@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { writeFileAtomic } from './atomicWrite';
 
-export type IntakeKind = 'image' | 'text';
+export type IntakeKind = 'image' | 'text' | 'unknown';
 export type IntakeType = 'exhibit-photo' | 'doc-photo' | 'text' | 'junk' | 'unsure';
 export type IntakeStatus = 'done' | 'failed';
 
@@ -32,7 +32,15 @@ export function intakeManifestPath(root: string): string {
 export function readIntakeManifest(root: string): IntakeManifestFile {
   const file = intakeManifestPath(root);
   if (!fs.existsSync(file)) return { entries: {} };
-  return JSON.parse(fs.readFileSync(file, 'utf-8'));
+  const raw = fs.readFileSync(file, 'utf-8');
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    throw new Error(
+      `Intake manifest at ${file} is not valid JSON (${(err as Error).message}). ` +
+        'Fix or delete the file to continue; deleting it restarts triage from scratch.'
+    );
+  }
 }
 
 export function writeIntakeEntry(root: string, entry: IntakeEntry): void {

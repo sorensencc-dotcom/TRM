@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { classifyImage } from '../../../src/ingestion/imageExtract/classify';
+import { classifyImage, classifyImageDetailed } from '../../../src/ingestion/imageExtract/classify';
 
 const fixturesDir = path.join(__dirname, '..', '..', '..', 'src', 'ingestion', 'imageExtract', 'fixtures');
 
@@ -30,6 +30,16 @@ describe('classifyImage', () => {
   it('falls back to photo for formats/files it cannot measure', async () => {
     const result = await classifyImage(path.join(fixturesDir, 'photo-empty.bin'));
     expect(result).toBe('photo');
+  });
+
+  it('classifyImageDetailed reports confidence 0 when dimensions are unparseable', async () => {
+    const result = await classifyImageDetailed(path.join(fixturesDir, 'photo-empty.bin'));
+    expect(result).toEqual({ kind: 'photo', source: 'aspect-ratio', confidence: 0 });
+  });
+
+  it('classifyImageDetailed leaves confidence undefined when dimensions were measured', async () => {
+    const result = await classifyImageDetailed(path.join(fixturesDir, 'photo-valid-1x1.png'));
+    expect(result).toEqual({ kind: 'photo', source: 'aspect-ratio' });
   });
 
   it('falls back to photo for a corrupt PNG (valid magic, no real IHDR dimensions)', async () => {
@@ -177,6 +187,63 @@ describe('vision-label classification (when CIC_INGESTION_URL is set)', () => {
     const fixture = path.join(fixturesDir, 'text-doc-valid-scanned-page.png');
     const result = await classifyImage(fixture);
     expect(result).toBe('text-doc'); // aspect-ratio fallback result, unchanged from today
+  });
+
+  it('falls back to the aspect-ratio heuristic when the service returns mock-mode results (visionApiUsed false)', async () => {
+    process.env.CIC_INGESTION_URL = 'http://localhost:9999';
+    // Mock mode: HTTP 200, no metadata.error, but Vision never actually ran.
+    // Labels present here would say "photo"; the fixture's aspect ratio says text-doc.
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        matches: [],
+        labels: [{ description: 'Airplane', score: 0.95 }],
+        metadata: { format: 'png', visionApiUsed: false, latencyMs: 1, apiProvider: 'mock' },
+      }),
+    });
+
+    const fixture = path.join(fixturesDir, 'text-doc-valid-scanned-page.png');
+    const result = await classifyImageDetailed(fixture);
+    expect(result.source).toBe('aspect-ratio'); // did NOT trust the mock labels
+    expect(result.kind).toBe('text-doc');
+  });
+
+  it('does not false-positive on substring-only label matches like "Homepage" or "Notebook"', async () => {
+    process.env.CIC_INGESTION_URL = 'http://localhost:9999';
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        matches: [],
+        labels: [
+          { description: 'Homepage', score: 0.95 },
+          { description: 'Notebook', score: 0.93 },
+          { description: 'Wallpaper', score: 0.91 },
+          { description: 'Textile', score: 0.9 },
+        ],
+        metadata: { format: 'png', visionApiUsed: true, latencyMs: 5, apiProvider: 'google_vision' },
+      }),
+    });
+
+    const fixture = path.join(fixturesDir, 'text-doc-valid-scanned-page.png');
+    const result = await classifyImageDetailed(fixture);
+    expect(result.source).toBe('vision');
+    expect(result.kind).toBe('photo');
+  });
+
+  it('still matches plural document labels ("Documents")', async () => {
+    process.env.CIC_INGESTION_URL = 'http://localhost:9999';
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        matches: [],
+        labels: [{ description: 'Historical documents', score: 0.77 }],
+        metadata: { format: 'png', visionApiUsed: true, latencyMs: 5, apiProvider: 'google_vision' },
+      }),
+    });
+
+    const fixture = path.join(fixturesDir, 'photo-valid-1x1.png');
+    const result = await classifyImageDetailed(fixture);
+    expect(result).toEqual({ kind: 'text-doc', source: 'vision', confidence: 0.77 });
   });
 
   it('an explicit opts.kind override still short-circuits before any vision call', async () => {

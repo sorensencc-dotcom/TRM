@@ -15,23 +15,59 @@ interface Dimensions {
 const DOCUMENT_LABEL_KEYWORDS = [
   'document', 'text', 'paper', 'letter', 'receipt', 'book', 'newspaper', 'page', 'handwriting',
 ];
+// Whole-word (plus optional trailing "s") matching. Plain substring matching
+// false-positived on labels like "Homepage" (page), "Textile" (text),
+// "Notebook"/"Facebook" (book) and "Wallpaper"/"Paperback" (paper).
+const DOCUMENT_LABEL_PATTERNS = DOCUMENT_LABEL_KEYWORDS.map(
+  (kw) => new RegExp(`\\b${kw}s?\\b`, 'i')
+);
 const LABEL_CONFIDENCE_THRESHOLD = 0.5;
 
 /**
- * Classifies an image as a photo or a scanned/photographed text document.
+ * Which path produced a classification, so callers can see silent degradation.
+ * `confidence` is the classifier's confidence in the returned `kind`:
+ *  - vision path: derived from the document-label scores (never 0 in practice).
+ *  - aspect-ratio path: left undefined when real dimensions were measured, and
+ *    set to exactly 0 when dimensions were unparseable (HEIC and other formats
+ *    `readDimensions` cannot measure) and 'photo' is only a default, not a
+ *    finding. Callers use `source === 'aspect-ratio' && confidence === 0` to
+ *    detect "we genuinely do not know".
+ */
+export interface ClassifyResult {
+  kind: ImageKind;
+  source: 'vision' | 'aspect-ratio';
+  confidence?: number;
+}
+
+function matchesDocumentKeyword(description: string): boolean {
+  return DOCUMENT_LABEL_PATTERNS.some((re) => re.test(description));
+}
+
+/**
+ * Classifies an image as a photo or a scanned/photographed text document,
+ * reporting which path produced the answer.
+ *
  * Primary path: one Vision-label call via ImageAnalyzer (CIC_INGESTION_URL),
  * checking for document-like labels above LABEL_CONFIDENCE_THRESHOLD. Falls
- * back to the aspect-ratio heuristic below whenever CIC_INGESTION_URL is
- * unset or the vision call fails -- this keeps the function usable offline
- * and keeps existing callers/tests working with no vision service running.
+ * back to the aspect-ratio heuristic whenever CIC_INGESTION_URL is unset, the
+ * vision call fails, or the vision service degraded to mock mode -- this keeps
+ * the function usable offline and keeps existing callers/tests working with no
+ * vision service running. The returned `source` makes that degradation visible
+ * to callers instead of silent.
  */
-export async function classifyImage(filePath: string, opts?: ClassifyOptions): Promise<ImageKind> {
-  if (opts?.kind) return opts.kind;
+export async function classifyImageDetailed(
+  filePath: string,
+  opts?: ClassifyOptions
+): Promise<ClassifyResult> {
+  // An explicit override is a caller assertion, not a degraded fallback, so it
+  // reports as 'vision' -- it must not inflate any fallback/degradation count.
+  if (opts?.kind) return { kind: opts.kind, source: 'vision' };
+
+  const buffer = await fs.promises.readFile(filePath);
 
   const cicIngestionUrl = process.env.CIC_INGESTION_URL;
   if (cicIngestionUrl) {
     try {
-      const buffer = await fs.promises.readFile(filePath);
       const analyzer = new ImageAnalyzer(cicIngestionUrl, 5000, 1);
       const result = await analyzer.extract(buffer);
       // ImageAnalyzer.extract() swallows network/service errors internally and
@@ -43,23 +79,47 @@ export async function classifyImage(filePath: string, opts?: ClassifyOptions): P
       if (result.metadata.error) {
         throw new Error(result.metadata.error);
       }
-      const hasDocumentLabel = result.labels.some(
-        (label) =>
-          label.score >= LABEL_CONFIDENCE_THRESHOLD &&
-          DOCUMENT_LABEL_KEYWORDS.some((kw) => label.description.toLowerCase().includes(kw))
+      // cic-ingestion also returns a *successful* response with no error and
+      // empty labels when it is running in mock mode (no Vision API key, or a
+      // Vision failure that fell back to mock). visionApiUsed is the only
+      // signal separating "Vision looked and found nothing" from "Vision never
+      // ran". Treat the latter as a failure so we degrade to aspect ratio
+      // rather than silently mis-triaging every document photo as a photo.
+      if (result.metadata.visionApiUsed !== true) {
+        throw new Error('vision service degraded to mock mode (visionApiUsed=false)');
+      }
+      const maxDocScore = result.labels.reduce(
+        (max, label) => (matchesDocumentKeyword(label.description) ? Math.max(max, label.score) : max),
+        0
       );
-      return hasDocumentLabel ? 'text-doc' : 'photo';
+      if (maxDocScore >= LABEL_CONFIDENCE_THRESHOLD) {
+        return { kind: 'text-doc', source: 'vision', confidence: maxDocScore };
+      }
+      return { kind: 'photo', source: 'vision', confidence: 1 - maxDocScore };
     } catch {
       // Fall through to the aspect-ratio heuristic below.
     }
   }
 
-  const buffer = await fs.promises.readFile(filePath);
   const dims = readDimensions(buffer);
-  if (!dims || dims.width <= 0) return 'photo';
+  if (!dims || dims.width <= 0) {
+    // Dimensions unparseable (HEIC/webp/gif/corrupt). 'photo' is the historical
+    // default and stays the default for classifyImage's contract, but
+    // confidence 0 flags it as "unknown", not "measured as a photo".
+    return { kind: 'photo', source: 'aspect-ratio', confidence: 0 };
+  }
 
   const aspectRatio = dims.height / dims.width;
-  return aspectRatio >= 1.3 ? 'text-doc' : 'photo';
+  return { kind: aspectRatio >= 1.3 ? 'text-doc' : 'photo', source: 'aspect-ratio' };
+}
+
+/**
+ * Backward-compatible wrapper: same behaviour and signature as before, just the
+ * `kind` from classifyImageDetailed. Existing callers (e.g. ingestDir.ts) and
+ * tests are unaffected.
+ */
+export async function classifyImage(filePath: string, opts?: ClassifyOptions): Promise<ImageKind> {
+  return (await classifyImageDetailed(filePath, opts)).kind;
 }
 
 function readDimensions(buffer: Buffer): Dimensions | null {

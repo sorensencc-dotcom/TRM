@@ -2,3 +2,7 @@ node_modules/
 dist/
 *.log
 .worktrees/
+
+# Raw private archive dump + its generated triage manifest
+intake/
+intake-manifest.json

@@ -75,6 +75,14 @@ describe('intakeManifest', () => {
     expect(fs.existsSync(path.join(root, 'intake-manifest.json'))).toBe(true);
   });
 
+  it('readIntakeManifest throws a diagnosable error naming the file when the manifest is corrupt', () => {
+    const root = makeRoot();
+    const file = path.join(root, 'intake-manifest.json');
+    fs.writeFileSync(file, '{ not json');
+    expect(() => readIntakeManifest(root)).toThrow(new RegExp(file.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')));
+    expect(() => readIntakeManifest(root)).toThrow(/not valid JSON/i);
+  });
+
   it('writing a second entry preserves the first (no overwrite of unrelated hashes)', () => {
     const root = makeRoot();
     writeIntakeEntry(root, makeEntry({ hash: 'h1' }));

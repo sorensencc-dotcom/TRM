@@ -9,7 +9,7 @@ import {
   isIntakeDone,
   findByHash,
 } from '../../core/intakeManifest';
-import { classifyImage } from '../../ingestion/imageExtract/classify';
+import { classifyImageDetailed } from '../../ingestion/imageExtract/classify';
 
 const TEXT_EXTENSIONS = new Set(['.txt', '.md', '.json']);
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic']);
@@ -24,19 +24,62 @@ export interface TriageIntakeSummary {
   skippedCount: number;
   dupCount: number;
   failedCount: number;
+  /** Directory entries that could not be stat'ed (broken symlink, permissions) and were skipped. */
+  walkErrorCount: number;
+  /**
+   * Images that fell back to the aspect-ratio heuristic even though
+   * CIC_INGESTION_URL was set -- i.e. the vision path was attempted and
+   * degraded (service down, or running in mock mode). A non-zero value means
+   * the run's image classification is less trustworthy than it looks.
+   */
+  visionFallbackCount: number;
   byType: Record<string, number>;
 }
 
-function walkFiles(dir: string): string[] {
-  if (!fs.existsSync(dir)) return [];
+interface WalkResult {
+  files: string[];
+  errorCount: number;
+}
+
+function walkFiles(dir: string): WalkResult {
   const out: string[] = [];
-  for (const name of fs.readdirSync(dir)) {
-    const full = path.join(dir, name);
-    const stat = fs.statSync(full);
-    if (stat.isDirectory()) out.push(...walkFiles(full));
-    else if (stat.isFile()) out.push(full);
+  let errorCount = 0;
+
+  function walk(current: string): void {
+    let names: string[];
+    try {
+      names = fs.readdirSync(current);
+    } catch (err) {
+      errorCount++;
+      console.error(`[triage-intake] cannot read directory ${current}: ${(err as Error).message}`);
+      return;
+    }
+    for (const name of names) {
+      const full = path.join(current, name);
+      let stat: fs.Stats;
+      try {
+        // lstat, not stat: a broken symlink throws on stat and would kill the
+        // whole run. Symlinks are skipped outright rather than followed, which
+        // also removes any symlink-cycle risk.
+        stat = fs.lstatSync(full);
+      } catch (err) {
+        errorCount++;
+        console.error(`[triage-intake] skipping unreadable entry ${full}: ${(err as Error).message}`);
+        continue;
+      }
+      if (stat.isSymbolicLink()) {
+        errorCount++;
+        console.error(`[triage-intake] skipping symlink ${full}`);
+        continue;
+      }
+      if (stat.isDirectory()) walk(full);
+      else if (stat.isFile()) out.push(full);
+    }
   }
-  return out;
+
+  if (!fs.existsSync(dir)) return { files: [], errorCount: 0 };
+  walk(dir);
+  return { files: out, errorCount };
 }
 
 function batchFor(root: string, filePath: string): string {
@@ -45,12 +88,27 @@ function batchFor(root: string, filePath: string): string {
   return rel.split(path.sep)[0];
 }
 
+function resolveWalkDir(root: string, dir?: string): string {
+  const intakeRoot = path.resolve(root, 'intake');
+  const walkDir = path.resolve(root, dir ?? 'intake');
+  const rel = path.relative(intakeRoot, walkDir);
+  // Must be intakeRoot itself or strictly inside it.
+  if (rel !== '' && (rel.startsWith('..') || path.isAbsolute(rel))) {
+    throw new Error(
+      `--dir must resolve to a path under ${intakeRoot} (got ${walkDir}). ` +
+        'Use a path like "intake/benson-ford".'
+    );
+  }
+  return walkDir;
+}
+
 export async function runTriageIntake(
   root: string,
   opts: TriageIntakeOptions
 ): Promise<TriageIntakeSummary> {
-  const walkDir = opts.dir ? path.join(root, opts.dir) : path.join(root, 'intake');
-  const files = walkFiles(walkDir);
+  const walkDir = resolveWalkDir(root, opts.dir);
+  const { files, errorCount } = walkFiles(walkDir);
+  const visionConfigured = Boolean(process.env.CIC_INGESTION_URL);
 
   const summary: TriageIntakeSummary = {
     totalFiles: files.length,
@@ -58,8 +116,17 @@ export async function runTriageIntake(
     skippedCount: 0,
     dupCount: 0,
     failedCount: 0,
+    walkErrorCount: errorCount,
+    visionFallbackCount: 0,
     byType: {},
   };
+
+  // Hashes encountered so far *in this run*. Needed to tell "already fully
+  // processed by a previous run" (resume -> skip) apart from "a second file
+  // with the same content, seen in this run" (dup). isIntakeDone alone cannot
+  // distinguish them, which is why dups previously counted as skips and never
+  // got isDup: true.
+  const seenThisRun = new Set<string>();
 
   for (const filePath of files) {
     const rel = path.relative(root, filePath).split(path.sep).join('/');
@@ -70,17 +137,18 @@ export async function runTriageIntake(
     try {
       hash = await hashFile(filePath);
     } catch (err) {
+      // No hash means no manifest key, so this cannot be recorded durably.
+      // Surface it loudly in run output instead of failing silently.
+      console.error(`[triage-intake] hash failed for ${filePath}: ${(err as Error).message}`);
       summary.failedCount++;
       continue;
     }
 
-    if (isIntakeDone(root, hash)) {
-      summary.skippedCount++;
-      continue;
-    }
-
     const existing = findByHash(root, hash);
-    if (existing) {
+
+    if (seenThisRun.has(hash) && existing && existing.status === 'done') {
+      // Genuine exact duplicate: same content, different path. Reuse the
+      // earlier classification, never re-call vision.
       const entry: IntakeEntry = {
         ...existing,
         sourcePath: rel,
@@ -94,6 +162,17 @@ export async function runTriageIntake(
       summary.byType[entry.classifiedType] = (summary.byType[entry.classifiedType] ?? 0) + 1;
       continue;
     }
+
+    // Resume: this hash was completed by an earlier run. Only 'done' short-
+    // circuits -- a 'failed' entry falls through and is fully reprocessed, so a
+    // transient failure is retried instead of being frozen as done forever.
+    if (isIntakeDone(root, hash)) {
+      seenThisRun.add(hash);
+      summary.skippedCount++;
+      continue;
+    }
+
+    seenThisRun.add(hash);
 
     const sizeBytes = fs.statSync(filePath).size;
     const baseEntry = {
@@ -120,12 +199,25 @@ export async function runTriageIntake(
 
     if (IMAGE_EXTENSIONS.has(ext)) {
       try {
-        const kind = await visionPool(() => classifyImage(filePath));
-        const classifiedType: IntakeType = kind === 'text-doc' ? 'doc-photo' : 'exhibit-photo';
+        const result = await visionPool(() => classifyImageDetailed(filePath));
+        if (visionConfigured && result.source === 'aspect-ratio') {
+          summary.visionFallbackCount++;
+        }
+        // confidence === 0 on the aspect-ratio path means dimensions were
+        // unparseable (HEIC etc.) and 'photo' was only a default -- record that
+        // as 'unsure' rather than asserting exhibit-photo, so document photos
+        // are not silently routed away from the OCR pipeline.
+        const unknownDimensions = result.source === 'aspect-ratio' && result.confidence === 0;
+        const classifiedType: IntakeType = unknownDimensions
+          ? 'unsure'
+          : result.kind === 'text-doc'
+            ? 'doc-photo'
+            : 'exhibit-photo';
         writeIntakeEntry(root, {
           ...baseEntry,
           kind: 'image',
           classifiedType,
+          confidence: result.confidence,
           status: 'done',
         });
         summary.processedCount++;
@@ -145,7 +237,7 @@ export async function runTriageIntake(
 
     writeIntakeEntry(root, {
       ...baseEntry,
-      kind: 'text',
+      kind: 'unknown',
       classifiedType: 'unsure',
       status: 'failed',
       error: 'unsupported extension',
