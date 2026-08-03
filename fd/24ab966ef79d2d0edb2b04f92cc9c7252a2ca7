@@ -1,0 +1,26 @@
+src/cli/index.ts
+  s_d92a162c4798dd::t_c5d9bcbbd2a6b3 14
+  s_d92a162c4798dd::t_eb7f231291683f 169-176
+src/cli/commands/triageIntake.ts
+  s_d92a162c4798dd::t_8b576ff07640f7 1-157
+package.json
+  s_d92a162c4798dd::t_63b85d799fa32d 14-15
+tests/cli/commands/triageIntake.test.ts
+  s_d92a162c4798dd::t_ce2b3665c05362 1-113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "fd24ab966ef79d2d0edb2b04f92cc9c7252a2ca7",
+  "prompts": {},
+  "sessions": {
+    "s_d92a162c4798dd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "360deef7-8c42-43b7-bd32-1c055da8344d",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
