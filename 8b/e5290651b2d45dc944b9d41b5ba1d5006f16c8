@@ -1,0 +1,25 @@
+tests/ingestion/imageExtract/imageAnalyzer.extract.test.ts
+  s_d92a162c4798dd::t_8f9701734752b4 1-48
+src/ingestion/imageExtract/imageAnalyzer.test.ts
+  s_d92a162c4798dd::t_c64d036efa7ec2 272-307
+src/ingestion/imageExtract/imageAnalyzer.ts
+  s_d92a162c4798dd::t_28aeecde45bd4c 14-18,21
+  s_d92a162c4798dd::t_aa597c46b098d5 202
+  s_d92a162c4798dd::t_fe883c60ec7820 323
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "8be5290651b2d45dc944b9d41b5ba1d5006f16c8",
+  "prompts": {},
+  "sessions": {
+    "s_d92a162c4798dd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "360deef7-8c42-43b7-bd32-1c055da8344d",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
