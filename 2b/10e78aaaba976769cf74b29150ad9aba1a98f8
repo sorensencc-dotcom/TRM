@@ -1,0 +1,48 @@
+tests/cli/commands/triageIntake.test.ts
+  s_d92a162c4798dd::t_dea11211724842 4-8,12-18,27-32
+  s_d92a162c4798dd::t_c76fa6d699264a 56
+  s_d92a162c4798dd::t_226d756d0da702 240
+  s_d92a162c4798dd::t_c2c10036b25257 147,151-167
+  s_d92a162c4798dd::t_f0c467dd83b243 175
+  s_d92a162c4798dd::t_4620f040a2d810 9-11,19-26
+  s_d92a162c4798dd::t_8e65d27d9a8f21 73-75,83
+  s_d92a162c4798dd::t_ddffb4192114bd 168,190-239,241-242,245,252-256,259-260,270
+  s_d92a162c4798dd::t_ee4b89b655fdb6 257-258,261-269
+  s_d92a162c4798dd::t_d4b787e6c28bbd 90-92,104-106,108,111,115-134
+  s_d92a162c4798dd::t_12d6929b0107fb 243-244,246-249,251
+  s_d92a162c4798dd::t_bbef685a432ff5 250
+  s_d92a162c4798dd::t_bd6f88cd195679 169
+tests/ingestion/imageExtract/classify.test.ts
+  s_d92a162c4798dd::t_f1da120b8a4079 4
+  s_d92a162c4798dd::t_6e9900207fea56 35-44
+  s_d92a162c4798dd::t_cf46e752f1bcc3 192-248
+src/cli/commands/triageIntake.ts
+  s_d92a162c4798dd::t_542d2aefbbbe03 12,27-35,39-44,46-77,79-82,91-104,109-111,119-120,124-130,140-142,148-151,166-176,202-215,220,240
+tests/core/intakeManifest.test.ts
+  s_d92a162c4798dd::t_e2712de4ee3bc6 78-85
+src/ingestion/imageExtract/classify.ts
+  s_d92a162c4798dd::t_753a7c718f2545 18-23,27-49,52-56,58-66,82-93,95-98,105-110,113-122
+src/core/intakeManifest.ts
+  s_d92a162c4798dd::t_af47d6b7721719 35-43
+  s_d92a162c4798dd::t_a6f7c800c40c6c 5
+.gitignore
+  s_d92a162c4798dd::t_f7aff849a14717 5-8
+package-lock.json
+  s_d92a162c4798dd::t_6266ba11cb59f4 15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "2b10e78aaaba976769cf74b29150ad9aba1a98f8",
+  "prompts": {},
+  "sessions": {
+    "s_d92a162c4798dd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "360deef7-8c42-43b7-bd32-1c055da8344d",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
