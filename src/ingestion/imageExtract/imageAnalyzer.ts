@@ -11,8 +11,14 @@ export interface ImageMatch {
   source: string;
 }
 
+export interface Label {
+  description: string;
+  score: number;
+}
+
 export interface AnalysisResult {
   matches: ImageMatch[];
+  labels: Label[];
   metadata: {
     format: string;
     size: number;
@@ -193,6 +199,7 @@ export class ImageAnalyzer extends IExtractor {
       const data = await response.json() as any;
       return {
         matches: data.matches || [],
+        labels: data.labels || [],
         metadata: {
           format: data.metadata?.format || format,
           size: buffer.length,
@@ -313,6 +320,7 @@ export class ImageAnalyzer extends IExtractor {
   private _createErrorResult(error: string): AnalysisResult {
     return {
       matches: [],
+      labels: [],
       metadata: {
         format: 'unknown',
         size: 0,

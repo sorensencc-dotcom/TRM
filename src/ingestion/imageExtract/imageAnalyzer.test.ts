@@ -269,4 +269,5 @@ describe('ImageAnalyzer', () => {
       expect(result.metadata.error).toBeDefined();
     });
   });
+
 });
