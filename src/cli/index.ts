@@ -11,6 +11,7 @@ import { runValidate } from './commands/validate';
 import { runFeedbackStats } from './commands/feedbackStats';
 import { runReport } from './commands/report';
 import { runSyncTreatment } from './commands/syncTreatment';
+import { runTriageIntake } from './commands/triageIntake';
 import { assertSafeRoot } from '../core/rootSafety';
 import { LockConflictError, LockUnrecoverableError } from '../sync/lock';
 
@@ -163,6 +164,14 @@ program
         throw err;
       }
     }
+  });
+
+program
+  .command('triage-intake')
+  .option('--dir <dir>', 'scope to one batch, e.g. intake/benson-ford')
+  .action(async (opts) => {
+    const summary = await runTriageIntake(root, opts);
+    console.log(JSON.stringify(summary, null, 2));
   });
 
 program.parse();
