@@ -128,3 +128,62 @@ describe('classifyImage', () => {
     await expect(classifyImage(fixture, { kind: 'photo' })).resolves.toBe('photo');
   });
 });
+
+describe('vision-label classification (when CIC_INGESTION_URL is set)', () => {
+  const originalEnv = process.env.CIC_INGESTION_URL;
+
+  afterEach(() => {
+    if (originalEnv === undefined) delete process.env.CIC_INGESTION_URL;
+    else process.env.CIC_INGESTION_URL = originalEnv;
+    jest.restoreAllMocks();
+  });
+
+  it('classifies as text-doc when a Document-like label scores above threshold', async () => {
+    process.env.CIC_INGESTION_URL = 'http://localhost:9999';
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        matches: [],
+        labels: [{ description: 'Document', score: 0.88 }],
+        metadata: { format: 'png', visionApiUsed: true, latencyMs: 5, apiProvider: 'google_vision' },
+      }),
+    });
+
+    const fixture = path.join(fixturesDir, 'photo-valid-1x1.png'); // aspect ratio alone would say "photo"
+    const result = await classifyImage(fixture);
+    expect(result).toBe('text-doc');
+  });
+
+  it('classifies as photo when labels have no document-like signal', async () => {
+    process.env.CIC_INGESTION_URL = 'http://localhost:9999';
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        matches: [],
+        labels: [{ description: 'Airplane', score: 0.95 }],
+        metadata: { format: 'png', visionApiUsed: true, latencyMs: 5, apiProvider: 'google_vision' },
+      }),
+    });
+
+    const fixture = path.join(fixturesDir, 'text-doc-valid-scanned-page.png'); // aspect ratio alone would say "text-doc"
+    const result = await classifyImage(fixture);
+    expect(result).toBe('photo');
+  });
+
+  it('falls back to the aspect-ratio heuristic when the vision call throws', async () => {
+    process.env.CIC_INGESTION_URL = 'http://localhost:9999';
+    global.fetch = jest.fn().mockRejectedValueOnce(new Error('ECONNREFUSED'));
+
+    const fixture = path.join(fixturesDir, 'text-doc-valid-scanned-page.png');
+    const result = await classifyImage(fixture);
+    expect(result).toBe('text-doc'); // aspect-ratio fallback result, unchanged from today
+  });
+
+  it('an explicit opts.kind override still short-circuits before any vision call', async () => {
+    process.env.CIC_INGESTION_URL = 'http://localhost:9999';
+    global.fetch = jest.fn();
+    const result = await classifyImage('/nonexistent/path.png', { kind: 'photo' });
+    expect(result).toBe('photo');
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+});

@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import { ImageAnalyzer } from './imageAnalyzer';
 
 export type ImageKind = 'photo' | 'text-doc';
 
@@ -11,17 +12,47 @@ interface Dimensions {
   height: number;
 }
 
+const DOCUMENT_LABEL_KEYWORDS = [
+  'document', 'text', 'paper', 'letter', 'receipt', 'book', 'newspaper', 'page', 'handwriting',
+];
+const LABEL_CONFIDENCE_THRESHOLD = 0.5;
+
 /**
- * Heuristic placeholder classifier: buckets images by aspect ratio read from
- * PNG/JPEG headers. Scanned text pages are reliably tall-and-narrow (US
- * Letter ~1.29, A4 ~1.41); photos skew closer to square/landscape. This is
- * cheap and imprecise on purpose -- SPEC (AC8) only requires the branch point
- * exist. A false positive just means a photo gets OCR'd needlessly, not lost
- * data. Swap the body for a real cheap-vision-call classifier in a later
- * phase without touching callers -- the signature already supports it.
+ * Classifies an image as a photo or a scanned/photographed text document.
+ * Primary path: one Vision-label call via ImageAnalyzer (CIC_INGESTION_URL),
+ * checking for document-like labels above LABEL_CONFIDENCE_THRESHOLD. Falls
+ * back to the aspect-ratio heuristic below whenever CIC_INGESTION_URL is
+ * unset or the vision call fails -- this keeps the function usable offline
+ * and keeps existing callers/tests working with no vision service running.
  */
 export async function classifyImage(filePath: string, opts?: ClassifyOptions): Promise<ImageKind> {
   if (opts?.kind) return opts.kind;
+
+  const cicIngestionUrl = process.env.CIC_INGESTION_URL;
+  if (cicIngestionUrl) {
+    try {
+      const buffer = await fs.promises.readFile(filePath);
+      const analyzer = new ImageAnalyzer(cicIngestionUrl, 5000, 1);
+      const result = await analyzer.extract(buffer);
+      // ImageAnalyzer.extract() swallows network/service errors internally and
+      // returns an error-result object (empty labels, metadata.error set)
+      // rather than rejecting. Surface that as a throw so it's caught below
+      // and falls through to the aspect-ratio heuristic, same as any other
+      // vision-call failure -- otherwise an empty labels array would be
+      // silently read as "no document signal" and misclassified as photo.
+      if (result.metadata.error) {
+        throw new Error(result.metadata.error);
+      }
+      const hasDocumentLabel = result.labels.some(
+        (label) =>
+          label.score >= LABEL_CONFIDENCE_THRESHOLD &&
+          DOCUMENT_LABEL_KEYWORDS.some((kw) => label.description.toLowerCase().includes(kw))
+      );
+      return hasDocumentLabel ? 'text-doc' : 'photo';
+    } catch {
+      // Fall through to the aspect-ratio heuristic below.
+    }
+  }
 
   const buffer = await fs.promises.readFile(filePath);
   const dims = readDimensions(buffer);
