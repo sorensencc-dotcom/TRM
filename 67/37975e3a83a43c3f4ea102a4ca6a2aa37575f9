@@ -1,0 +1,54 @@
+src/core/intakeManifest.ts
+  s_fa9935c8e62e4d::t_a0d1817021f642 54-62,64-95
+  s_21e9078f7de21d::t_f5be245fd226cf 19-26
+src/ingestion/imageExtract/classify.ts
+  s_fa9935c8e62e4d::t_903cfb9a273e74 25-27,69-81,86,120,132-142
+tests/cli/commands/triageIntake.test.ts
+  s_fa9935c8e62e4d::t_84c9f280cf3b38 282-286
+  s_fa9935c8e62e4d::t_ef4c7ce1589702 119-120
+  s_21e9078f7de21d::t_580665a7fe4c0b 115-118
+  s_fa9935c8e62e4d::t_65238394a9221c 121-122
+  s_fa9935c8e62e4d::t_07a41b44276ca9 278-281,287-313
+src/cli/commands/triageIntake.ts
+  s_fa9935c8e62e4d::t_2a9b55dc1e4e05 219-226
+  s_fa9935c8e62e4d::t_57b04338746fb4 141,143,147,149-151,277-279
+  s_fa9935c8e62e4d::t_a0d1817021f642 8,130,132-137,139,152-154,156,169-170,179,199,205,240,247,251,258,264,271,273-276,280
+  s_fa9935c8e62e4d::t_894ae61851ea14 173,182,208,261
+  s_fa9935c8e62e4d::t_64fa36928546aa 131,213-218
+  s_fa9935c8e62e4d::t_7dd48b7326c38a 109
+  s_d92a162c4798dd::t_5649100a071d71 138
+tests/ingestion/imageExtract/classify.test.ts
+  s_fa9935c8e62e4d::t_254b9819a55491 30-69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "6737975e3a83a43c3f4ea102a4ca6a2aa37575f9",
+  "prompts": {},
+  "sessions": {
+    "s_21e9078f7de21d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8116af82-e334-4b2f-b1fd-4ce1cef3d0fd",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    },
+    "s_d92a162c4798dd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "360deef7-8c42-43b7-bd32-1c055da8344d",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    },
+    "s_fa9935c8e62e4d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fcce1-e127-7501-8f90-2e78a8945fb5",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
