@@ -5,9 +5,7 @@ import { visionPool } from '../../core/concurrency';
 import {
   IntakeEntry,
   IntakeType,
-  writeIntakeEntry,
-  isIntakeDone,
-  findByHash,
+  openIntakeManifest,
 } from '../../core/intakeManifest';
 import { classifyImageDetailed } from '../../ingestion/imageExtract/classify';
 
@@ -108,6 +106,7 @@ export async function runTriageIntake(
 ): Promise<TriageIntakeSummary> {
   const walkDir = resolveWalkDir(root, opts.dir);
   const { files, errorCount } = walkFiles(walkDir);
+  files.sort((a, b) => path.basename(a).localeCompare(path.basename(b)));
   const visionConfigured = Boolean(process.env.CIC_INGESTION_URL);
 
   const summary: TriageIntakeSummary = {
@@ -128,23 +127,33 @@ export async function runTriageIntake(
   // got isDup: true.
   const seenThisRun = new Set<string>();
 
-  for (const filePath of files) {
+  const manifest = openIntakeManifest(root);
+  const classifications = new Map<string, ReturnType<typeof classifyImageDetailed>>();
+  let pendingWrites = 0;
+  const checkpoint = () => {
+    pendingWrites++;
+    if (pendingWrites >= 100) {
+      manifest.flush();
+      pendingWrites = 0;
+    }
+  };
+
+  const hashResults = await Promise.all(files.map(async (filePath) => {
+    try {
+      return { filePath, hash: await hashFile(filePath) };
+    } catch (err) {
+      console.error(`[triage-intake] hash failed for ${filePath}: ${(err as Error).message}`);
+      summary.failedCount++;
+      return { filePath, hash: null };
+    }
+  }));
+
+  const processFile = async (filePath: string, hash: string): Promise<void> => {
     const rel = path.relative(root, filePath).split(path.sep).join('/');
     const batch = batchFor(root, filePath);
     const ext = path.extname(filePath).toLowerCase();
 
-    let hash: string;
-    try {
-      hash = await hashFile(filePath);
-    } catch (err) {
-      // No hash means no manifest key, so this cannot be recorded durably.
-      // Surface it loudly in run output instead of failing silently.
-      console.error(`[triage-intake] hash failed for ${filePath}: ${(err as Error).message}`);
-      summary.failedCount++;
-      continue;
-    }
-
-    const existing = findByHash(root, hash);
+    const existing = manifest.findByHash(hash);
 
     if (seenThisRun.has(hash) && existing && existing.status === 'done') {
       // Genuine exact duplicate: same content, different path. Reuse the
@@ -157,19 +166,20 @@ export async function runTriageIntake(
         status: 'done',
         classifiedAt: new Date().toISOString(),
       };
-      writeIntakeEntry(root, entry);
+      manifest.write(entry);
+      checkpoint();
       summary.dupCount++;
       summary.byType[entry.classifiedType] = (summary.byType[entry.classifiedType] ?? 0) + 1;
-      continue;
+      return;
     }
 
     // Resume: this hash was completed by an earlier run. Only 'done' short-
     // circuits -- a 'failed' entry falls through and is fully reprocessed, so a
     // transient failure is retried instead of being frozen as done forever.
-    if (isIntakeDone(root, hash)) {
+    if (manifest.isDone(hash)) {
       seenThisRun.add(hash);
       summary.skippedCount++;
-      continue;
+      return;
     }
 
     seenThisRun.add(hash);
@@ -186,20 +196,34 @@ export async function runTriageIntake(
     };
 
     if (TEXT_EXTENSIONS.has(ext)) {
-      writeIntakeEntry(root, {
+      manifest.write({
         ...baseEntry,
         kind: 'text',
         classifiedType: 'text',
         status: 'done',
       });
+      checkpoint();
       summary.processedCount++;
       summary.byType.text = (summary.byType.text ?? 0) + 1;
-      continue;
+      return;
     }
 
     if (IMAGE_EXTENSIONS.has(ext)) {
       try {
-        const result = await visionPool(() => classifyImageDetailed(filePath));
+        let classification = classifications.get(hash);
+        if (!classification) {
+          classification = visionPool(() => classifyImageDetailed(filePath));
+          classifications.set(hash, classification);
+        }
+        const result = await classification;
+        const completed = manifest.findByHash(hash);
+        if (completed && completed.status === 'done' && completed.sourcePath !== rel) {
+          manifest.write({ ...completed, sourcePath: rel, batch, isDup: true, classifiedAt: new Date().toISOString() });
+          checkpoint();
+          summary.dupCount++;
+          summary.byType[completed.classifiedType] = (summary.byType[completed.classifiedType] ?? 0) + 1;
+          return;
+        }
         if (visionConfigured && result.source === 'aspect-ratio') {
           summary.visionFallbackCount++;
         }
@@ -213,37 +237,47 @@ export async function runTriageIntake(
           : result.kind === 'text-doc'
             ? 'doc-photo'
             : 'exhibit-photo';
-        writeIntakeEntry(root, {
+        manifest.write({
           ...baseEntry,
           kind: 'image',
           classifiedType,
           confidence: result.confidence,
           status: 'done',
         });
+        checkpoint();
         summary.processedCount++;
         summary.byType[classifiedType] = (summary.byType[classifiedType] ?? 0) + 1;
       } catch (err) {
-        writeIntakeEntry(root, {
+        manifest.write({
           ...baseEntry,
           kind: 'image',
           classifiedType: 'unsure',
           status: 'failed',
           error: (err as Error).message,
         });
+        checkpoint();
         summary.failedCount++;
       }
-      continue;
+      return;
     }
 
-    writeIntakeEntry(root, {
+    manifest.write({
       ...baseEntry,
       kind: 'unknown',
       classifiedType: 'unsure',
       status: 'failed',
       error: 'unsupported extension',
     });
+    checkpoint();
     summary.failedCount++;
-  }
+  };
+
+  // Hash/dedup decisions remain ordered; classification itself is safely
+  // parallel because workers only mutate the in-memory manifest session.
+  // Hash results preserve walk order, so the first path for a hash remains
+  // canonical even though image classification below runs concurrently.
+  await Promise.all(hashResults.map(({ filePath, hash }) => hash ? processFile(filePath, hash) : Promise.resolve()));
+  manifest.flush();
 
   return summary;
 }

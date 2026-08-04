@@ -27,6 +27,46 @@ describe('classifyImage', () => {
     expect(result).toBe('text-doc');
   });
 
+  it('fast-paths extreme document geometry without Vision', async () => {
+    const file = path.join(os.tmpdir(), `classify-fast-doc-${Date.now()}.png`);
+    const buf = Buffer.alloc(24);
+    buf[0] = 0x89; buf[1] = 0x50; buf[2] = 0x4e; buf[3] = 0x47;
+    buf.writeUInt32BE(1000, 16);
+    buf.writeUInt32BE(2500, 20);
+    await fs.promises.writeFile(file, buf);
+    const originalUrl = process.env.CIC_INGESTION_URL;
+    process.env.CIC_INGESTION_URL = 'http://vision.test';
+    global.fetch = jest.fn();
+    try {
+      await expect(classifyImageDetailed(file)).resolves.toEqual({ kind: 'text-doc', source: 'aspect-ratio' });
+      expect(global.fetch).not.toHaveBeenCalled();
+    } finally {
+      if (originalUrl === undefined) delete process.env.CIC_INGESTION_URL;
+      else process.env.CIC_INGESTION_URL = originalUrl;
+      await fs.promises.unlink(file);
+    }
+  });
+
+  it('fast-paths extreme landscape geometry as photo without Vision', async () => {
+    const file = path.join(os.tmpdir(), `classify-fast-photo-${Date.now()}.png`);
+    const buf = Buffer.alloc(24);
+    buf[0] = 0x89; buf[1] = 0x50; buf[2] = 0x4e; buf[3] = 0x47;
+    buf.writeUInt32BE(3000, 16);
+    buf.writeUInt32BE(1000, 20);
+    await fs.promises.writeFile(file, buf);
+    const originalUrl = process.env.CIC_INGESTION_URL;
+    process.env.CIC_INGESTION_URL = 'http://vision.test';
+    global.fetch = jest.fn();
+    try {
+      await expect(classifyImageDetailed(file)).resolves.toEqual({ kind: 'photo', source: 'aspect-ratio' });
+      expect(global.fetch).not.toHaveBeenCalled();
+    } finally {
+      if (originalUrl === undefined) delete process.env.CIC_INGESTION_URL;
+      else process.env.CIC_INGESTION_URL = originalUrl;
+      await fs.promises.unlink(file);
+    }
+  });
+
   it('falls back to photo for formats/files it cannot measure', async () => {
     const result = await classifyImage(path.join(fixturesDir, 'photo-empty.bin'));
     expect(result).toBe('photo');

@@ -112,7 +112,14 @@ describe('runTriageIntake', () => {
 
     expect(entries).toHaveLength(1); // same hash -> same manifest key
     expect(classifySpy).toHaveBeenCalledTimes(1);
-    expect(manifest.entries[hash].isDup).toBe(true);
+    // Canonical entry stays isDup: false and keeps its original sourcePath --
+    // a dup write must never overwrite the sole record for a hash. The
+    // second path is recorded separately so a `!isDup` filter doesn't drop it.
+    expect(manifest.entries[hash].isDup).toBe(false);
+    // Canonical path is deterministic after the explicit walk sort; duplicate
+    // path is retained without creating a second manifest entry.
+    expect(manifest.entries[hash].sourcePath).toBe('intake/mfm/photo1-copy.png');
+    expect(manifest.entries[hash].dupPaths).toEqual(['intake/mfm/photo1.png']);
     expect(summary.dupCount).toBe(1);
     expect(summary.processedCount).toBe(1);
     expect(summary.skippedCount).toBe(0);
@@ -267,5 +274,41 @@ describe('runTriageIntake', () => {
     } finally {
       mockSymlinkPath = null;
     }
+  });
+
+  it('classifies independent images concurrently up to the vision pool limit', async () => {
+    const root = makeRoot();
+    const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    for (let i = 0; i < 8; i++) {
+      const bytes = Buffer.from(pngBytes);
+      bytes[7] = i;
+      writeIntakeFile(root, 'mfm', `photo-${i}.png`, bytes);
+    }
+
+    let active = 0;
+    let maxActive = 0;
+    jest.spyOn(classifyModule, 'classifyImageDetailed').mockImplementation(async () => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      active--;
+      return { kind: 'photo', source: 'vision', confidence: 0.9 };
+    });
+
+    const summary = await runTriageIntake(root, {});
+    expect(summary.processedCount).toBe(8);
+    expect(maxActive).toBeGreaterThan(1);
+  });
+
+  it('flushes a large run into one complete manifest without losing entries', async () => {
+    const root = makeRoot();
+    for (let i = 0; i < 205; i++) writeIntakeFile(root, 'old-chats', `export-${i}.md`, `text-${i}`);
+
+    const summary = await runTriageIntake(root, {});
+    const manifest = readIntakeManifest(root);
+
+    expect(summary.processedCount).toBe(205);
+    expect(Object.keys(manifest.entries)).toHaveLength(205);
+    expect(fs.existsSync(path.join(root, 'intake-manifest.json'))).toBe(true);
   });
 });

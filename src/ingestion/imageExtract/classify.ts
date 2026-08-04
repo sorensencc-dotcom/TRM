@@ -22,6 +22,9 @@ const DOCUMENT_LABEL_PATTERNS = DOCUMENT_LABEL_KEYWORDS.map(
   (kw) => new RegExp(`\\b${kw}s?\\b`, 'i')
 );
 const LABEL_CONFIDENCE_THRESHOLD = 0.5;
+const FAST_DOCUMENT_ASPECT_RATIO = 2;
+const FAST_PHOTO_ASPECT_RATIO = 0.5;
+const IMAGE_HEADER_BYTES = 64 * 1024;
 
 /**
  * Which path produced a classification, so callers can see silent degradation.
@@ -63,11 +66,24 @@ export async function classifyImageDetailed(
   // reports as 'vision' -- it must not inflate any fallback/degradation count.
   if (opts?.kind) return { kind: opts.kind, source: 'vision' };
 
-  const buffer = await fs.promises.readFile(filePath);
+  // Read only enough bytes to inspect common image headers. This avoids
+  // loading large obvious scans/photos into memory or sending them to Vision.
+  const header = await readHeader(filePath);
+  const headerDims = readDimensions(header);
+  if (headerDims) {
+    const aspectRatio = headerDims.height / headerDims.width;
+    if (aspectRatio >= FAST_DOCUMENT_ASPECT_RATIO) {
+      return { kind: 'text-doc', source: 'aspect-ratio' };
+    }
+    if (aspectRatio <= FAST_PHOTO_ASPECT_RATIO) {
+      return { kind: 'photo', source: 'aspect-ratio' };
+    }
+  }
 
   const cicIngestionUrl = process.env.CIC_INGESTION_URL;
   if (cicIngestionUrl) {
     try {
+      const buffer = await fs.promises.readFile(filePath);
       const analyzer = new ImageAnalyzer(cicIngestionUrl, 5000, 1);
       const result = await analyzer.extract(buffer);
       // ImageAnalyzer.extract() swallows network/service errors internally and
@@ -101,7 +117,7 @@ export async function classifyImageDetailed(
     }
   }
 
-  const dims = readDimensions(buffer);
+  const dims = headerDims;
   if (!dims || dims.width <= 0) {
     // Dimensions unparseable (HEIC/webp/gif/corrupt). 'photo' is the historical
     // default and stays the default for classifyImage's contract, but
@@ -111,6 +127,17 @@ export async function classifyImageDetailed(
 
   const aspectRatio = dims.height / dims.width;
   return { kind: aspectRatio >= 1.3 ? 'text-doc' : 'photo', source: 'aspect-ratio' };
+}
+
+async function readHeader(filePath: string): Promise<Buffer> {
+  const handle = await fs.promises.open(filePath, 'r');
+  try {
+    const header = Buffer.alloc(IMAGE_HEADER_BYTES);
+    const { bytesRead } = await handle.read(header, 0, IMAGE_HEADER_BYTES, 0);
+    return header.subarray(0, bytesRead);
+  } finally {
+    await handle.close();
+  }
 }
 
 /**
