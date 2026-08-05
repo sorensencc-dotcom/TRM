@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { writeFileAtomic, writeFileExclusive } from '../../src/core/atomicWrite';
+import { writeFileAtomic, writeFileExclusive, copyFileAtomic } from '../../src/core/atomicWrite';
 
 describe('atomicWrite', () => {
   let dir: string;
@@ -67,5 +67,42 @@ describe('atomicWrite', () => {
     }
     const entries = fs.readdirSync(dir);
     expect(entries).toEqual(['report.md']);
+  });
+
+  it('copyFileAtomic copies file contents and creates parent dirs', () => {
+    const src = path.join(dir, 'source.bin');
+    fs.writeFileSync(src, Buffer.from([1, 2, 3, 4]));
+    const dest = path.join(dir, 'nested', 'dest.bin');
+
+    copyFileAtomic(src, dest);
+
+    expect(fs.readFileSync(dest)).toEqual(Buffer.from([1, 2, 3, 4]));
+  });
+
+  it('copyFileAtomic leaves no temp file behind on success', () => {
+    const src = path.join(dir, 'source.bin');
+    fs.writeFileSync(src, 'hello');
+    const dest = path.join(dir, 'dest.bin');
+
+    copyFileAtomic(src, dest);
+
+    const entries = fs.readdirSync(dir);
+    expect(entries.sort()).toEqual(['dest.bin', 'source.bin']);
+  });
+
+  it('copyFileAtomic never leaves a partial file at the destination name when the copy throws', () => {
+    const src = path.join(dir, 'source.bin');
+    fs.writeFileSync(src, 'hello');
+    const dest = path.join(dir, 'dest.bin');
+    const copySpy = jest.spyOn(fs, 'copyFileSync').mockImplementation(() => {
+      throw new Error('simulated disk-full mid-copy');
+    });
+
+    try {
+      expect(() => copyFileAtomic(src, dest)).toThrow('simulated disk-full mid-copy');
+      expect(fs.existsSync(dest)).toBe(false);
+    } finally {
+      copySpy.mockRestore();
+    }
   });
 });

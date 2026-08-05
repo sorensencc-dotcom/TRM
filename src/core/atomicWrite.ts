@@ -22,3 +22,10 @@ export function writeFileExclusive(file: string, contents: string): void {
     fs.unlinkSync(tmp);
   }
 }
+
+export function copyFileAtomic(srcPath: string, destPath: string): void {
+  fs.mkdirSync(path.dirname(destPath), { recursive: true });
+  const tmp = tempPathFor(destPath);
+  fs.copyFileSync(srcPath, tmp);
+  fs.renameSync(tmp, destPath);
+}
