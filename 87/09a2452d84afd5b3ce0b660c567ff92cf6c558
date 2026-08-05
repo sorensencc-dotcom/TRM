@@ -1,0 +1,29 @@
+tests/cli/commands/routeIntake.test.ts
+  s_be59d5492b9b90::t_a3e50ac99a3081 80,97,107,118,135,148,158,193
+  s_be59d5492b9b90::t_ef7d89314a32b0 335,337
+  s_be59d5492b9b90::t_1984c0e5a4b788 162,164-166,169-177,179-185
+  s_be59d5492b9b90::t_58a35f06b5e571 178
+  s_be59d5492b9b90::t_f908ca40951d45 360-363
+  s_be59d5492b9b90::t_8da1486e27a5a7 69-73
+  s_be59d5492b9b90::t_7b63f6a529fc9e 210,232,250,267,284,306,323,352
+  s_be59d5492b9b90::t_46a4a4101c1677 346-348
+src/cli/commands/routeIntake.ts
+  s_be59d5492b9b90::t_c309426104a032 228
+  s_be59d5492b9b90::t_2174d1363471e0 53-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "8709a2452d84afd5b3ce0b660c567ff92cf6c558",
+  "prompts": {},
+  "sessions": {
+    "s_be59d5492b9b90": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "17f40157-001a-4f15-b3b9-af17f31e1644",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
