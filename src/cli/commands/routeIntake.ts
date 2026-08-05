@@ -163,8 +163,8 @@ export async function runRouteIntake(root: string, opts: RouteIntakeOptions): Pr
   }
 
   acquireLock(lockPath(root), runId);
+  let stagedEntries: RouteReportEntry[] = [];
   try {
-    const stagedEntries: RouteReportEntry[] = [];
     const basenamesUsed = new Map<string, Set<string>>(); // topic -> set of basenames already staged this run
 
     for (const entry of entries) {
@@ -209,18 +209,22 @@ export async function runRouteIntake(root: string, opts: RouteIntakeOptions): Pr
       entries: stagedEntries,
     });
   } catch (err) {
-    writeAndReturn({
-      reportVersion: 1,
-      generatedAt: new Date().toISOString(),
-      applied: false,
-      runStatus: 'failed',
-      runId,
-      totalConsidered: entries.length,
-      byTopic,
-      ambiguousCount,
-      entries,
-      error: (err as Error).message,
-    });
+    try {
+      writeAndReturn({
+        reportVersion: 1,
+        generatedAt: new Date().toISOString(),
+        applied: stagedEntries.some((e) => e.status === 'staged'),
+        runStatus: 'failed',
+        runId,
+        totalConsidered: entries.length,
+        byTopic,
+        ambiguousCount,
+        entries: stagedEntries.length > 0 ? stagedEntries : entries,
+        error: (err as Error).message,
+      });
+    } catch {
+      // best-effort: the original error below is what matters if this write also fails
+    }
     throw err;
   } finally {
     releaseLock(lockPath(root));

@@ -31,7 +31,7 @@ jest.mock('node:fs', () => {
 import { runRouteIntake } from '../../../src/cli/commands/routeIntake';
 import { openIntakeManifest, IntakeEntry } from '../../../src/core/intakeManifest';
 import { createNode } from '../../../src/core/topicNode';
-import { acquireLock } from '../../../src/sync/lock';
+import { acquireLock, LockConflictError } from '../../../src/sync/lock';
 
 function makeRoot(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'trm-routeintake-'));
@@ -194,6 +194,8 @@ describe('runRouteIntake (--apply)', () => {
     const report = JSON.parse(fs.readFileSync(path.join(root, 'intake-routing-report.json'), 'utf-8'));
     expect(report.applied).toBe(true);
     expect(report.entries[0]).toMatchObject({ status: 'staged', stagedPath });
+    // lock released on the happy path
+    expect(fs.existsSync(path.join(root, 'intake-routing.lock'))).toBe(false);
   });
 
   it('never creates a staging directory for unsorted files', async () => {
@@ -295,7 +297,9 @@ describe('runRouteIntake (--apply)', () => {
     writeManifestEntry(root, { hash: 'h1', sourcePath: 'intake/dump/Cuba Trip/photo1.jpg' });
     acquireLock(path.join(root, 'intake-routing.lock'), 'other-run');
 
-    await expect(runRouteIntake(root, { apply: true })).rejects.toThrow(/lock/i);
+    await expect(runRouteIntake(root, { apply: true })).rejects.toThrow(LockConflictError);
+    // the conflicting call must not have stolen/deleted the other run's lock
+    expect(fs.existsSync(path.join(root, 'intake-routing.lock'))).toBe(true);
   });
 
   it('writes a runStatus: "failed" report and releases the lock on an unexpected crash inside the lock-held region', async () => {
