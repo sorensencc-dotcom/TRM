@@ -82,7 +82,7 @@ function classifyEntries(root: string, entries: IntakeEntry[], config: ReturnTyp
 }
 
 function summarize(entries: RouteReportEntry[]): { byTopic: Record<string, number>; ambiguousCount: number } {
-  const byTopic: Record<string, number> = {};
+  const byTopic: Record<string, number> = { unsorted: 0 };
   let ambiguousCount = 0;
   for (const entry of entries) {
     const key = entry.topic ?? 'unsorted';

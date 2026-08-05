@@ -55,6 +55,16 @@ describe('runRouteIntake (dry-run)', () => {
     expect(fs.existsSync(path.join(root, 'topics'))).toBe(false);
   });
 
+  it('always includes an unsorted key in byTopic, even when every entry matches a real topic', async () => {
+    const root = makeRoot();
+    writeConfig(root, CONFIG);
+    writeManifestEntry(root, { hash: 'h1', sourcePath: 'intake/dump/Cuba Trip/photo1.jpg' });
+
+    const summary = await runRouteIntake(root, {});
+
+    expect(summary.byTopic.unsorted).toBe(0);
+  });
+
   it('reports no match as unsorted, not ambiguous', async () => {
     const root = makeRoot();
     writeConfig(root, CONFIG);
