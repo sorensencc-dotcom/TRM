@@ -33,6 +33,7 @@ jest.mock('node:fs', () => {
 import { runTriageIntake } from '../../../src/cli/commands/triageIntake';
 import { readIntakeManifest } from '../../../src/core/intakeManifest';
 import * as classifyModule from '../../../src/ingestion/imageExtract/classify';
+import * as fileConvertModule from '../../../src/ingestion/fileConvert';
 
 function makeRoot(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'trm-triage-'));
@@ -310,5 +311,81 @@ describe('runTriageIntake', () => {
     expect(summary.processedCount).toBe(205);
     expect(Object.keys(manifest.entries)).toHaveLength(205);
     expect(fs.existsSync(path.join(root, 'intake-manifest.json'))).toBe(true);
+  });
+
+  it('classifies a valid PDF as classifiedType "text" via convertFileToText', async () => {
+    const root = makeRoot();
+    writeIntakeFile(root, 'docs', 'report.pdf', Buffer.from('%PDF-1.4 fake'));
+    const convertSpy = jest
+      .spyOn(fileConvertModule, 'convertFileToText')
+      .mockResolvedValueOnce('extracted pdf text');
+
+    const summary = await runTriageIntake(root, {});
+    const manifest = readIntakeManifest(root);
+    const entry = Object.values(manifest.entries)[0];
+
+    expect(convertSpy).toHaveBeenCalledWith(expect.stringContaining('report.pdf'));
+    expect(entry.classifiedType).toBe('text');
+    expect(entry.status).toBe('done');
+    expect(summary.processedCount).toBe(1);
+    expect(summary.failedCount).toBe(0);
+  });
+
+  it('classifies a valid DOCX as classifiedType "text" via convertFileToText', async () => {
+    const root = makeRoot();
+    writeIntakeFile(root, 'docs', 'notes.docx', Buffer.from('fake docx bytes'));
+    jest.spyOn(fileConvertModule, 'convertFileToText').mockResolvedValueOnce('extracted docx text');
+
+    const summary = await runTriageIntake(root, {});
+    const manifest = readIntakeManifest(root);
+    const entry = Object.values(manifest.entries)[0];
+
+    expect(entry.classifiedType).toBe('text');
+    expect(entry.status).toBe('done');
+    expect(summary.processedCount).toBe(1);
+  });
+
+  it('marks a corrupt PDF as failed with the parser error preserved', async () => {
+    const root = makeRoot();
+    writeIntakeFile(root, 'docs', 'corrupt.pdf', Buffer.from('not a real pdf'));
+    jest
+      .spyOn(fileConvertModule, 'convertFileToText')
+      .mockRejectedValueOnce(new Error('bad XRef entry'));
+
+    const summary = await runTriageIntake(root, {});
+    const manifest = readIntakeManifest(root);
+    const entry = Object.values(manifest.entries)[0];
+
+    expect(entry.status).toBe('failed');
+    expect(entry.classifiedType).toBe('unsure');
+    expect(entry.error).toBe('bad XRef entry');
+    expect(summary.failedCount).toBe(1);
+    expect(summary.processedCount).toBe(0);
+  });
+
+  it('marks a scanned PDF with no extractable text as failed (validation failure)', async () => {
+    const root = makeRoot();
+    writeIntakeFile(root, 'docs', 'scanned.pdf', Buffer.from('scanned image pdf'));
+    jest
+      .spyOn(fileConvertModule, 'convertFileToText')
+      .mockRejectedValueOnce(new Error('trm ingest --file: "scanned.pdf" produced no extractable text'));
+
+    const summary = await runTriageIntake(root, {});
+    const manifest = readIntakeManifest(root);
+    const entry = Object.values(manifest.entries)[0];
+
+    expect(entry.status).toBe('failed');
+    expect(entry.error).toBe('trm ingest --file: "scanned.pdf" produced no extractable text');
+    expect(summary.failedCount).toBe(1);
+  });
+
+  it('does not call convertFileToText for plain text files', async () => {
+    const root = makeRoot();
+    writeIntakeFile(root, 'docs', 'plain.txt', 'plain text contents');
+    const convertSpy = jest.spyOn(fileConvertModule, 'convertFileToText');
+
+    await runTriageIntake(root, {});
+
+    expect(convertSpy).not.toHaveBeenCalled();
   });
 });

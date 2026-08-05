@@ -1,15 +1,22 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { hashFile } from '../../core/contentHash';
-import { visionPool } from '../../core/concurrency';
+import { visionPool, docPool } from '../../core/concurrency';
 import {
   IntakeEntry,
   IntakeType,
   openIntakeManifest,
 } from '../../core/intakeManifest';
 import { classifyImageDetailed } from '../../ingestion/imageExtract/classify';
+import { convertFileToText } from '../../ingestion/fileConvert';
 
+// Zero-cost text classification: extension check only, no file read.
 const TEXT_EXTENSIONS = new Set(['.txt', '.md', '.json']);
+// Extraction-backed text classification: must run convertFileToText to
+// confirm the document actually yields text before classifying it 'text'.
+// Kept separate from TEXT_EXTENSIONS so a future edit can't accidentally
+// route .txt/.md/.json through real extraction (adds unnecessary I/O cost).
+const EXTRACTABLE_TEXT_EXTENSIONS = new Set(['.pdf', '.docx', '.epub']);
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic']);
 
 export interface TriageIntakeOptions {
@@ -205,6 +212,33 @@ export async function runTriageIntake(
       checkpoint();
       summary.processedCount++;
       summary.byType.text = (summary.byType.text ?? 0) + 1;
+      return;
+    }
+
+    if (EXTRACTABLE_TEXT_EXTENSIONS.has(ext)) {
+      try {
+        await docPool(() => convertFileToText(filePath));
+        manifest.write({
+          ...baseEntry,
+          kind: 'text',
+          classifiedType: 'text',
+          status: 'done',
+        });
+        checkpoint();
+        summary.processedCount++;
+        summary.byType.text = (summary.byType.text ?? 0) + 1;
+      } catch (err) {
+        const errMessage = err instanceof Error ? err.message : String(err);
+        manifest.write({
+          ...baseEntry,
+          kind: 'text',
+          classifiedType: 'unsure',
+          status: 'failed',
+          error: errMessage,
+        });
+        checkpoint();
+        summary.failedCount++;
+      }
       return;
     }
 
