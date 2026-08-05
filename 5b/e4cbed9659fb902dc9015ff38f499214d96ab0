@@ -1,0 +1,22 @@
+docs/superpowers/plans/2026-08-05-route-intake-topic-classification.md
+  s_be59d5492b9b90::t_487210286eb180 1-760,762-893,930-1169
+  s_be59d5492b9b90::t_c3f3548ed2ec00 894-906,916-929
+  s_be59d5492b9b90::t_d8abef23f96c4e 907-915
+  s_be59d5492b9b90::t_2c1b8ca37a3f6f 761
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "5be4cbed9659fb902dc9015ff38f499214d96ab0",
+  "prompts": {},
+  "sessions": {
+    "s_be59d5492b9b90": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "17f40157-001a-4f15-b3b9-af17f31e1644",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
