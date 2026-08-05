@@ -12,6 +12,7 @@ import { runFeedbackStats } from './commands/feedbackStats';
 import { runReport } from './commands/report';
 import { runSyncTreatment } from './commands/syncTreatment';
 import { runTriageIntake } from './commands/triageIntake';
+import { runRouteIntake } from './commands/routeIntake';
 import { assertSafeRoot } from '../core/rootSafety';
 import { LockConflictError, LockUnrecoverableError } from '../sync/lock';
 
@@ -172,6 +173,25 @@ program
   .action(async (opts) => {
     const summary = await runTriageIntake(root, opts);
     console.log(JSON.stringify(summary, null, 2));
+  });
+
+program
+  .command('route-intake')
+  .option('--apply', 'stage matched files into per-topic staging directories; default is a dry-run report only')
+  .option('--config <path>', 'override the default config/topic-routing.json')
+  .action(async (opts) => {
+    try {
+      const summary = await runRouteIntake(root, { apply: opts.apply, configPath: opts.config });
+      console.log(JSON.stringify(summary, null, 2));
+      if (summary.runStatus !== 'completed') process.exitCode = 1;
+    } catch (err) {
+      if (err instanceof LockConflictError || err instanceof LockUnrecoverableError) {
+        console.error(err.message);
+        process.exitCode = 1;
+      } else {
+        throw err;
+      }
+    }
   });
 
 program.parse();
