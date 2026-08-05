@@ -1,0 +1,22 @@
+src/core/concurrency.ts
+  s_be59d5492b9b90::t_c01e7f0172a459 12
+tests/core/concurrency.test.ts
+  s_be59d5492b9b90::t_1cacdd8fbe96d2 2
+  s_be59d5492b9b90::t_57d04975b44457 71-87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "a4f8a4096ac7590b297b7e187069324343984d36",
+  "prompts": {},
+  "sessions": {
+    "s_be59d5492b9b90": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "17f40157-001a-4f15-b3b9-af17f31e1644",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
