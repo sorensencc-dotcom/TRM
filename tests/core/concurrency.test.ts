@@ -1,5 +1,5 @@
 describe('concurrency', () => {
-  const ENV_KEYS = ['TRM_VISION_CONCURRENCY', 'TRM_CLAUDE_CONCURRENCY'];
+  const ENV_KEYS = ['TRM_VISION_CONCURRENCY', 'TRM_CLAUDE_CONCURRENCY', 'TRM_DOC_CONCURRENCY'];
   const originalEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
@@ -67,5 +67,22 @@ describe('concurrency', () => {
 
     const maxActive = await trackConcurrency(visionPool, 10);
     expect(maxActive).toBe(4);
+  });
+
+  it('docPool defaults to a concurrency of 4 when no env var is set', async () => {
+    delete process.env.TRM_DOC_CONCURRENCY;
+    const { docPool } = require('../../src/core/concurrency');
+
+    const maxActive = await trackConcurrency(docPool, 10);
+    expect(maxActive).toBe(4);
+  });
+
+  it('bounds concurrent execution to the configured TRM_DOC_CONCURRENCY limit', async () => {
+    process.env.TRM_DOC_CONCURRENCY = '2';
+    const { docPool } = require('../../src/core/concurrency');
+
+    const maxActive = await trackConcurrency(docPool, 10);
+    expect(maxActive).toBeLessThanOrEqual(2);
+    expect(maxActive).toBeGreaterThan(0);
   });
 });
