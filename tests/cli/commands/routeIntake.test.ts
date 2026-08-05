@@ -66,13 +66,18 @@ const CONFIG = {
   'willow-run': ['willow run'],
 };
 
+// The default config path now resolves relative to the TOOL (the repo's own
+// config/topic-routing.json), not the vault root -- so any test that means to
+// exercise its own writeConfig() fixture must say so explicitly.
+const FIXTURE_CONFIG = { configPath: 'config/topic-routing.json' } as const;
+
 describe('runRouteIntake (dry-run)', () => {
   it('classifies a single unambiguous match and writes a would-stage report entry', async () => {
     const root = makeRoot();
     writeConfig(root, CONFIG);
     writeManifestEntry(root, { hash: 'h1', sourcePath: 'intake/dump/Cuba Trip/photo1.jpg' });
 
-    const summary = await runRouteIntake(root, {});
+    const summary = await runRouteIntake(root, { ...FIXTURE_CONFIG });
 
     expect(summary.runStatus).toBe('completed');
     expect(summary.byTopic.cuba).toBe(1);
@@ -89,7 +94,7 @@ describe('runRouteIntake (dry-run)', () => {
     writeConfig(root, CONFIG);
     writeManifestEntry(root, { hash: 'h1', sourcePath: 'intake/dump/Cuba Trip/photo1.jpg' });
 
-    const summary = await runRouteIntake(root, {});
+    const summary = await runRouteIntake(root, { ...FIXTURE_CONFIG });
 
     expect(summary.byTopic.unsorted).toBe(0);
   });
@@ -99,7 +104,7 @@ describe('runRouteIntake (dry-run)', () => {
     writeConfig(root, CONFIG);
     writeManifestEntry(root, { hash: 'h1', sourcePath: 'intake/dump/Downloads/random.pdf' });
 
-    const summary = await runRouteIntake(root, {});
+    const summary = await runRouteIntake(root, { ...FIXTURE_CONFIG });
 
     expect(summary.byTopic.unsorted).toBe(1);
     expect(summary.ambiguousCount).toBe(0);
@@ -110,7 +115,7 @@ describe('runRouteIntake (dry-run)', () => {
     writeConfig(root, { 'topic-a': ['amber gulch'], 'topic-b': ['coral ridge'] });
     writeManifestEntry(root, { hash: 'h1', sourcePath: 'intake/dump/Amber Gulch Coral Ridge/file.jpg' });
 
-    const summary = await runRouteIntake(root, {});
+    const summary = await runRouteIntake(root, { ...FIXTURE_CONFIG });
 
     expect(summary.byTopic.unsorted).toBe(1);
     expect(summary.ambiguousCount).toBe(1);
@@ -127,7 +132,7 @@ describe('runRouteIntake (dry-run)', () => {
       dupPaths: ['intake/dump/Cuba Trip/scan1-copy.jpg'],
     });
 
-    const summary = await runRouteIntake(root, {});
+    const summary = await runRouteIntake(root, { ...FIXTURE_CONFIG });
 
     expect(summary.totalConsidered).toBe(2);
     const report = JSON.parse(fs.readFileSync(path.join(root, 'intake-routing-report.json'), 'utf-8'));
@@ -140,7 +145,7 @@ describe('runRouteIntake (dry-run)', () => {
     writeConfig(root, CONFIG);
     writeManifestEntry(root, { hash: 'h1', sourcePath: 'intake/dump/Cuba Trip/bad.pdf', status: 'failed', error: 'unsupported extension' });
 
-    const summary = await runRouteIntake(root, {});
+    const summary = await runRouteIntake(root, { ...FIXTURE_CONFIG });
 
     expect(summary.totalConsidered).toBe(0);
   });
@@ -150,16 +155,34 @@ describe('runRouteIntake (dry-run)', () => {
     writeConfig(root, CONFIG);
     writeManifestEntry(root, { hash: 'h1', sourcePath: '../outside/evil.jpg' });
 
-    await expect(runRouteIntake(root, {})).rejects.toThrow(/root|escape|outside/i);
+    await expect(runRouteIntake(root, { ...FIXTURE_CONFIG })).rejects.toThrow(/root|escape|outside/i);
     expect(fs.existsSync(path.join(root, 'intake-routing-report.json'))).toBe(false);
   });
 
-  it('throws before reading the manifest when config is missing', async () => {
+  it('throws before reading the manifest when an explicitly-configured config is missing', async () => {
     const root = makeRoot();
-    // no config written
+    // no config written -- and an explicit override, since the DEFAULT config now
+    // resolves to the tool's own shipped config/topic-routing.json (which always
+    // exists), not to a vault-relative path.
     writeManifestEntry(root, { hash: 'h1', sourcePath: 'intake/dump/Cuba Trip/photo1.jpg' });
 
-    await expect(runRouteIntake(root, {})).rejects.toThrow(/topic-routing/i);
+    await expect(runRouteIntake(root, { configPath: 'config/topic-routing.json' })).rejects.toThrow(/topic-routing/i);
+  });
+
+  it('falls back to the tool\'s own shipped config when no configPath is given and the vault has no config/ dir', async () => {
+    const root = makeRoot();
+    // deliberately NO writeConfig() call and no config/ directory at all
+    expect(fs.existsSync(path.join(root, 'config'))).toBe(false);
+    writeManifestEntry(root, { hash: 'h1', sourcePath: 'intake/dump/Willow Run/scan1.jpg' });
+
+    const summary = await runRouteIntake(root, { /* no configPath: exercise the tool-relative default */ });
+
+    expect(summary.runStatus).toBe('completed');
+    // proves the REAL shipped config loaded (willow-run is a seed-config topic,
+    // not present in this test file's CONFIG fixture)
+    expect(summary.byTopic['willow-run']).toBe(1);
+    const report = JSON.parse(fs.readFileSync(path.join(root, 'intake-routing-report.json'), 'utf-8'));
+    expect(report.entries[0]).toMatchObject({ topic: 'willow-run', status: 'would-stage' });
   });
 
   it('matchedKeyword preserves the config spelling, not the normalized form', async () => {
@@ -167,7 +190,7 @@ describe('runRouteIntake (dry-run)', () => {
     writeConfig(root, { 'michigan-flight-museum': ['Michigan Flight Museum'] });
     writeManifestEntry(root, { hash: 'h1', sourcePath: 'intake/dump/michigan-flight-museum/photo1.jpg' });
 
-    await runRouteIntake(root, {});
+    await runRouteIntake(root, { ...FIXTURE_CONFIG });
 
     const report = JSON.parse(fs.readFileSync(path.join(root, 'intake-routing-report.json'), 'utf-8'));
     expect(report.entries[0].matchedKeyword).toBe('Michigan Flight Museum');
@@ -184,7 +207,7 @@ describe('runRouteIntake (--apply)', () => {
     fs.writeFileSync(path.join(srcDir, 'photo1.jpg'), 'bytes');
     writeManifestEntry(root, { hash: 'h1', sourcePath: 'intake/dump/Cuba Trip/photo1.jpg' });
 
-    const summary = await runRouteIntake(root, { apply: true, runId: 'test-run-1' });
+    const summary = await runRouteIntake(root, { ...FIXTURE_CONFIG, apply: true, runId: 'test-run-1' });
 
     expect(summary.runStatus).toBe('completed');
     const stagedPath = path.join(root, 'topics', 'charlie', 'cuba', '_staging-intake-test-run-1', 'photo1.jpg');
@@ -206,7 +229,7 @@ describe('runRouteIntake (--apply)', () => {
     fs.writeFileSync(path.join(srcDir, 'random.pdf'), 'bytes');
     writeManifestEntry(root, { hash: 'h1', sourcePath: 'intake/dump/Downloads/random.pdf' });
 
-    await runRouteIntake(root, { apply: true, runId: 'test-run-2' });
+    await runRouteIntake(root, { ...FIXTURE_CONFIG, apply: true, runId: 'test-run-2' });
 
     expect(fs.existsSync(path.join(root, 'topics'))).toBe(false);
   });
@@ -224,7 +247,7 @@ describe('runRouteIntake (--apply)', () => {
     writeManifestEntry(root, { hash: 'h1', sourcePath: 'intake/dump/Cuba Trip/A/photo.jpg' });
     writeManifestEntry(root, { hash: 'h2', sourcePath: 'intake/dump/Cuba Trip/B/photo.jpg' });
 
-    await runRouteIntake(root, { apply: true, runId: 'test-run-3' });
+    await runRouteIntake(root, { ...FIXTURE_CONFIG, apply: true, runId: 'test-run-3' });
 
     const stagingDir = path.join(root, 'topics', 'charlie', 'cuba', '_staging-intake-test-run-3');
     const staged = fs.readdirSync(stagingDir);
@@ -241,7 +264,7 @@ describe('runRouteIntake (--apply)', () => {
     fs.writeFileSync(path.join(srcDir, 'photo1.jpg'), 'bytes');
     writeManifestEntry(root, { hash: 'h1', sourcePath: 'intake/dump/Cuba Trip/photo1.jpg' });
 
-    const summary = await runRouteIntake(root, { apply: true, runId: 'test-run-4' });
+    const summary = await runRouteIntake(root, { ...FIXTURE_CONFIG, apply: true, runId: 'test-run-4' });
 
     expect(summary.runStatus).toBe('preflight-failed');
     expect(fs.existsSync(path.join(root, 'topics', 'charlie', 'cuba'))).toBe(false);
@@ -258,7 +281,7 @@ describe('runRouteIntake (--apply)', () => {
     // note: no file written to disk for this sourcePath
     writeManifestEntry(root, { hash: 'h1', sourcePath: 'intake/dump/Cuba Trip/gone.jpg' });
 
-    const summary = await runRouteIntake(root, { apply: true, runId: 'test-run-5' });
+    const summary = await runRouteIntake(root, { ...FIXTURE_CONFIG, apply: true, runId: 'test-run-5' });
 
     expect(summary.runStatus).toBe('completed');
     const report = JSON.parse(fs.readFileSync(path.join(root, 'intake-routing-report.json'), 'utf-8'));
@@ -280,7 +303,7 @@ describe('runRouteIntake (--apply)', () => {
     mockCopyFileThrowOnce = true;
 
     try {
-      const summary = await runRouteIntake(root, { apply: true, runId: 'test-run-6' });
+      const summary = await runRouteIntake(root, { ...FIXTURE_CONFIG, apply: true, runId: 'test-run-6' });
       expect(summary.runStatus).toBe('completed');
       const report = JSON.parse(fs.readFileSync(path.join(root, 'intake-routing-report.json'), 'utf-8'));
       const statuses = report.entries.map((e: { status: string }) => e.status).sort();
@@ -297,7 +320,7 @@ describe('runRouteIntake (--apply)', () => {
     writeManifestEntry(root, { hash: 'h1', sourcePath: 'intake/dump/Cuba Trip/photo1.jpg' });
     acquireLock(path.join(root, 'intake-routing.lock'), 'other-run');
 
-    await expect(runRouteIntake(root, { apply: true })).rejects.toThrow(LockConflictError);
+    await expect(runRouteIntake(root, { ...FIXTURE_CONFIG, apply: true })).rejects.toThrow(LockConflictError);
     // the conflicting call must not have stolen/deleted the other run's lock
     expect(fs.existsSync(path.join(root, 'intake-routing.lock'))).toBe(true);
   });
@@ -309,7 +332,9 @@ describe('runRouteIntake (--apply)', () => {
     const srcDir = path.join(root, 'intake', 'dump', 'Cuba Trip');
     fs.mkdirSync(srcDir, { recursive: true });
     fs.writeFileSync(path.join(srcDir, 'photo1.jpg'), 'bytes');
+    fs.writeFileSync(path.join(srcDir, 'photo2.jpg'), 'bytes');
     writeManifestEntry(root, { hash: 'h1', sourcePath: 'intake/dump/Cuba Trip/photo1.jpg' });
+    writeManifestEntry(root, { hash: 'h2', sourcePath: 'intake/dump/Cuba Trip/photo2.jpg' });
 
     // existsSync's per-file "does the source still exist" check sits outside
     // the per-entry try/catch (only copyFileAtomic is guarded there), so a
@@ -318,11 +343,13 @@ describe('runRouteIntake (--apply)', () => {
     // source path -- a blanket mockImplementationOnce would instead intercept
     // loadTopicRoutingConfig's own existsSync check on the config file,
     // which runs first and isn't what this test means to exercise.
-    const targetPath = path.join(srcDir, 'photo1.jpg');
+    // crash on the SECOND entry, so the report has to account for both an
+    // already-processed entry and a never-attempted one
+    const targetPath = path.join(srcDir, 'photo2.jpg');
     mockExistsSyncThrowPath = targetPath;
 
     try {
-      await expect(runRouteIntake(root, { apply: true, runId: 'test-run-7' })).rejects.toThrow('simulated unexpected fs error');
+      await expect(runRouteIntake(root, { ...FIXTURE_CONFIG, apply: true, runId: 'test-run-7' })).rejects.toThrow('simulated unexpected fs error');
     } finally {
       mockExistsSyncThrowPath = null;
     }
@@ -330,6 +357,10 @@ describe('runRouteIntake (--apply)', () => {
     const report = JSON.parse(fs.readFileSync(path.join(root, 'intake-routing-report.json'), 'utf-8'));
     expect(report.runStatus).toBe('failed');
     expect(report.error).toMatch(/simulated unexpected fs error/);
+    // every considered entry is still accounted for -- entries past the crash
+    // point must not silently vanish from the report
+    expect(report.totalConsidered).toBe(2);
+    expect(report.entries).toHaveLength(report.totalConsidered);
     // lock released despite the crash
     expect(fs.existsSync(path.join(root, 'intake-routing.lock'))).toBe(false);
   });

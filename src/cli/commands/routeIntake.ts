@@ -50,7 +50,13 @@ function reportPath(root: string): string {
 }
 
 function resolveConfigPath(root: string, configPath?: string): string {
-  return path.resolve(root, configPath ?? 'config/topic-routing.json');
+  if (configPath) return path.resolve(root, configPath);
+  // Default config ships with the tool itself, not the vault -- resolve relative to
+  // this module's own location, not the vault root. tsconfig has outDir "dist" /
+  // rootDir "src" with a 1:1 mirror, so at runtime this compiled file lives at
+  // <repo>/dist/cli/commands/routeIntake.js and the seed config lives at
+  // <repo>/config/topic-routing.json -- three levels up from __dirname.
+  return path.resolve(__dirname, '../../../config/topic-routing.json');
 }
 
 function resolvePhysicalPath(root: string, sourcePath: string): string {
@@ -219,7 +225,7 @@ export async function runRouteIntake(root: string, opts: RouteIntakeOptions): Pr
         totalConsidered: entries.length,
         byTopic,
         ambiguousCount,
-        entries: stagedEntries.length > 0 ? stagedEntries : entries,
+        entries: [...stagedEntries, ...entries.slice(stagedEntries.length)],
         error: (err as Error).message,
       });
     } catch {
