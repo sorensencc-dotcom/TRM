@@ -40,30 +40,60 @@ never calls it.
 - Add a new set: `EXTRACTABLE_TEXT_EXTENSIONS = new Set(['.pdf', '.docx', '.epub'])`.
 - In `processFile`, before the existing `TEXT_EXTENSIONS.has(ext)` branch,
   add a branch for `EXTRACTABLE_TEXT_EXTENSIONS.has(ext)`:
-  - `try`: call `await convertFileToText(filePath)`. Discard the returned
-    text (validation only — same non-storage behavior as the plain-text
-    path). On success, write `{ ...baseEntry, kind: 'text', classifiedType:
-    'text', status: 'done' }`, `checkpoint()`, `summary.processedCount++`,
-    bump `summary.byType.text`.
+  - `try`: call `await docPool(() => convertFileToText(filePath))` (see
+    Concurrency below). The extracted text is used only to validate that
+    extraction succeeds — it is intentionally not persisted. On success,
+    write `{ ...baseEntry, kind: 'text', classifiedType: 'text', status:
+    'done' }`, `checkpoint()`, `summary.processedCount++`, bump
+    `summary.byType.text`.
   - `catch`: write `{ ...baseEntry, kind: 'text', classifiedType: 'unsure',
-    status: 'failed', error: (err as Error).message }`, `checkpoint()`,
-    `summary.failedCount++`. (`convertFileToText` already throws a clear
-    message for empty-extraction and parse failures — reuse it verbatim,
-    don't wrap.)
+    status: 'failed', error: errMessage }`, `checkpoint()`,
+    `summary.failedCount++`, where `errMessage = err instanceof Error ?
+    err.message : String(err)` (defensive cast — `convertFileToText`'s
+    underlying libraries (pdf-parse, mammoth, the epub extractor) are not
+    guaranteed to always throw `Error` instances, so the unchecked `(err as
+    Error).message` cast used elsewhere in this file is not safe to copy
+    here unmodified).
+    `classifiedType: 'unsure'` on failure matches the existing convention
+    in the image-classification catch branch a few lines above (kind
+    stays what it structurally is; `classifiedType` on a `failed` entry
+    means "not successfully classified," not "wrong type guess") — kept
+    for consistency rather than introduced fresh here.
+    A successful parse that yields empty text (e.g. a scanned-image PDF
+    with no OCR layer) is not a parser crash — `convertFileToText` treats
+    it as a validation failure and throws accordingly, and it lands here
+    as `status: 'failed'` the same as any other extraction error.
 - The original `.txt/.md/.json` branch is untouched: still no read, still
-  synchronous, still zero extraction cost.
+  synchronous, still zero extraction cost. A comment is added above both
+  extension sets explaining the split (`TEXT_EXTENSIONS` = zero-cost,
+  extension-only classification; `EXTRACTABLE_TEXT_EXTENSIONS` = requires
+  running real extraction to classify) so a future contributor doesn't
+  merge them and put every `.txt` through `convertFileToText`.
 - The final `unknown`/`unsupported extension` branch is untouched and still
   catches extensionless files and any other unhandled extension.
 
 ### Concurrency
 
-`convertFileToText` for PDF/DOCX is CPU/IO work but not pooled like vision
-calls currently are (`visionPool`). Given intake batches are dominated by
-images (vision-pooled already) and text documents are a minority, no pooling
-is added for this first pass — `Promise.all` over `processFile` already
-bounds concurrency at "however many files", same as the existing `.txt`
-branch. If a future large batch of PDFs proves this needs throttling, that's
-a follow-up, not part of this design.
+`pdf-parse` and `mammoth` load the full document into memory to parse it.
+`Promise.all` over `processFile` does not bound concurrency — it launches
+every file's work at once — so an unpooled batch of a few thousand PDFs
+would attempt that many simultaneous in-memory parses and risk an OOM
+crash, unlike images (already bounded by `visionPool`) or plain text
+(near-zero memory cost per file).
+
+Add a new pool in `src/core/concurrency.ts`, following the existing
+`visionPool`/`claudePool` pattern exactly:
+
+```ts
+export const docPool = pLimit(configuredLimit('TRM_DOC_CONCURRENCY'));
+```
+
+`triageIntake.ts` wraps every `EXTRACTABLE_TEXT_EXTENSIONS` extraction call
+in `docPool(...)`, the same way it already wraps `classifyImageDetailed` in
+`visionPool(...)`. Default concurrency is 4 (`DEFAULT_CONCURRENCY`, shared
+with the other pools), overridable via `TRM_DOC_CONCURRENCY` for tuning.
+This caps simultaneous in-memory parses regardless of batch size, closing
+the OOM risk.
 
 ### Tests (`tests/cli/commands/triageIntake.test.ts`)
 
@@ -77,14 +107,20 @@ pattern, applied to `convertFileToText` from `fileConvert`:
    `error` set to the thrown message, `summary.failedCount` incremented.
 4. Confirm `.txt/.md/.json` still bypasses `convertFileToText` entirely
    (spy not called) — regression guard for the existing fast path.
+5. Empty extraction (mock rejects with `new Error('...produced no
+   extractable text')`) → `status: 'failed'`, `error` preserved verbatim.
+   Distinct case from #3: this is the validation-failure path, not a
+   parser-corruption path, and both must be verified separately.
 
 ## Error handling
 
 `convertFileToText` already produces specific errors:
+
 - Parse failure (corrupt PDF/DOCX/EPUB): converter library's native error
   message, surfaced as-is.
-- Empty extraction: `trm ingest --file: "<path>" produced no extractable
-  text`.
+- Empty extraction (validation failure, not a crash — e.g. a scanned-image
+  PDF with no OCR layer parses fine but yields no text): `trm ingest --file:
+  "<path>" produced no extractable text`.
 
 Both land in `IntakeEntry.error` unchanged, so the manifest is inspectable
 the same way image-classification failures already are.
@@ -93,4 +129,3 @@ the same way image-classification failures already are.
 
 - Extensionless files.
 - Caching extracted text on the manifest entry.
-- Concurrency pooling for document extraction.
