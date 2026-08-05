@@ -1,0 +1,22 @@
+src/core/atomicWrite.ts
+  s_be59d5492b9b90::t_94b3dccf8f3cba 25-31
+tests/core/atomicWrite.test.ts
+  s_be59d5492b9b90::t_da430cf1ebf845 4
+  s_be59d5492b9b90::t_c0cda5e4c7d728 71-107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "5c1710bfb2e3003d6a2afc46333690c0886e8e47",
+  "prompts": {},
+  "sessions": {
+    "s_be59d5492b9b90": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "17f40157-001a-4f15-b3b9-af17f31e1644",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
