@@ -1,0 +1,24 @@
+tests/cli/commands/routeIntake.test.ts
+  s_be59d5492b9b90::t_1be870c82be4be 34
+  s_be59d5492b9b90::t_d7cb3689ab0793 300-302
+  s_be59d5492b9b90::t_c297fce8193ef7 197-198
+src/cli/commands/routeIntake.ts
+  s_be59d5492b9b90::t_417d1d1355ad28 166
+  s_be59d5492b9b90::t_64e023a4445207 212-227
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "7f760ed43ffaeca307da0bdc60102bf4c101c7ba",
+  "prompts": {},
+  "sessions": {
+    "s_be59d5492b9b90": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "17f40157-001a-4f15-b3b9-af17f31e1644",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
