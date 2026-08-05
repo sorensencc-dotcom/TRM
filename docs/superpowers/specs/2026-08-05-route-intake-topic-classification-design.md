@@ -105,10 +105,14 @@ silently-wrong routing run):
   below). A slug failing this pattern is a validation error, not silently
   skipped.
 - Every value must be a non-empty array of non-empty strings.
-- No exact keyword string may appear under two different topics — that's
-  an unresolvable ambiguity baked into the config itself, so it's rejected
-  at load time rather than surfacing as a per-file `unsorted` surprise
-  later.
+- No two keywords under *different* topics may collide once both are run
+  through the same normalization used for matching (lowercase,
+  punctuation/separators → spaces, collapsed whitespace) — checked after
+  normalization, not on the raw string, so `"michigan-flight-museum"`
+  under one topic and `"Michigan Flight Museum"` under another are caught
+  as the same collision they'd be at match time. This is an unresolvable
+  ambiguity baked into the config itself, so it's rejected at load time
+  rather than surfacing as a per-file `unsorted` surprise later.
 - `--config <path>` (and the default `config/topic-routing.json`) is
   resolved relative to `root` (the vault root passed to `runRouteIntake`),
   the same convention `triage-intake`'s `--dir` uses — not
@@ -146,16 +150,23 @@ manual review. Multiple keywords matching under the *same* topic (e.g.
 `willys-overland`'s `willys` and `jeep` both hitting one path) is not a
 conflict — it's one topic, assign it.
 
+The report's `matchedKeyword` field stores the keyword exactly as written
+in `topic-routing.json` (e.g. `"Michigan Flight Museum"` if that's the
+config spelling), not its normalized form — normalization is purely a
+matching-time detail; the report is for human review, so it shows the
+keyword the way a human wrote it in the config.
+
 ### Command: `src/cli/commands/routeIntake.ts`
 
 ```ts
 export type RouteEntryStatus = 'staged' | 'unsorted' | 'missing' | 'failed' | 'would-stage';
+export type RouteRunStatus = 'completed' | 'preflight-failed' | 'failed';
 
 export interface RouteReportEntry {
-  sourcePath: string;
+  sourcePath: string; // root-relative, exactly as read from the manifest
   hash: string;
   topic: string | null; // null only when status is 'unsorted'
-  matchedKeyword: string | null;
+  matchedKeyword: string | null; // config spelling, e.g. "Michigan Flight Museum" as written in topic-routing.json -- not the normalized form, for human readability in the report
   ambiguous: boolean;
   status: RouteEntryStatus;
   stagedPath?: string; // present only when status === 'staged'
@@ -165,22 +176,25 @@ export interface RouteReportEntry {
 export interface RouteIntakeReport {
   reportVersion: 1;
   generatedAt: string; // ISO timestamp
-  applied: boolean; // false for dry-run, true when --apply ran
+  applied: boolean; // false for dry-run, true only when staging actually ran
+  runStatus: RouteRunStatus;
   runId: string; // also the staging directory suffix when applied
   totalConsidered: number;
   byTopic: Record<string, number>; // includes 'unsorted'
   ambiguousCount: number;
   entries: RouteReportEntry[];
+  error?: string; // set when runStatus is 'preflight-failed' or 'failed'
 }
 
 export interface RouteIntakeOptions {
   apply?: boolean;
   configPath?: string; // resolved relative to root; defaults to config/topic-routing.json
+  runId?: string; // test-injectable override; defaults to a freshly generated id (see Design step 6c)
 }
 
 export type RouteIntakeSummary = Pick<
   RouteIntakeReport,
-  'totalConsidered' | 'byTopic' | 'ambiguousCount'
+  'totalConsidered' | 'byTopic' | 'ambiguousCount' | 'runStatus'
 >;
 
 export async function runRouteIntake(
@@ -192,61 +206,94 @@ export async function runRouteIntake(
 **Logic:**
 
 1. Load and validate `topic-routing.json` (schema rules above). Any
-   validation failure throws before `intake-manifest.json` is even read.
+   validation failure throws before `intake-manifest.json` is even read,
+   and before any report is written — there is no partial classification
+   to report on yet, so this stays a thrown error, not a `runStatus:
+   'failed'` report. Same for a missing/unreadable manifest file.
 2. Read `intake-manifest.json` via the existing `readIntakeManifest(root)`.
 3. Filter to entries where `status === 'done'`, then expand each into its
    physical paths (`sourcePath` + `dupPaths`, per "Routing unit" above).
+   Each path is resolved as `path.resolve(root, sourcePath)` — manifest
+   paths are always written root-relative by `triage-intake`
+   (`triageIntake.ts`'s `rel = path.relative(root, filePath)...`), so an
+   absolute path or a relative path that resolves outside `root` indicates
+   a corrupted or hand-edited manifest. Reject such an entry the same way
+   `resolveWalkDir` in `triageIntake.ts` rejects an escaping `--dir`: throw
+   before classification begins, naming the offending path — this is a
+   structural manifest-integrity problem, not a per-file routing outcome.
 4. Classify every physical path per the Matching rules above, producing a
-   `RouteReportEntry` for each with `status: 'would-stage'` (dry-run) or
-   the topic assignment pending `--apply` resolution below.
-5. **If `opts.apply` is not set:** every entry's status is `unsorted` or
-   `'would-stage'`. Write the report (see Report writing below), print the
-   summary, return. Nothing under `topics/` or `intake/` is touched.
+   `RouteReportEntry` for each with `status: 'would-stage'` or `'unsorted'`.
+   This step fully determines every entry's topic assignment regardless of
+   `--apply` — staging is a separate, later concern.
+5. **If `opts.apply` is not set:** write the report with `applied: false`,
+   `runStatus: 'completed'` (dry-run classification either succeeds for
+   every entry or throws per step 3/1 above — there's no partial dry-run
+   state), print the summary, return. Nothing under `topics/` or `intake/`
+   is touched.
 6. **If `opts.apply` is set:**
    a. Collect the distinct set of non-`unsorted` topics this run would
       stage into. For each, check `topics/charlie/<topic>/topic.json`
       exists (`readTopicMeta` throwing means it doesn't). **If any matched
-      topic has no topic node, abort the entire apply run before staging
-      anything** — print the full list of missing topics (e.g. run
-      `trm create topics/charlie/willys-overland` first) and exit
-      non-zero. This resolves the topic-existence contradiction directly:
-      staging directories are only ever created under topics that already
-      exist; `route-intake` never creates a topic node itself (Non-goals).
+      topic has no topic node, do not stage anything.** Write the report
+      immediately with `applied: false`, `runStatus: 'preflight-failed'`,
+      `error` listing the missing topic(s) (e.g. "run `trm create
+      topics/charlie/willys-overland` first"), and `entries` reflecting
+      the classification from step 4 (still `'would-stage'`/`'unsorted'` —
+      classification succeeded, only staging was blocked). Return this
+      report; exit non-zero. This is the one and only way "report always
+      written" and "abort before staging" coexist: the abort itself
+      becomes the report's documented outcome, not a contradiction of it.
    b. Acquire an exclusive run lock (`intake-routing.lock` at vault root)
       via the existing `src/sync/lock.ts` (`acquireLock`/`releaseLock`) —
       same cross-host/stale-pid semantics already used by `sync-treatment`.
       A concurrent `--apply` run gets the same
       `LockConflictError`/`LockUnrecoverableError` behavior other commands
       already surface; dry-run needs no lock (read-only against the
-      manifest — see Report writing for the one caveat).
-   c. Generate one `runId` for this invocation:
+      manifest — see Report writing for the one caveat). From this point
+      until step (e), the lock release happens in a `finally` block —
+      any unexpected exception during staging or report writing (not just
+      the handled per-entry `missing`/`failed` cases) still releases the
+      lock. An exception escaping the `finally`-guarded region is caught
+      at the top level, and a best-effort report is written with
+      `runStatus: 'failed'` and `error` set to that exception's message
+      before it propagates, so a route-intake crash is still visible in
+      `intake-routing-report.json` rather than only in a stack trace.
+   c. Generate one `runId` for this invocation (or use `opts.runId` if
+      provided — the test-injection point for deterministic assertions on
+      exact staging paths, per the testability gap this closes):
       `<YYYYMMDD-HHMMSS>-<6-char random suffix>` — guarantees uniqueness
       even across multiple `--apply` runs in the same second, unlike a
       bare date stamp. This is the same value recorded in the report's
       `runId` field.
    d. For each entry with a resolved topic: verify the source file still
       exists on disk. Missing → `status: 'missing'`, `error` set, move on.
-      Otherwise copy (not move) into
-      `topics/charlie/<topic>/_staging-intake-<runId>/<basename>`,
-      creating the staging directory as needed. A basename collision
+      Otherwise copy into a temp file in the destination staging
+      directory (`<basename>.tmp-<random>`), then `fs.renameSync` it to
+      the final `<basename>` (hash-suffixed on collision, per below) —
+      an interrupted copy leaves only a stray `.tmp-*` file behind, never
+      a truncated file at the real destination name, so a partial copy can
+      never be mistaken for a valid staged file. A basename collision
       *within this run* (two matched paths sharing a basename) appends the
       first 8 hex characters of that path's hash before the extension.
-      A copy that throws (disk full, permissions, etc.) → `status:
-      'failed'`, `error` set — processing continues for the remaining
-      entries rather than aborting the whole run (a `copy` failure on file
-      37 of 200 shouldn't discard the 36 that already succeeded).
-      Successful copy → `status: 'staged'`, `stagedPath` set.
-   e. Release the lock.
-7. **Report writing:** the report is always written after all entries have
-   reached a terminal status (dry-run's terminal status is `would-stage`/
-   `unsorted`; apply's is `staged`/`missing`/`failed`/`unsorted`) — never
-   incrementally, so a run that dies partway through never leaves a report
-   claiming completion it didn't reach. On a dry run there is no lock, so
-   two concurrent dry runs racing to write `intake-routing-report.json` is
-   possible; this is explicitly accepted (last writer wins, no vault state
-   at risk) rather than guarded, since dry-run has nothing to corrupt but
-   its own report file. `--apply`'s lock prevents the higher-stakes race
-   (concurrent staging into the same directory).
+      A copy or rename that throws (disk full, permissions, etc.) →
+      `status: 'failed'`, `error` set, and the stray temp file (if any) is
+      removed on a best-effort basis — processing continues for the
+      remaining entries rather than aborting the whole run (a failure on
+      file 37 of 200 shouldn't discard the 36 that already succeeded).
+      Successful rename → `status: 'staged'`, `stagedPath` set.
+   e. Release the lock (`finally`, per step 6b).
+7. **Report writing:** for a completed apply run, the report is written
+   with `runStatus: 'completed'`, `applied: true`, after every entry has
+   reached a terminal status (`staged`/`missing`/`failed`/`unsorted`) —
+   never incrementally, so a run that dies partway through never leaves a
+   report claiming completion it didn't reach (the `runStatus: 'failed'`
+   path in step 6b is what covers that case instead). On a dry run there
+   is no lock, so two concurrent dry runs racing to write
+   `intake-routing-report.json` is possible; this is explicitly accepted
+   (last writer wins, no vault state at risk) rather than guarded, since
+   dry-run has nothing to corrupt but its own report file. `--apply`'s
+   lock prevents the higher-stakes race (concurrent staging into the same
+   directory).
 
 ### Staging path safety
 
@@ -299,46 +346,80 @@ topic-existence checks:
    (hash-suffixed), neither overwrites the other.
 9. `--apply` never creates a staging directory for `unsorted` files.
 10. `--apply` where a matched topic has no `topics/charlie/<topic>/topic.json`
-    → the entire apply run aborts before any file is copied; report is
-    not written with `applied: true`/partial `staged` entries; error names
-    the missing topic(s).
+    → no file is copied; report IS written (this run's one required
+    behavior) with `applied: false`, `runStatus: 'preflight-failed'`,
+    `error` naming the missing topic(s), and `entries` still showing each
+    file's classified topic from step 4.
 11. `--apply` where the manifest references a `sourcePath` that no longer
     exists on disk → that entry gets `status: 'missing'` with `error` set;
-    every other entry in the same run still reaches `staged`.
-12. `--apply` where one file's copy throws (simulate via a spy on the copy
-    call) → that entry gets `status: 'failed'` with `error` set; every
-    other entry in the same run still reaches `staged` (partial-failure
-    isolation, not whole-run abort).
-13. Two `--apply` runs on the same day produce two distinct
-    `_staging-intake-<runId>` directories (different `runId`s), neither
-    overwriting the other's staged files.
-14. A concurrent second `--apply` while the first holds the lock →
+    every other entry in the same run still reaches `staged`;
+    `runStatus: 'completed'` (a per-entry miss isn't a run failure).
+12. `--apply` where one file's copy/rename throws (simulate via a spy) →
+    that entry gets `status: 'failed'` with `error` set; every other entry
+    in the same run still reaches `staged` (partial-failure isolation, not
+    whole-run abort); `runStatus: 'completed'`.
+13. `--apply` where a copy is interrupted mid-write (simulate the temp-file
+    write throwing after partial bytes) → no file exists at the final
+    `<basename>` destination (only a possible stray `.tmp-*`, which the
+    implementation attempts to clean up) — a reader of the staging
+    directory never sees a truncated file under a real name.
+14. Two `--apply` runs use `opts.runId` overrides to assert exact distinct
+    `_staging-intake-<runId>` directory paths deterministically, neither
+    overwriting the other's staged files (and one production-path test
+    without an override just asserts the `runId` pattern, not an exact
+    value, since it's time-based).
+15. A concurrent second `--apply` while the first holds the lock →
     `LockConflictError`, no files staged by the second invocation.
-15. Missing `topic-routing.json` → throws a clear error before the
+16. Missing `topic-routing.json` → throws a clear error before the
     manifest is read; no report written.
-16. Malformed (invalid JSON) `topic-routing.json` → throws a clear error.
-17. Config schema violations each throw a distinct, clear error: non-object
+17. Malformed (invalid JSON) `topic-routing.json` → throws a clear error.
+18. Config schema violations each throw a distinct, clear error: non-object
     top level; a topic slug failing `^[a-z0-9-]+$` (including a
     path-traversal attempt like `"../evil": ["x"]`); an empty keyword
-    array; an empty-string keyword; the same keyword string listed under
-    two different topics.
+    array; an empty-string keyword; two keywords under different topics
+    that collide only after normalization (e.g.
+    `"michigan-flight-museum"` vs `"Michigan Flight Museum"` under two
+    different topic keys).
+19. A manifest entry whose `sourcePath` is absolute, or whose resolved
+    path escapes `root` (e.g. via `../`) → throws before classification,
+    naming the offending path; no report written (manifest-integrity
+    problem, not a per-file outcome).
+20. `matchedKeyword` in the report preserves the config's original
+    spelling/casing (e.g. `"Michigan Flight Museum"`), not the normalized
+    lowercase form used internally for matching.
 
 ## Error handling
 
-- Missing/malformed config file, or any schema-validation failure: throw
-  before `intake-manifest.json` is even read, naming the expected path (or
-  the specific offending key/keyword) in the error message.
+- Missing/malformed config file, any schema-validation failure, or a
+  manifest entry whose path resolves outside `root`: throw before
+  `intake-manifest.json` is even read (or, for the path-escape case,
+  before that entry is classified), naming the expected path or the
+  specific offending key/keyword/path in the error message. No report is
+  written for these — there's no partial classification yet to report on.
 - A topic matched by this run but missing its `topics/charlie/<topic>/topic.json`
-  node: abort the whole `--apply` run before staging anything (see Design
-  step 6a) — this is a pre-flight check, not a per-file error path.
+  node: this **does** produce a report — `applied: false`, `runStatus:
+  'preflight-failed'`, `error` naming the missing topic(s), `entries`
+  showing the classification that was completed before staging was
+  blocked (see Design step 6a). This is the resolution to "report always
+  written" vs. "abort before staging": the abort is itself the reported
+  outcome.
 - A file listed in the manifest that no longer exists on disk at `--apply`
   time (deleted since triage ran): `status: 'missing'` for that entry only;
-  the run continues for every other entry.
-- A copy that throws mid-run (disk full, permissions, etc.): `status:
-  'failed'` for that entry only; the run continues for every other entry.
-  The report always reflects the true per-entry outcome — it is written
-  once, after every entry has reached a terminal status, never announcing
-  success before work is actually done.
+  the run continues for every other entry; `runStatus: 'completed'`.
+- A copy/rename that throws mid-run (disk full, permissions, etc.):
+  `status: 'failed'` for that entry only; the run continues for every
+  other entry; `runStatus: 'completed'`. The report always reflects the
+  true per-entry outcome — it is written once, after every entry has
+  reached a terminal status, never announcing success before work is
+  actually done. Copies land via a temp-file-then-rename sequence in the
+  destination directory, so an interrupted copy never leaves a partial
+  file visible under its real destination name.
+- An unexpected exception during the lock-held region (step 6b–6e) that
+  isn't one of the handled per-entry cases above: caught at the top level,
+  lock released via `finally` regardless, and a best-effort report is
+  written with `runStatus: 'failed'` and `error` set to the exception's
+  message before it re-throws — a route-intake crash is visible in
+  `intake-routing-report.json`, not just a stack trace.
 - Concurrent `--apply` invocations against the same root: the second one
   fails fast with `LockConflictError` (or `LockUnrecoverableError` for a
   malformed/cross-host lock file), via the shared `src/sync/lock.ts`.
