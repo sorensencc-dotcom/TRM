@@ -1,0 +1,19 @@
+docs/superpowers/specs/2026-08-05-triage-intake-pdf-docx-epub-design.md
+  s_be59d5492b9b90::t_0d4fac380f0de0 1-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "e82ff6be254d62c39446bddfd8e09e26c36bcf78",
+  "prompts": {},
+  "sessions": {
+    "s_be59d5492b9b90": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "17f40157-001a-4f15-b3b9-af17f31e1644",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
