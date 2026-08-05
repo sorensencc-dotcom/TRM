@@ -1,0 +1,24 @@
+src/core/topicRouting.ts
+  s_be59d5492b9b90::t_b2fb0620367810 1-100
+config/topic-routing.json
+  s_be59d5492b9b90::t_316de27d393507 1-9
+tests/core/topicRouting.test.ts
+  s_be59d5492b9b90::t_431d26a160ee01 1-100,102-124
+  s_be59d5492b9b90::t_8dfa4e78a5c7b0 101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "e5fb08aa1048d264ed8a6da8184a6c06cbf8b2a4",
+  "prompts": {},
+  "sessions": {
+    "s_be59d5492b9b90": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "17f40157-001a-4f15-b3b9-af17f31e1644",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
