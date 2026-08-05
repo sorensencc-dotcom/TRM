@@ -1,6 +1,25 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+
+// copyFileSync is a non-configurable native method, so jest.spyOn can't wrap it.
+// Instead, use a module-level mock that conditionally throws for test scenarios,
+// falling through to the real implementation otherwise (needed for other tests).
+let mockCopyFileSrcThrow: string | null = null;
+
+jest.mock('node:fs', () => {
+  const actual = jest.requireActual('node:fs');
+  return {
+    ...actual,
+    copyFileSync: (src: unknown, dest: unknown, ...rest: unknown[]) => {
+      if (mockCopyFileSrcThrow !== null && String(src) === mockCopyFileSrcThrow) {
+        throw new Error('simulated disk-full mid-copy');
+      }
+      return actual.copyFileSync(src as string | Buffer, dest as string | Buffer | URL | number, ...(rest as any[]));
+    },
+  };
+});
+
 import { writeFileAtomic, writeFileExclusive, copyFileAtomic } from '../../src/core/atomicWrite';
 
 describe('atomicWrite', () => {
@@ -94,15 +113,13 @@ describe('atomicWrite', () => {
     const src = path.join(dir, 'source.bin');
     fs.writeFileSync(src, 'hello');
     const dest = path.join(dir, 'dest.bin');
-    const copySpy = jest.spyOn(fs, 'copyFileSync').mockImplementation(() => {
-      throw new Error('simulated disk-full mid-copy');
-    });
 
+    mockCopyFileSrcThrow = src;
     try {
       expect(() => copyFileAtomic(src, dest)).toThrow('simulated disk-full mid-copy');
       expect(fs.existsSync(dest)).toBe(false);
     } finally {
-      copySpy.mockRestore();
+      mockCopyFileSrcThrow = null;
     }
   });
 });
