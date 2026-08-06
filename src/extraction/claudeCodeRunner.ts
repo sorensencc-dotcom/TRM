@@ -46,7 +46,7 @@ interface ClaudeCliEnvelope {
 // otherwise return the text unchanged so a genuinely bare JSON result still parses.
 function stripCodeFence(text: string): string {
   const trimmed = text.trim();
-  const fenceMatch = trimmed.match(/^```(?:json)?\s*\n([\s\S]*?)\n```$/);
+  const fenceMatch = trimmed.match(/```(?:json)?\s*\n([\s\S]*?)\n```/);
   return fenceMatch ? fenceMatch[1] : trimmed;
 }
 

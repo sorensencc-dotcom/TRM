@@ -49,6 +49,20 @@ describe('createClaudeCodeRunner', () => {
     expect(result.summary).toBe('Fenced summary.');
   });
 
+  it('strips a markdown code fence preceded by chatty preamble text', () => {
+    const raw = JSON.stringify({ facts: [{ text: 'Preamble fact.', confidence: 0.7, categories: [] }], summary: 'Preamble summary.' });
+    const exec: ClaudeCliExec = () => ({
+      stdout: envelope('I have enough text from the document. Compiling now.\n\n```json\n' + raw + '\n```'),
+      status: 0,
+    });
+    const runner = createClaudeCodeRunner(exec);
+    const result = runner.run(source, 'raw text');
+
+    expect(result.facts).toHaveLength(1);
+    expect(result.facts[0].text).toBe('Preamble fact.');
+    expect(result.summary).toBe('Preamble summary.');
+  });
+
   it('argv is fixed/short (no embedded prompt), full prompt+title+text go via stdin', () => {
     let capturedArgs: string[] = [];
     let capturedInput = '';
