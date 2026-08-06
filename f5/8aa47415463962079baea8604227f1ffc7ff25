@@ -1,0 +1,33 @@
+src/ingestion/imageExtract/index.ts
+  s_c1043ee729806c::t_f2b66de4e728e1 7-8
+  s_c1043ee729806c::t_82bc2e34c41d37 39-49,51
+src/cli/commands/ingest.ts
+  s_c1043ee729806c::t_846ea3251a6893 10
+tests/ingestion/imageExtract/index.test.ts
+  s_c1043ee729806c::t_297bb94f49749d 4-9,14
+  s_c1043ee729806c::t_e84b68de7b1a02 28
+  s_c1043ee729806c::t_edc9819d9a2e64 67-93
+src/cli/index.ts
+  s_c1043ee729806c::t_625046d7692973 40
+package.json
+  s_c1043ee729806c::t_3888185b687832 19
+  s_c1043ee729806c::t_aa9a64b8ddc33f 32,34-35
+package-lock.json
+  s_c1043ee729806c::t_06c67982e6d1fd 14,24,1242-1248,2404-2429,3260-3265,3358-3366,3837-3845
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "f58aa47415463962079baea8604227f1ffc7ff25",
+  "prompts": {},
+  "sessions": {
+    "s_c1043ee729806c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99d25816-4ecb-479a-8849-989c70467307",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
