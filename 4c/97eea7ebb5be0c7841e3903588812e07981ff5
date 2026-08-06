@@ -1,0 +1,21 @@
+tests/extraction/claudeCodeRunner.test.ts
+  s_c1043ee729806c::t_f3c51266547a9c 52-65
+src/extraction/claudeCodeRunner.ts
+  s_c1043ee729806c::t_cded118f93d26f 49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "4c97eea7ebb5be0c7841e3903588812e07981ff5",
+  "prompts": {},
+  "sessions": {
+    "s_c1043ee729806c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99d25816-4ecb-479a-8849-989c70467307",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
