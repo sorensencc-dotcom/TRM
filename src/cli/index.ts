@@ -37,7 +37,7 @@ program
   .requiredOption('--title <title>')
   .requiredOption('--origin <origin>')
   .option('--actor <actor>')
-  .option('--file <file>', 'source file: .txt, .md, .docx, .pdf, .epub, or image (.jpg, .jpeg, .png, .webp, .gif)')
+  .option('--file <file>', 'source file: .txt, .md, .docx, .pdf, .epub, or image (.jpg, .jpeg, .png, .webp, .gif, .heic)')
   .option('--dry-run')
   .action(async (path, url, opts) => {
     const entry = await runIngest(root, path, { ...opts, url, file: opts.file, dryRun: opts.dryRun });

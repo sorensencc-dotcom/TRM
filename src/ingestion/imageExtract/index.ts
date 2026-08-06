@@ -4,6 +4,8 @@
 // Fallback: vendored ReverseImageSearchExtractor (for rollback)
 
 import * as fs from 'node:fs';
+import * as path from 'node:path';
+import convert from 'heic-convert';
 import { ImageAnalyzer, AnalysisResult } from './imageAnalyzer';
 
 // Re-export types for backward compatibility
@@ -34,8 +36,19 @@ const ENABLE_IMAGE_ANALYSIS = parseFloat(process.env.ENABLE_IMAGE_ANALYSIS || '0
  * - New: HTTP client to cic-ingestion Vision API (ENABLE_IMAGE_ANALYSIS=1.0)
  * - Legacy: ReverseImageSearchExtractor fallback (ENABLE_IMAGE_ANALYSIS=0.0)
  */
+// HEIC has no browser/Vision-API-wide decode support, so it's converted to
+// JPEG bytes before analysis; every downstream consumer only ever sees JPEG.
+async function readAsAnalyzableBuffer(filePath: string): Promise<Buffer> {
+  const raw = fs.readFileSync(filePath);
+  if (path.extname(filePath).toLowerCase() === '.heic') {
+    const jpeg = await convert({ buffer: raw, format: 'JPEG', quality: 0.92 });
+    return Buffer.from(jpeg);
+  }
+  return raw;
+}
+
 export async function extractImage(filePath: string): Promise<ExtractionResult> {
-  const buffer = fs.readFileSync(filePath);
+  const buffer = await readAsAnalyzableBuffer(filePath);
 
   // Route based on feature flag (probabilistic rollout)
   const useNewImplementation = Math.random() < ENABLE_IMAGE_ANALYSIS;

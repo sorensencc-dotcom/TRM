@@ -7,7 +7,7 @@ import { convertFileToText } from '../../ingestion/fileConvert';
 import { extractImage } from '../../ingestion/imageExtract';
 import { writeRawEnvelope, RawSourceEnvelope } from '../../core/rawSource';
 
-const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
+const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic']);
 
 export async function runIngest(
   root: string,
