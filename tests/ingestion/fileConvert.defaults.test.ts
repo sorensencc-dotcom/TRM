@@ -68,6 +68,18 @@ describe('defaultRenderPdfPage', () => {
     expect(mockGetViewport).toHaveBeenCalledWith(expect.objectContaining({ scale: 150 / 72 }));
     expect(mockCreateCanvas).toHaveBeenCalledWith(620, 877);
     expect(mockToBuffer).toHaveBeenCalledWith('image/png');
+    // Locks in the canvasFactory wiring (the fix for pdfjs-dist's internal
+    // image-compositing path otherwise requiring native `canvas`) -- a
+    // regression here would silently reintroduce the native-canvas crash
+    // on any PDF page containing an embedded raster image.
+    const getDocumentCallArgs = mockGetDocument.mock.calls[0][0];
+    expect(getDocumentCallArgs.canvasFactory).toEqual(
+      expect.objectContaining({
+        create: expect.any(Function),
+        reset: expect.any(Function),
+        destroy: expect.any(Function),
+      })
+    );
     expect(mockDocDestroy).toHaveBeenCalledTimes(1);
   });
 
