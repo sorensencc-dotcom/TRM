@@ -222,6 +222,18 @@ describe('defaultRenderPdfPage', () => {
     expect(mockGetViewport).toHaveBeenCalledWith(expect.objectContaining({ scale: 150 / 72 }));
     expect(mockCreateCanvas).toHaveBeenCalledWith(620, 877);
     expect(mockToBuffer).toHaveBeenCalledWith('image/png');
+    // Locks in the canvasFactory wiring (the fix for pdfjs-dist's internal
+    // image-compositing path otherwise requiring native `canvas`) -- a
+    // regression here would silently reintroduce the native-canvas crash
+    // on any PDF page containing an embedded raster image.
+    const getDocumentCallArgs = mockGetDocument.mock.calls[0][0];
+    expect(getDocumentCallArgs.canvasFactory).toEqual(
+      expect.objectContaining({
+        create: expect.any(Function),
+        reset: expect.any(Function),
+        destroy: expect.any(Function),
+      })
+    );
     expect(mockDocDestroy).toHaveBeenCalledTimes(1);
   });
 
@@ -305,6 +317,32 @@ function pdfjsAssetUrl(...segments: string[]): string {
 const PDFJS_CMAP_URL = pdfjsAssetUrl('cmaps');
 const PDFJS_STANDARD_FONT_DATA_URL = pdfjsAssetUrl('standard_fonts');
 
+// pdfjs-dist's internal image-compositing path (used whenever a page embeds
+// a raster image -- the exact case for every scanned PDF this fallback
+// exists for) creates its OWN auxiliary canvases via a CanvasFactory, and
+// its built-in NodeCanvasFactory unconditionally `require('canvas')` (the
+// native package) regardless of what canvasContext we pass to
+// page.render(). Passing this factory into getDocument() makes pdfjs-dist
+// use @napi-rs/canvas for those internal canvases too, avoiding a hard
+// dependency on the native `canvas` package (which needs a C++ build
+// toolchain). Interface shape (create/reset/destroy) is pdfjs-dist's
+// documented CanvasFactory contract, duck-typed -- pdfjs-dist does not
+// export a base class to extend in the legacy CJS build.
+class NapiCanvasFactory {
+  create(width: number, height: number) {
+    const canvas = createCanvas(width, height);
+    return { canvas, context: canvas.getContext('2d') };
+  }
+  reset(canvasAndContext: { canvas: ReturnType<typeof createCanvas> }, width: number, height: number) {
+    canvasAndContext.canvas.width = width;
+    canvasAndContext.canvas.height = height;
+  }
+  destroy(canvasAndContext: { canvas: ReturnType<typeof createCanvas> | null; context: unknown }) {
+    canvasAndContext.canvas = null;
+    canvasAndContext.context = null;
+  }
+}
+
 export async function defaultGetPdfPageCount(buffer: Buffer): Promise<number> {
   const loadingTask = getDocument({ data: new Uint8Array(buffer) });
   const doc = await loadingTask.promise;
@@ -319,6 +357,7 @@ export async function defaultRenderPdfPage(buffer: Buffer, pageNumber: number): 
     cMapUrl: PDFJS_CMAP_URL,
     cMapPacked: true,
     standardFontDataUrl: PDFJS_STANDARD_FONT_DATA_URL,
+    canvasFactory: new NapiCanvasFactory() as any,
   });
   const doc = await loadingTask.promise;
   try {
@@ -375,6 +414,7 @@ declare module 'pdfjs-dist/legacy/build/pdf.js' {
     cMapUrl?: string;
     cMapPacked?: boolean;
     standardFontDataUrl?: string;
+    canvasFactory?: unknown;
   }): {
     promise: Promise<{
       numPages: number;
