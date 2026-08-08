@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { nodeDir } from './paths';
+import { Label } from '../ingestion/imageExtract/imageAnalyzer';
 
 export interface RawImagePayload {
   matches: { url: string; similarity: number; source: string }[];
@@ -18,11 +19,12 @@ export interface RawImagePayload {
 
 export interface RawSourceEnvelope {
   sourceId: string;
-  kind: 'text' | 'image';
+  kind: 'text' | 'image' | 'video';
   capturedAt: string;
   text?: string;
   image?: RawImagePayload;
   ocrText?: string;
+  frames?: { timestampMs: number; labels: Label[] }[];
 }
 
 export function rawSourcePath(root: string, topicPath: string, sourceId: string): string {
