@@ -14,6 +14,7 @@ import * as extractAudioModule from '../../src/ingestion/videoExtract/extractAud
 import * as transcribeModule from '../../src/ingestion/videoExtract/transcribe';
 import { readRawEnvelope } from '../../src/core/rawSource';
 import { readVideoMetrics } from '../../src/core/videoMetricsLog';
+import { readVideoPartialProgress } from '../../src/core/videoPartialProgress';
 import { ExtractionRunner } from '../../src/extraction/types';
 import { FrameAnalysis } from '../../src/ingestion/videoExtract/analyzeFrames';
 
@@ -989,6 +990,114 @@ describe('runIngestDir', () => {
       const failed = failedStore.readFailed(root, 'topic1');
       expect(failed.length).toBe(1);
       expect(failed[0].error).toContain('Command failed: ffmpeg');
+
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('partial-progress resume: frame extraction fails but transcript succeeded -- retry reuses the cached transcript, only redoes frames', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      const filePath = path.join(dir, 'partial-frames.mp4');
+      fs.writeFileSync(filePath, 'fake mp4 bytes', 'utf-8');
+      const hash = await hashFile(filePath);
+
+      const spies = mockVideoPipeline({
+        durationMs: 60000,
+        hasAudioStream: true,
+        transcript: 'a real transcription that should not be redone',
+        frameAnalyses: [{ timestampMs: 0, labels: [{ description: 'reused-frame', score: 0.9 }] }],
+      });
+      spies.extractSpy.mockRejectedValueOnce(new Error('ffmpeg produced no frames'));
+      const { runner } = makeRunSpyRunner();
+
+      const firstRun = await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+      expect(firstRun.failureCount).toBe(1);
+      expect(spies.transcribeSpy).toHaveBeenCalledTimes(1);
+      expect(spies.extractSpy).toHaveBeenCalledTimes(1);
+
+      const cached = readVideoPartialProgress(root, hash);
+      expect(cached?.transcript).toBe('a real transcription that should not be redone');
+      expect(cached?.frameAnalyses).toBeUndefined();
+
+      const retrySummary = await runIngestDir(
+        root,
+        'topic1',
+        { actor: 'ACTOR-001', dir, retryFailed: true, stub: true },
+        runner
+      );
+
+      expect(retrySummary.successCount).toBe(1);
+      // The cached transcript is reused -- transcribeAudio/extractAudio must
+      // not be invoked again on retry.
+      expect(spies.transcribeSpy).toHaveBeenCalledTimes(1);
+      expect(spies.extractAudioSpy).toHaveBeenCalledTimes(1);
+      // Frame extraction genuinely failed on the first run (before ever
+      // reaching analyzeFrames), so extractFrames must run again on retry;
+      // analyzeFrames only ever runs once total, on the successful retry.
+      expect(spies.extractSpy).toHaveBeenCalledTimes(2);
+      expect(spies.analyzeSpy).toHaveBeenCalledTimes(1);
+
+      const envelope = readRawEnvelope(root, 'topic1', 'SRC-001');
+      expect(envelope?.text).toContain('a real transcription that should not be redone');
+      expect(envelope?.text).toContain('reused-frame');
+
+      // Cleared on full success -- no stale progress left for a future run.
+      expect(readVideoPartialProgress(root, hash)).toBeNull();
+
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('partial-progress resume: transcript fails but frames succeeded -- retry reuses the cached frames, only redoes transcript', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      const filePath = path.join(dir, 'partial-transcript.mp4');
+      fs.writeFileSync(filePath, 'fake mp4 bytes', 'utf-8');
+      const hash = await hashFile(filePath);
+
+      const spies = mockVideoPipeline({
+        durationMs: 60000,
+        hasAudioStream: true,
+        transcript: 'a fresh transcript on retry',
+        frameAnalyses: [{ timestampMs: 0, labels: [{ description: 'reused-frame', score: 0.9 }] }],
+      });
+      spies.transcribeSpy.mockRejectedValueOnce(new Error('whisper timed out'));
+      const { runner } = makeRunSpyRunner();
+
+      const firstRun = await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+      expect(firstRun.failureCount).toBe(1);
+      expect(spies.extractSpy).toHaveBeenCalledTimes(1);
+      expect(spies.analyzeSpy).toHaveBeenCalledTimes(1);
+
+      const cached = readVideoPartialProgress(root, hash);
+      expect(cached?.frameAnalyses).toEqual([{ timestampMs: 0, labels: [{ description: 'reused-frame', score: 0.9 }] }]);
+      expect(cached?.transcript).toBeUndefined();
+
+      const retrySummary = await runIngestDir(
+        root,
+        'topic1',
+        { actor: 'ACTOR-001', dir, retryFailed: true, stub: true },
+        runner
+      );
+
+      expect(retrySummary.successCount).toBe(1);
+      // Frames already succeeded -- extractFrames/analyzeFrames must not run
+      // again on retry.
+      expect(spies.extractSpy).toHaveBeenCalledTimes(1);
+      expect(spies.analyzeSpy).toHaveBeenCalledTimes(1);
+      // Transcript genuinely failed, so whisper must run again on retry.
+      expect(spies.transcribeSpy).toHaveBeenCalledTimes(2);
+
+      const envelope = readRawEnvelope(root, 'topic1', 'SRC-001');
+      expect(envelope?.text).toContain('a fresh transcript on retry');
+      expect(envelope?.text).toContain('reused-frame');
+
+      expect(readVideoPartialProgress(root, hash)).toBeNull();
 
       restoreVideoPipelineMocks(spies);
     });

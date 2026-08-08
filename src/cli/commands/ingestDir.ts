@@ -19,6 +19,12 @@ import { readTopicMeta } from '../../core/topicNode';
 import { regenerateExtractJson } from '../../core/regenerateExtractJson';
 import { appendOcrTiming } from '../../core/ocrTimingLog';
 import { appendVideoMetrics } from '../../core/videoMetricsLog';
+import {
+  readVideoPartialProgress,
+  writeVideoPartialProgress,
+  clearVideoPartialProgress,
+  VideoPartialProgress,
+} from '../../core/videoPartialProgress';
 import { checkFfmpegDeps, checkWhisperDeps, getVideoMaxBytes, getVideoMaxDurationMs } from '../../core/videoDeps';
 import { probeVideo } from '../../core/videoProbe';
 import {
@@ -221,6 +227,12 @@ export async function runIngestDir(
           const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'trm-video-'));
           let transcript: string;
           let frameAnalyses: FrameAnalysis[];
+          // A prior run of this exact file (same content hash) may have
+          // already completed one of the two branches below before the
+          // other failed -- reuse that instead of redoing potentially
+          // expensive, already-paid-for work (a real whisper transcription,
+          // a real Vision API pass over every frame).
+          const cachedProgress = readVideoPartialProgress(root, hash!);
           try {
             // allSettled, not all: both branches share tempDir, so cleanup
             // below must never run until BOTH have genuinely finished. With
@@ -232,7 +244,9 @@ export async function runIngestDir(
             // error wins when BOTH branches fail is now fixed (transcript
             // branch preferred) rather than whichever settled first.
             const [transcriptResult, frameResult] = await Promise.allSettled([
-              hasAudioStream
+              cachedProgress?.transcript !== undefined
+                ? Promise.resolve(cachedProgress.transcript)
+                : hasAudioStream
                 ? (async () => {
                     await checkWhisperDeps();
                     // whisper.cpp cannot read an .mp4/.mov container -- extract
@@ -243,16 +257,32 @@ export async function runIngestDir(
                     return transcribeAudio(audioPath, durationMs);
                   })()
                 : Promise.resolve(''),
-              (async () => {
-                const framePaths = await extractFrames(filePath, durationMs, tempDir);
-                const timestampsMs = computeFrameTimestamps(durationMs, framePaths.length);
-                return await analyzeFrames(framePaths, timestampsMs, analyzer);
-              })(),
+              cachedProgress?.frameAnalyses !== undefined
+                ? Promise.resolve(cachedProgress.frameAnalyses)
+                : (async () => {
+                    const framePaths = await extractFrames(filePath, durationMs, tempDir);
+                    const timestampsMs = computeFrameTimestamps(durationMs, framePaths.length);
+                    return await analyzeFrames(framePaths, timestampsMs, analyzer);
+                  })(),
             ]);
-            if (transcriptResult.status === 'rejected') throw transcriptResult.reason;
-            if (frameResult.status === 'rejected') throw frameResult.reason;
+            if (transcriptResult.status === 'rejected' || frameResult.status === 'rejected') {
+              // Persist whichever branch actually succeeded this run (fresh
+              // or reused from cache) so a future retry of this same file
+              // doesn't redo it again.
+              const progress: VideoPartialProgress = {};
+              if (transcriptResult.status === 'fulfilled') progress.transcript = transcriptResult.value;
+              if (frameResult.status === 'fulfilled') progress.frameAnalyses = frameResult.value;
+              if (progress.transcript !== undefined || progress.frameAnalyses !== undefined) {
+                writeVideoPartialProgress(root, hash!, progress);
+              }
+              if (transcriptResult.status === 'rejected') throw transcriptResult.reason;
+              throw (frameResult as PromiseRejectedResult).reason;
+            }
             transcript = transcriptResult.value;
             frameAnalyses = frameResult.value;
+            // Full success -- clear any partial-progress sidecar from an
+            // earlier failed attempt at this same file.
+            clearVideoPartialProgress(root, hash!);
           } finally {
             // Swallow cleanup errors (e.g. Windows EPERM/EBUSY from an AV
             // scanner or file-handle timing) -- a cleanup hiccup must never
