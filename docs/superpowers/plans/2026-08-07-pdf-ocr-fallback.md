@@ -6,7 +6,9 @@
 
 **Architecture:** `convertFileToText`'s PDF branch tries `pdf-parse` first (unchanged fast path). On empty text, it falls back: get page count (no render) → render each page to PNG one at a time → OCR each page via the existing `ImageAnalyzer.ocr()` → reassemble in page order, tolerating per-page OCR failures. Two new bounded concurrency pools cap memory/API cost; hard page-count/byte-size limits reject oversized input before any rendering starts.
 
-**Tech Stack:** TypeScript (CommonJS), Jest, `pdf-to-png-converter` (page rendering, wraps `pdfjs-dist` + `@napi-rs/canvas`, prebuilt binaries, no native build step), `pdfjs-dist` (cheap page-count lookup), `p-limit` (existing concurrency pattern), `pdf-lib` (dev-only, test fixture generation).
+**Tech Stack:** TypeScript (CommonJS), Jest, `pdfjs-dist` (page-count lookup AND page rendering, called directly) + `@napi-rs/canvas` (Node canvas implementation for pdfjs-dist rendering, prebuilt binaries, no native build step), `p-limit` (existing concurrency pattern), `pdf-lib` (dev-only, test fixture generation).
+
+**Amendment (post-Task-4-blocker):** the original design routed rendering through `pdf-to-png-converter`. Task 4's real-fixture test discovered a genuine Windows bug in that package: its bundled `pdfjs-dist` requires `cMapUrl`/`standardFontDataUrl` as forward-slash URL strings, but the package's own `normalizePath()` helper appends the OS path separator (backslash on Windows) with no public option to override — verified against the installed package's source (`node_modules/pdf-to-png-converter/out/normalizePath.js`, `out/const.js`), not a config mistake or implementer error. Decision: drop `pdf-to-png-converter` entirely; render directly via `pdfjs-dist` + `@napi-rs/canvas`, setting `cMapUrl`/`standardFontDataUrl` ourselves with correct forward-slash paths. This changes `defaultRenderPdfPage`'s implementation (Task 2) and its dependency footprint but not its signature or any other task's contract.
 
 ## Global Constraints
 
@@ -15,7 +17,8 @@
 - `TRM_PDF_OCR_CONCURRENCY` env var, default 4 — bounds concurrent Vision OCR calls during PDF fallback.
 - Page rendering reuses the existing `TRM_DOC_CONCURRENCY` / `docPool`.
 - `ImageAnalyzer` for PDF-page OCR must be constructed as `new ImageAnalyzer(cicIngestionUrl, 90000, 2)` — the class defaults (5000ms timeout, 3 retries) are wrong for real Vision `DOCUMENT_TEXT_DETECTION` latency (observed 60s+ under load in `ingestDir.ts`).
-- Render DPI fixed at 150 (`viewportScale: 150 / 72` for `pdf-to-png-converter`).
+- Render DPI fixed at 150 (`viewportScale: 150 / 72`, passed to `page.getViewport({ scale })` per **the amendment above** — no longer a `pdf-to-png-converter` option).
+- `defaultRenderPdfPage` must set `cMapUrl`/`standardFontDataUrl` to absolute, forward-slash-normalized paths under the installed `pdfjs-dist` package (`cmaps/` and `standard_fonts/` respectively, both with a trailing `/`) — backslash paths (Windows default) make `pdfjs-dist` throw. Build the forward-slash form explicitly (e.g. `.split(path.sep).join('/')` on the resolved absolute path); do not rely on any library default.
 - No manifest schema change. No new CLI flag. No DOCX/EPUB OCR fallback. No mid-document cancellation.
 - Page markers: `\n\n--- page N ---\n\n` before pages 2+ in multi-page output; single-page output has no marker. Failed pages render as `[OCR FAILED: page N]` inline.
 - All pages failing OCR must produce `''` from the fallback (not a string of failure markers), so `convertFileToText`'s existing empty-text check throws `"produced no extractable text"` — never a false success.
@@ -121,7 +124,7 @@ git commit -m "feat(concurrency): add pdfOcrPool for PDF-page OCR calls"
 ### Task 2: Install PDF-rendering dependencies, add `FileConverters` seam + default implementations
 
 **Files:**
-- Modify: `package.json` (add `pdf-to-png-converter`, `pdfjs-dist` dependencies; `pdf-lib` devDependency)
+- Modify: `package.json` (add `pdfjs-dist`, `@napi-rs/canvas` dependencies; `pdf-lib` devDependency)
 - Modify: `src/ingestion/fileConvert.ts` (extend `FileConverters` interface, add 3 default implementations — NOT wired into `convertFileToText` yet, that's Task 3)
 - Test: `tests/ingestion/fileConvert.defaults.test.ts` (new file)
 
@@ -133,15 +136,16 @@ git commit -m "feat(concurrency): add pdfOcrPool for PDF-page OCR calls"
   - `defaultOcrPage(buffer: Buffer): Promise<OcrResult>`
   - Extended `FileConverters` interface with 3 new optional fields: `getPdfPageCount?`, `renderPdfPage?`, `ocrPage?` (same signatures as the 3 functions above).
 
+**Note (amended after Task 4's Windows blocker — see Amendment at top of plan):** rendering is done directly via `pdfjs-dist` + `@napi-rs/canvas`, NOT `pdf-to-png-converter` (dropped: verified Windows-incompatible, its own `normalizePath()` produces backslash `cMapUrl`/`standardFontDataUrl` paths with no override hook). `pdfjs-dist` is used for both the page-count lookup and rendering; `@napi-rs/canvas` supplies the `CanvasRenderingContext2D` pdfjs-dist's `page.render()` needs in Node, via prebuilt binaries (no native compiler step, same reason it was chosen originally).
+
 - [ ] **Step 1: Install dependencies**
 
 ```bash
-cd /c/dev/trm
-npm install pdf-to-png-converter@^3.7.0 pdfjs-dist@^3.11.174
+npm install pdfjs-dist@^3.11.174 @napi-rs/canvas@^0.1.80
 npm install --save-dev pdf-lib@^1.17.1
 ```
 
-Verify: `grep -A1 '"pdf-to-png-converter"\|"pdfjs-dist"\|"pdf-lib"' package.json` shows all three.
+Verify: `grep -A1 '"pdfjs-dist"\|"@napi-rs/canvas"\|"pdf-lib"' package.json` shows all three. Run this from your current working directory as-is — do not `cd` elsewhere first.
 
 - [ ] **Step 2: Write the failing tests**
 
@@ -157,10 +161,12 @@ jest.mock('pdfjs-dist/legacy/build/pdf.js', () => ({
   getDocument: (...args: unknown[]) => mockGetDocument(...args),
 }));
 
-const mockPdfToPng = jest.fn();
+const mockToBuffer = jest.fn();
+const mockGetContext = jest.fn();
+const mockCreateCanvas = jest.fn();
 
-jest.mock('pdf-to-png-converter', () => ({
-  pdfToPng: (...args: unknown[]) => mockPdfToPng(...args),
+jest.mock('@napi-rs/canvas', () => ({
+  createCanvas: (...args: unknown[]) => mockCreateCanvas(...args),
 }));
 
 const mockOcr = jest.fn();
@@ -189,26 +195,44 @@ describe('defaultGetPdfPageCount', () => {
 
 describe('defaultRenderPdfPage', () => {
   beforeEach(() => {
-    mockPdfToPng.mockReset();
+    mockGetDocument.mockReset();
+    mockDocDestroy.mockClear();
+    mockToBuffer.mockReset();
+    mockGetContext.mockReset();
+    mockCreateCanvas.mockReset();
   });
 
   it('renders exactly the requested page at 150 DPI and returns its PNG buffer', async () => {
     const pngBuffer = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
-    mockPdfToPng.mockResolvedValue([{ pageNumber: 2, content: pngBuffer }]);
+    mockToBuffer.mockReturnValue(pngBuffer);
+    mockGetContext.mockReturnValue({});
+    mockCreateCanvas.mockReturnValue({ getContext: mockGetContext, toBuffer: mockToBuffer });
+
+    const mockRender = jest.fn().mockReturnValue({ promise: Promise.resolve(undefined) });
+    const mockGetViewport = jest.fn().mockReturnValue({ width: 620, height: 877 });
+    const mockGetPage = jest.fn().mockResolvedValue({ getViewport: mockGetViewport, render: mockRender });
+    mockGetDocument.mockReturnValue({
+      promise: Promise.resolve({ getPage: mockGetPage, destroy: mockDocDestroy }),
+    });
 
     const result = await defaultRenderPdfPage(Buffer.from('fake pdf bytes'), 2);
 
     expect(result).toBe(pngBuffer);
-    expect(mockPdfToPng).toHaveBeenCalledWith(
-      expect.any(Buffer),
-      expect.objectContaining({ pagesToProcess: [2], viewportScale: 150 / 72 })
-    );
+    expect(mockGetPage).toHaveBeenCalledWith(2);
+    expect(mockGetViewport).toHaveBeenCalledWith(expect.objectContaining({ scale: 150 / 72 }));
+    expect(mockCreateCanvas).toHaveBeenCalledWith(620, 877);
+    expect(mockToBuffer).toHaveBeenCalledWith('image/png');
+    expect(mockDocDestroy).toHaveBeenCalledTimes(1);
   });
 
-  it('throws when pdf-to-png-converter returns no pages', async () => {
-    mockPdfToPng.mockResolvedValue([]);
+  it('throws when pdfjs-dist reports the requested page does not exist', async () => {
+    const mockGetPage = jest.fn().mockRejectedValue(new Error('Invalid page request'));
+    mockGetDocument.mockReturnValue({
+      promise: Promise.resolve({ getPage: mockGetPage, destroy: mockDocDestroy }),
+    });
 
-    await expect(defaultRenderPdfPage(Buffer.from('fake pdf bytes'), 5)).rejects.toThrow(/page 5/);
+    await expect(defaultRenderPdfPage(Buffer.from('fake pdf bytes'), 5)).rejects.toThrow(/Invalid page request/);
+    expect(mockDocDestroy).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -240,10 +264,13 @@ Expected: FAIL — `defaultGetPdfPageCount`, `defaultRenderPdfPage`, `defaultOcr
 Add these imports and functions to `src/ingestion/fileConvert.ts` (do not remove anything yet — this step only adds the new interface fields, functions, and exports; `convertFileToText`'s PDF branch is untouched until Task 3):
 
 ```ts
+import * as path from 'node:path';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.js';
-import { pdfToPng } from 'pdf-to-png-converter';
+import { createCanvas } from '@napi-rs/canvas';
 import { ImageAnalyzer, OcrResult } from './imageExtract/imageAnalyzer';
 ```
+
+(`node:path` may already be imported at the top of this file for other purposes — if so, don't duplicate the import, just reuse it.)
 
 Extend the interface:
 
@@ -254,18 +281,30 @@ export interface FileConverters {
   extractEpub: (filePath: string) => Promise<string>;
   // Scanned-PDF OCR fallback (all optional -- unset means "use the real
   // default," so a test that overrides only extractPdf and forgets these
-  // will silently hit real pdfjs-dist/pdf-to-png-converter/Vision calls if
-  // its extractPdf ever resolves empty. Tests exercising the fallback path
-  // must always override all three.
+  // will silently hit real pdfjs-dist/canvas/Vision calls if its extractPdf
+  // ever resolves empty. Tests exercising the fallback path must always
+  // override all three.
   getPdfPageCount?: (buffer: Buffer) => Promise<number>;
   renderPdfPage?: (buffer: Buffer, pageNumber: number) => Promise<Buffer>;
   ocrPage?: (buffer: Buffer) => Promise<OcrResult>;
 }
 ```
 
-Add the three default implementations (place above `const defaultConverters`):
+Add a helper for the forward-slash-normalized pdfjs-dist asset paths, and the three default implementations (place above `const defaultConverters`):
 
 ```ts
+// pdfjs-dist requires cMapUrl/standardFontDataUrl as forward-slash URL
+// strings with a trailing slash. path.resolve()/path.join() produce
+// backslash paths on Windows, which pdfjs-dist rejects outright -- this
+// normalizes explicitly rather than relying on any library default.
+function pdfjsAssetUrl(...segments: string[]): string {
+  const absolute = path.resolve(path.dirname(require.resolve('pdfjs-dist/package.json')), ...segments);
+  return absolute.split(path.sep).join('/') + '/';
+}
+
+const PDFJS_CMAP_URL = pdfjsAssetUrl('cmaps');
+const PDFJS_STANDARD_FONT_DATA_URL = pdfjsAssetUrl('standard_fonts');
+
 export async function defaultGetPdfPageCount(buffer: Buffer): Promise<number> {
   const loadingTask = getDocument({ data: new Uint8Array(buffer) });
   const doc = await loadingTask.promise;
@@ -275,14 +314,23 @@ export async function defaultGetPdfPageCount(buffer: Buffer): Promise<number> {
 }
 
 export async function defaultRenderPdfPage(buffer: Buffer, pageNumber: number): Promise<Buffer> {
-  const pages = await pdfToPng(buffer, {
-    pagesToProcess: [pageNumber],
-    viewportScale: 150 / 72, // 150 DPI (PDF points are 1/72 inch)
+  const loadingTask = getDocument({
+    data: new Uint8Array(buffer),
+    cMapUrl: PDFJS_CMAP_URL,
+    cMapPacked: true,
+    standardFontDataUrl: PDFJS_STANDARD_FONT_DATA_URL,
   });
-  if (pages.length === 0) {
-    throw new Error(`defaultRenderPdfPage: page ${pageNumber} not found in rendered output`);
+  const doc = await loadingTask.promise;
+  try {
+    const page = await doc.getPage(pageNumber);
+    const viewport = page.getViewport({ scale: 150 / 72 }); // 150 DPI (PDF points are 1/72 inch)
+    const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+    const context = canvas.getContext('2d');
+    await page.render({ canvasContext: context as any, viewport }).promise;
+    return canvas.toBuffer('image/png');
+  } finally {
+    await doc.destroy();
   }
-  return pages[0].content;
 }
 
 export async function defaultOcrPage(buffer: Buffer): Promise<OcrResult> {
@@ -322,8 +370,20 @@ Expected: PASS — new tests pass, and the pre-existing `fileConvert.test.ts` su
 
 ```ts
 declare module 'pdfjs-dist/legacy/build/pdf.js' {
-  export function getDocument(src: { data: Uint8Array }): {
-    promise: Promise<{ numPages: number; destroy: () => Promise<void> }>;
+  export function getDocument(src: {
+    data: Uint8Array;
+    cMapUrl?: string;
+    cMapPacked?: boolean;
+    standardFontDataUrl?: string;
+  }): {
+    promise: Promise<{
+      numPages: number;
+      getPage(pageNumber: number): Promise<{
+        getViewport(params: { scale: number }): { width: number; height: number };
+        render(params: { canvasContext: any; viewport: any }): { promise: Promise<void> };
+      }>;
+      destroy: () => Promise<void>;
+    }>;
   };
 }
 ```
@@ -672,7 +732,7 @@ async function extractPdfWithOcrFallback(buffer: Buffer, converters: FileConvert
 
   // extractPdf yielded empty text (e.g. scanned PDF, no text layer) -- fall
   // back to render-and-OCR. Any of these three overrides being unset falls
-  // through to the real default (real pdfjs-dist/pdf-to-png-converter/Vision
+  // through to the real default (real pdfjs-dist/@napi-rs/canvas/Vision
   // call) -- tests exercising this path must always override all three.
   const getPdfPageCount = converters.getPdfPageCount ?? defaultGetPdfPageCount;
   const renderPdfPage = converters.renderPdfPage ?? defaultRenderPdfPage;
@@ -767,7 +827,7 @@ git commit -m "feat(fileConvert): scanned-PDF OCR fallback with page-order reass
 - Test: `tests/ingestion/fileConvert.pdfOcrFallback.fixture.test.ts` (new file)
 
 **Interfaces:**
-- Consumes: `defaultGetPdfPageCount`, `defaultRenderPdfPage` (Task 2, real implementations — this test does NOT mock `pdfjs-dist`/`pdf-to-png-converter`); `convertFileToText`, `FileConverters` (existing).
+- Consumes: `defaultGetPdfPageCount`, `defaultRenderPdfPage` (Task 2, real implementations — this test does NOT mock `pdfjs-dist`/`@napi-rs/canvas`); `convertFileToText`, `FileConverters` (existing).
 - Produces: nothing consumed by later tasks — this is a leaf validation task.
 
 - [ ] **Step 1: Write the fixture generator**
@@ -816,8 +876,9 @@ main().catch((err) => {
 
 - [ ] **Step 2: Generate the fixture**
 
+Run from your current working directory as-is (do not `cd` elsewhere):
+
 ```bash
-cd /c/dev/trm
 npx ts-node scripts/generate-scanned-pdf-fixture.ts
 ```
 
@@ -850,7 +911,7 @@ describe('scanned-PDF OCR fallback: real render boundary', () => {
     expect(count).toBe(2);
   });
 
-  it('real pdf-to-png-converter renders a non-empty PNG for page 1', async () => {
+  it('real pdfjs-dist + @napi-rs/canvas renders a non-empty PNG for page 1', async () => {
     const fs = require('node:fs');
     const buffer = fs.readFileSync(FIXTURE_PATH);
     const png = await defaultRenderPdfPage(buffer, 1);
@@ -867,7 +928,7 @@ describe('scanned-PDF OCR fallback: real render boundary', () => {
       extractPdf: async () => '', // real pdf-parse would also return '' for this fixture; forced here for determinism
       extractEpub: async () => '',
       // getPdfPageCount and renderPdfPage intentionally NOT overridden --
-      // this exercises the real pdfjs-dist + pdf-to-png-converter path.
+      // this exercises the real pdfjs-dist + @napi-rs/canvas path.
       ocrPage: async () => okResult('mock OCR text'),
     };
 
@@ -881,7 +942,7 @@ describe('scanned-PDF OCR fallback: real render boundary', () => {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx jest tests/ingestion/fileConvert.pdfOcrFallback.fixture.test.ts`
-Expected: PASS. If `defaultGetPdfPageCount`/`defaultRenderPdfPage` fail here, that's a real integration problem with the `pdf-to-png-converter`/`pdfjs-dist` install or API usage — fix the implementation from Task 2, not this test.
+Expected: PASS. If `defaultGetPdfPageCount`/`defaultRenderPdfPage` fail here, that's a real integration problem with the `pdfjs-dist`/`@napi-rs/canvas` install or API usage — fix the implementation from Task 2, not this test.
 
 - [ ] **Step 5: Commit**
 
