@@ -25,3 +25,9 @@ export const ffmpegPool = pLimit(Number(process.env.TRM_FFMPEG_CONCURRENCY) || 2
 // eventual analyzer.extract() calls. Deliberately separate knobs -- see
 // analyzeFrames.ts for how they nest.
 export const frameAnalysisPool = pLimit(Number(process.env.TRM_FRAME_ANALYSIS_CONCURRENCY) || 3);
+
+// Whisper transcription is deliberately serialized by default (concurrency 1)
+// -- it is the heaviest single local workload per video (CONTEXT.md #7).
+// Unlike the pools above, TRM_WHISPER_CONCURRENCY intentionally does NOT fall
+// back to DEFAULT_CONCURRENCY/configuredLimit(); its own default is 1.
+export const whisperPool = pLimit(Number(process.env.TRM_WHISPER_CONCURRENCY) || 1);
