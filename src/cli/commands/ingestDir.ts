@@ -17,8 +17,10 @@ import { resolveActor } from '../../registry/actorRegistry';
 import { readTopicMeta } from '../../core/topicNode';
 import { regenerateExtractJson } from '../../core/regenerateExtractJson';
 import { appendOcrTiming } from '../../core/ocrTimingLog';
+import { checkFfmpegDeps } from '../../core/videoDeps';
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv']);
 
 export interface IngestDirOptions {
   actor?: string;
@@ -95,6 +97,14 @@ export async function runIngestDir(
   let duplicateCount = 0;
   let successCount = 0;
   let failureCount = 0;
+
+  // Check for ffmpeg/ffprobe if batch contains video files
+  const hasVideoFiles = workItems.some((item) =>
+    VIDEO_EXTENSIONS.has(path.extname(item.filePath).toLowerCase())
+  );
+  if (hasVideoFiles) {
+    await checkFfmpegDeps();
+  }
 
   const cicIngestionUrl = process.env.CIC_INGESTION_URL || 'http://localhost:3000';
   // Real Vision DOCUMENT_TEXT_DETECTION under concurrent load has been observed
