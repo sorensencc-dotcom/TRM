@@ -1,5 +1,5 @@
 describe('concurrency', () => {
-  const ENV_KEYS = ['TRM_VISION_CONCURRENCY', 'TRM_CLAUDE_CONCURRENCY', 'TRM_DOC_CONCURRENCY'];
+  const ENV_KEYS = ['TRM_VISION_CONCURRENCY', 'TRM_CLAUDE_CONCURRENCY', 'TRM_DOC_CONCURRENCY', 'TRM_PDF_OCR_CONCURRENCY'];
   const originalEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
@@ -84,5 +84,36 @@ describe('concurrency', () => {
     const maxActive = await trackConcurrency(docPool, 10);
     expect(maxActive).toBeLessThanOrEqual(2);
     expect(maxActive).toBeGreaterThan(0);
+  });
+
+  it('pdfOcrPool defaults to a concurrency of 4 when no env var is set', async () => {
+    delete process.env.TRM_PDF_OCR_CONCURRENCY;
+    const { pdfOcrPool } = require('../../src/core/concurrency');
+
+    const maxActive = await trackConcurrency(pdfOcrPool, 10);
+    expect(maxActive).toBe(4);
+  });
+
+  it('bounds concurrent execution to the configured TRM_PDF_OCR_CONCURRENCY limit', async () => {
+    process.env.TRM_PDF_OCR_CONCURRENCY = '2';
+    const { pdfOcrPool } = require('../../src/core/concurrency');
+
+    const maxActive = await trackConcurrency(pdfOcrPool, 10);
+    expect(maxActive).toBeLessThanOrEqual(2);
+    expect(maxActive).toBeGreaterThan(0);
+  });
+
+  it('pdfOcrPool is independent of docPool', async () => {
+    process.env.TRM_DOC_CONCURRENCY = '1';
+    process.env.TRM_PDF_OCR_CONCURRENCY = '5';
+    const { docPool, pdfOcrPool } = require('../../src/core/concurrency');
+
+    const [docMax, pdfOcrMax] = await Promise.all([
+      trackConcurrency(docPool, 8),
+      trackConcurrency(pdfOcrPool, 8),
+    ]);
+
+    expect(docMax).toBe(1);
+    expect(pdfOcrMax).toBe(5);
   });
 });
