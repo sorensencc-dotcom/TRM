@@ -130,3 +130,21 @@ export async function checkWhisperDeps(): Promise<void> {
 export function __resetWhisperCheckForTesting(): void {
   whisperCheckPromise = null;
 }
+
+// Without a cap, a pathological source (a mis-tagged multi-hour recording, a
+// corrupt file ffprobe still reads *a* duration from) hands extractFrames /
+// extractAudio / transcribeAudio an effectively unbounded amount of real
+// work -- their own per-call timeouts bound each subprocess individually,
+// but transcribeAudio's timeout SCALES WITH durationMs (see transcribe.ts),
+// so a bad duration inflates the timeout right along with the workload
+// instead of bounding it. These two caps reject before any subprocess work
+// starts, mirroring the pdfMaxBytes/pdfMaxPages pattern in fileConvert.ts.
+export function getVideoMaxBytes(): number {
+  const value = Number.parseInt(process.env.TRM_VIDEO_MAX_BYTES ?? '', 10);
+  return Number.isInteger(value) && value > 0 ? value : 5 * 1024 * 1024 * 1024; // 5 GB
+}
+
+export function getVideoMaxDurationMs(): number {
+  const value = Number.parseInt(process.env.TRM_VIDEO_MAX_DURATION_MS ?? '', 10);
+  return Number.isInteger(value) && value > 0 ? value : 2 * 60 * 60 * 1000; // 2 hours
+}

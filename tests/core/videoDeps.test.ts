@@ -1,5 +1,11 @@
 import { execFile } from 'node:child_process';
-import { checkFfmpegDeps, checkWhisperDeps, __resetWhisperCheckForTesting } from '../../src/core/videoDeps';
+import {
+  checkFfmpegDeps,
+  checkWhisperDeps,
+  __resetWhisperCheckForTesting,
+  getVideoMaxBytes,
+  getVideoMaxDurationMs,
+} from '../../src/core/videoDeps';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -382,5 +388,52 @@ describe('checkWhisperDeps', () => {
 
     // Binary check should not have been called again
     expect(secondCallCount).toBe(firstCallCount);
+  });
+});
+
+describe('getVideoMaxBytes', () => {
+  afterEach(() => {
+    delete process.env.TRM_VIDEO_MAX_BYTES;
+  });
+
+  it('defaults to 5 GB when unset', () => {
+    expect(getVideoMaxBytes()).toBe(5 * 1024 * 1024 * 1024);
+  });
+
+  it('honors a positive-integer TRM_VIDEO_MAX_BYTES', () => {
+    process.env.TRM_VIDEO_MAX_BYTES = '1024';
+    expect(getVideoMaxBytes()).toBe(1024);
+  });
+
+  it('falls back to the default for a non-numeric value', () => {
+    process.env.TRM_VIDEO_MAX_BYTES = 'not-a-number';
+    expect(getVideoMaxBytes()).toBe(5 * 1024 * 1024 * 1024);
+  });
+
+  it('falls back to the default for a zero or negative value', () => {
+    process.env.TRM_VIDEO_MAX_BYTES = '0';
+    expect(getVideoMaxBytes()).toBe(5 * 1024 * 1024 * 1024);
+    process.env.TRM_VIDEO_MAX_BYTES = '-5';
+    expect(getVideoMaxBytes()).toBe(5 * 1024 * 1024 * 1024);
+  });
+});
+
+describe('getVideoMaxDurationMs', () => {
+  afterEach(() => {
+    delete process.env.TRM_VIDEO_MAX_DURATION_MS;
+  });
+
+  it('defaults to 2 hours when unset', () => {
+    expect(getVideoMaxDurationMs()).toBe(2 * 60 * 60 * 1000);
+  });
+
+  it('honors a positive-integer TRM_VIDEO_MAX_DURATION_MS', () => {
+    process.env.TRM_VIDEO_MAX_DURATION_MS = '5000';
+    expect(getVideoMaxDurationMs()).toBe(5000);
+  });
+
+  it('falls back to the default for a non-numeric value', () => {
+    process.env.TRM_VIDEO_MAX_DURATION_MS = 'nope';
+    expect(getVideoMaxDurationMs()).toBe(2 * 60 * 60 * 1000);
   });
 });

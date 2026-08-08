@@ -18,7 +18,7 @@ import { resolveActor } from '../../registry/actorRegistry';
 import { readTopicMeta } from '../../core/topicNode';
 import { regenerateExtractJson } from '../../core/regenerateExtractJson';
 import { appendOcrTiming } from '../../core/ocrTimingLog';
-import { checkFfmpegDeps, checkWhisperDeps } from '../../core/videoDeps';
+import { checkFfmpegDeps, checkWhisperDeps, getVideoMaxBytes, getVideoMaxDurationMs } from '../../core/videoDeps';
 import { probeVideo } from '../../core/videoProbe';
 import {
   extractFrames,
@@ -186,7 +186,22 @@ export async function runIngestDir(
 
       try {
         if (isVideo) {
+          const stat = await fs.promises.stat(filePath);
+          const maxBytes = getVideoMaxBytes();
+          if (stat.size > maxBytes) {
+            throw new Error(
+              `trm ingest-dir: video exceeds max size (${stat.size} bytes > ${maxBytes} byte limit; set TRM_VIDEO_MAX_BYTES to override)`
+            );
+          }
+
           const { durationMs, hasAudioStream } = await probeVideo(filePath);
+
+          const maxDurationMs = getVideoMaxDurationMs();
+          if (durationMs > maxDurationMs) {
+            throw new Error(
+              `trm ingest-dir: video exceeds max duration (${durationMs}ms > ${maxDurationMs}ms limit; set TRM_VIDEO_MAX_DURATION_MS to override)`
+            );
+          }
 
           // One temp dir per video, shared by both concurrent branches (the
           // extracted WAV and the sampled frame files), removed once both

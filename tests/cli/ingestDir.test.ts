@@ -777,6 +777,72 @@ describe('runIngestDir', () => {
       restoreVideoPipelineMocks(spies);
     });
 
+    it('a video exceeding TRM_VIDEO_MAX_BYTES fails before probeVideo/extractFrames/extractAudio run', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      const filePath = path.join(dir, 'oversized.mp4');
+      fs.writeFileSync(filePath, 'fake mp4 bytes larger than the cap', 'utf-8');
+
+      process.env.TRM_VIDEO_MAX_BYTES = '10';
+      const spies = mockVideoPipeline({ durationMs: 60000, hasAudioStream: false });
+      const { runner, runSpy } = makeRunSpyRunner();
+
+      try {
+        const summary = await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+
+        expect(summary.successCount).toBe(0);
+        expect(summary.failureCount).toBe(1);
+        expect(spies.probeSpy).not.toHaveBeenCalled();
+        expect(spies.extractSpy).not.toHaveBeenCalled();
+        expect(spies.extractAudioSpy).not.toHaveBeenCalled();
+        expect(runSpy).not.toHaveBeenCalled();
+
+        const failed = failedStore.readFailed(root, 'topic1');
+        expect(failed.length).toBe(1);
+        expect(failed[0].error).toContain('exceeds max size');
+        expect(failed[0].error).toContain('TRM_VIDEO_MAX_BYTES');
+      } finally {
+        delete process.env.TRM_VIDEO_MAX_BYTES;
+        restoreVideoPipelineMocks(spies);
+      }
+    });
+
+    it('a video exceeding TRM_VIDEO_MAX_DURATION_MS fails after probeVideo but before extractFrames/extractAudio run', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      const filePath = path.join(dir, 'toolong.mp4');
+      fs.writeFileSync(filePath, 'fake mp4 bytes', 'utf-8');
+
+      process.env.TRM_VIDEO_MAX_DURATION_MS = '1000';
+      const spies = mockVideoPipeline({ durationMs: 60000, hasAudioStream: false });
+      const { runner, runSpy } = makeRunSpyRunner();
+
+      try {
+        const summary = await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+
+        expect(summary.successCount).toBe(0);
+        expect(summary.failureCount).toBe(1);
+        expect(spies.probeSpy).toHaveBeenCalledTimes(1);
+        expect(spies.extractSpy).not.toHaveBeenCalled();
+        expect(spies.extractAudioSpy).not.toHaveBeenCalled();
+        expect(runSpy).not.toHaveBeenCalled();
+
+        const failed = failedStore.readFailed(root, 'topic1');
+        expect(failed.length).toBe(1);
+        expect(failed[0].error).toContain('exceeds max duration');
+        expect(failed[0].error).toContain('TRM_VIDEO_MAX_DURATION_MS');
+      } finally {
+        delete process.env.TRM_VIDEO_MAX_DURATION_MS;
+        restoreVideoPipelineMocks(spies);
+      }
+    });
+
     it('a probeVideo timeout-shaped failure lands in failedStore with the underlying message preserved (Task 5.4)', async () => {
       const root = makeRoot();
       runCreate(root, 'topic1', { actor: 'ACTOR-001' });
