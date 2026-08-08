@@ -5,6 +5,7 @@ const mockGetDocument = jest.fn();
 
 jest.mock('pdfjs-dist/legacy/build/pdf.js', () => ({
   getDocument: (...args: unknown[]) => mockGetDocument(...args),
+  GlobalWorkerOptions: {},
 }));
 
 const mockToBuffer = jest.fn();

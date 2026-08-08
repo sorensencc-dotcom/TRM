@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import * as mammoth from 'mammoth';
 import { PDFParse } from 'pdf-parse';
 import { extractEpub } from './epubExtract';
-import { getDocument } from 'pdfjs-dist/legacy/build/pdf.js';
+import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.js';
 import { createCanvas } from '@napi-rs/canvas';
 import { ImageAnalyzer, OcrResult } from './imageExtract/imageAnalyzer';
 import { docPool, pdfOcrPool, pdfRenderPool } from '../core/concurrency';
@@ -22,17 +22,30 @@ export interface FileConverters {
   ocrPage?: (buffer: Buffer) => Promise<OcrResult>;
 }
 
-// pdfjs-dist requires cMapUrl/standardFontDataUrl as forward-slash URL
-// strings with a trailing slash. path.resolve()/path.join() produce
-// backslash paths on Windows, which pdfjs-dist rejects outright -- this
-// normalizes explicitly rather than relying on any library default.
-function pdfjsAssetUrl(...segments: string[]): string {
+// pdfjs-dist requires forward-slash paths (path.resolve()/path.join()
+// produce backslashes on Windows, which pdfjs-dist rejects outright).
+// Normalized explicitly rather than relying on any library default.
+function pdfjsAssetPath(...segments: string[]): string {
   const absolute = path.resolve(path.dirname(require.resolve('pdfjs-dist/package.json')), ...segments);
-  return absolute.split(path.sep).join('/') + '/';
+  return absolute.split(path.sep).join('/');
+}
+
+// cMapUrl/standardFontDataUrl are directory URLs and must end in a
+// trailing slash; a worker src is a single file path and must not.
+function pdfjsAssetUrl(...segments: string[]): string {
+  return `${pdfjsAssetPath(...segments)}/`;
 }
 
 const PDFJS_CMAP_URL = pdfjsAssetUrl('cmaps');
 const PDFJS_STANDARD_FONT_DATA_URL = pdfjsAssetUrl('standard_fonts');
+
+// Without an explicit workerSrc, pdfjs-dist can resolve its worker script to
+// a mismatched version (observed: API 3.11.174 vs Worker 5.4.296, thrown as
+// "API version does not match the Worker version" -- real, reproduced
+// outside Jest against real files, not a config typo). Pin it to the exact
+// worker file bundled with our installed pdfjs-dist so the API and worker
+// versions can never diverge.
+GlobalWorkerOptions.workerSrc = pdfjsAssetPath('legacy', 'build', 'pdf.worker.js');
 
 // pdfjs-dist's internal image-compositing path (used whenever a page embeds
 // a raster image -- the exact case for every scanned PDF this fallback
@@ -60,7 +73,21 @@ class NapiCanvasFactory {
   }
 }
 
+// pdf-parse bundles its own, different-version pdfjs-dist. When pdf-parse
+// extracts a PDF (this file's fast path, which always runs before any of
+// our own pdfjs-dist calls), it registers a fake worker on the shared
+// `globalThis.pdfjsWorker` -- a singleton pdfjs-dist itself uses across ANY
+// version present in the process. Our getDocument() calls would silently
+// pick up pdf-parse's mismatched worker and throw "API version does not
+// match the Worker version" (reproduced against real files, not a config
+// typo). Clearing it forces pdfjs-dist to fall through to our pinned
+// `GlobalWorkerOptions.workerSrc` instead.
+function resetStaleGlobalWorker(): void {
+  delete (globalThis as { pdfjsWorker?: unknown }).pdfjsWorker;
+}
+
 export async function defaultGetPdfPageCount(buffer: Buffer): Promise<number> {
+  resetStaleGlobalWorker();
   const loadingTask = getDocument({ data: new Uint8Array(buffer), isEvalSupported: false });
   const doc = await loadingTask.promise;
   try {
@@ -71,6 +98,7 @@ export async function defaultGetPdfPageCount(buffer: Buffer): Promise<number> {
 }
 
 export async function defaultRenderPdfPage(buffer: Buffer, pageNumber: number): Promise<Buffer> {
+  resetStaleGlobalWorker();
   const loadingTask = getDocument({
     data: new Uint8Array(buffer),
     cMapUrl: PDFJS_CMAP_URL,
