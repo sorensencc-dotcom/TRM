@@ -1,0 +1,5 @@
+{"ts":"2026-08-08T05:22:26Z","error":"+class FfprobeValidationError extends Error {","fail":null}
+{"ts":"2026-08-08T05:22:34Z","error":"+class FfprobeValidationError extends Error {","fail":null}
+{"ts":"2026-08-08T05:26:40Z","error":" * @throws Error if ffmpeg fails, times out, or writes no frames","fail":null}
+{"ts":"2026-08-08T05:43:47Z","error":"[{\"type\":\"text\",\"text\":\"This is a clean, correct implementation. All the subtle claims check out against the actual code.\\n\\n**Spec compliance: ✅**\\n\\n- `analyzeFrames(framePaths, timestampsMs, analyz","fail":null}
+{"ts":"2026-08-08T05:46:05Z","error":" * @throws Error if whisper fails or times out. Timeout and non-zero-exit","fail":null}

@@ -1,5 +1,5 @@
 describe('concurrency', () => {
-  const ENV_KEYS = ['TRM_VISION_CONCURRENCY', 'TRM_CLAUDE_CONCURRENCY', 'TRM_DOC_CONCURRENCY', 'TRM_PDF_OCR_CONCURRENCY', 'TRM_PDF_RENDER_CONCURRENCY'];
+  const ENV_KEYS = ['TRM_VISION_CONCURRENCY', 'TRM_CLAUDE_CONCURRENCY', 'TRM_DOC_CONCURRENCY', 'TRM_PDF_OCR_CONCURRENCY', 'TRM_PDF_RENDER_CONCURRENCY', 'TRM_FFMPEG_CONCURRENCY'];
   const originalEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
@@ -146,5 +146,22 @@ describe('concurrency', () => {
 
     expect(docMax).toBe(1);
     expect(renderMax).toBe(5);
+  });
+
+  it('ffmpegPool defaults to a concurrency of 2 when no env var is set (own default, not the shared 4)', async () => {
+    delete process.env.TRM_FFMPEG_CONCURRENCY;
+    const { ffmpegPool } = require('../../src/core/concurrency');
+
+    const maxActive = await trackConcurrency(ffmpegPool, 10);
+    expect(maxActive).toBe(2);
+  });
+
+  it('bounds concurrent execution to the configured TRM_FFMPEG_CONCURRENCY limit', async () => {
+    process.env.TRM_FFMPEG_CONCURRENCY = '3';
+    const { ffmpegPool } = require('../../src/core/concurrency');
+
+    const maxActive = await trackConcurrency(ffmpegPool, 10);
+    expect(maxActive).toBeLessThanOrEqual(3);
+    expect(maxActive).toBeGreaterThan(0);
   });
 });

@@ -89,4 +89,53 @@ describe('runExtract', () => {
 
     warnSpy.mockRestore();
   });
+
+  it('does NOT skip video-kind sources; passes video text to runner.run()', () => {
+    const root = makeRoot();
+    runCreate(root, 'cuba', { actor: 'ACTOR-001' });
+    runIngest(root, 'cuba', { actor: 'ACTOR-001', type: 'video', title: 'interview', origin: 'archive.org', url: 'x' });
+    const rawDir = path.join(root, 'topics', 'cuba', 'sources', 'raw');
+    fs.mkdirSync(rawDir, { recursive: true });
+
+    const videoTranscript = 'Speaker A: This is an important statement.\nSpeaker B: And this is a response.\n';
+    fs.writeFileSync(path.join(rawDir, 'SRC-001.json'), JSON.stringify({
+      sourceId: 'SRC-001',
+      kind: 'video',
+      capturedAt: '2026-07-25T00:00:00.000Z',
+      text: videoTranscript,
+      frames: [],
+    }));
+
+    // Mock runner to track calls
+    const mockRunner = {
+      run: jest.fn((source: any, rawText: string) => {
+        const lines = rawText.split('\n').map((l: string) => l.trim()).filter(Boolean);
+        return {
+          facts: lines.map((text: string, i: number) => ({
+            id: `FCT-${String(i + 1).padStart(3, '0')}`,
+            text,
+            source_id: source.id,
+            confidence: 0.9,
+            categories: ['video-transcript'] as string[],
+          })),
+          summary: `Extracted ${lines.length} fact(s) from video: ${source.title}.`,
+        };
+      }),
+    };
+
+    const result = runExtract(root, 'cuba', { actor: 'ACTOR-001' }, mockRunner);
+
+    // Assert runner was called with the video source
+    expect(mockRunner.run).toHaveBeenCalled();
+    expect(mockRunner.run).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'SRC-001', title: 'interview' }),
+      videoTranscript
+    );
+
+    // Assert facts from video were extracted
+    expect(result?.facts).toHaveLength(2);
+    expect(result?.facts[0]?.text).toBe('Speaker A: This is an important statement.');
+    expect(result?.facts[1]?.text).toBe('Speaker B: And this is a response.');
+    expect(result?.summary).toContain('2 fact(s) from video');
+  });
 });
