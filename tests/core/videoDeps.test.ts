@@ -1,9 +1,16 @@
 import { execFile } from 'node:child_process';
-import { checkFfmpegDeps } from '../../src/core/videoDeps';
+import { checkFfmpegDeps, checkWhisperDeps, __resetWhisperCheckForTesting } from '../../src/core/videoDeps';
+import { existsSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 jest.mock('node:child_process');
+jest.mock('node:fs');
+jest.mock('node:os');
 
 const mockExecFile = execFile as jest.MockedFunction<typeof execFile>;
+const mockExistsSync = existsSync as jest.MockedFunction<typeof existsSync>;
+const mockOs = os as jest.Mocked<typeof os>;
 
 describe('checkFfmpegDeps', () => {
   afterEach(() => {
@@ -167,5 +174,213 @@ describe('checkFfmpegDeps', () => {
 
     await checkFfmpegDeps();
     expect(callOrder).toEqual(['ffmpeg', 'ffprobe']);
+  });
+});
+
+describe('checkWhisperDeps', () => {
+  beforeEach(() => {
+    __resetWhisperCheckForTesting();
+    jest.clearAllMocks();
+    delete process.env.TRM_WHISPER_BIN;
+    delete process.env.TRM_WHISPER_MODEL;
+    mockOs.homedir.mockReturnValue('/home/testuser');
+  });
+
+  afterEach(() => {
+    __resetWhisperCheckForTesting();
+    jest.clearAllMocks();
+    delete process.env.TRM_WHISPER_BIN;
+    delete process.env.TRM_WHISPER_MODEL;
+  });
+
+  it('succeeds when whisper binary and model are available', async () => {
+    mockExecFile.mockImplementation(((cmd: string, args: any, options: any, cb: Function) => {
+      if (cmd === 'whisper') {
+        cb(null, { stdout: 'whisper help' });
+      }
+    }) as any);
+
+    mockExistsSync.mockReturnValue(true);
+
+    await expect(checkWhisperDeps()).resolves.toBeUndefined();
+    expect(mockExecFile).toHaveBeenCalledWith('whisper', ['-h'], { timeout: 5000 }, expect.any(Function));
+    const expectedModelPath = path.join('/home/testuser', '.cache', 'whisper', 'base.en.pt');
+    expect(mockExistsSync).toHaveBeenCalledWith(expectedModelPath);
+  });
+
+  it('simulates N concurrent calls and ensures underlying binary check fires exactly once', async () => {
+    const execFileCallCount = { count: 0 };
+    mockExecFile.mockImplementation(((cmd: string, args: any, options: any, cb: Function) => {
+      if (cmd === 'whisper') {
+        execFileCallCount.count += 1;
+        // Simulate small delay to allow concurrent calls to queue up
+        setTimeout(() => cb(null, { stdout: 'whisper help' }), 10);
+      }
+    }) as any);
+
+    mockExistsSync.mockReturnValue(true);
+
+    // Simulate ioLimit fan-out with concurrent calls
+    const promises = Array.from({ length: 8 }, () => checkWhisperDeps());
+    await Promise.all(promises);
+
+    // Binary check should have fired exactly once despite 8 concurrent calls
+    expect(execFileCallCount.count).toBe(1);
+    expect(mockExistsSync).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses configured TRM_WHISPER_BIN path', async () => {
+    process.env.TRM_WHISPER_BIN = '/custom/whisper';
+
+    mockExecFile.mockImplementation(((cmd: string, args: any, options: any, cb: Function) => {
+      if (cmd === '/custom/whisper') {
+        cb(null, { stdout: 'whisper help' });
+      }
+    }) as any);
+
+    mockExistsSync.mockReturnValue(true);
+
+    await expect(checkWhisperDeps()).resolves.toBeUndefined();
+
+    const callArgs = mockExecFile.mock.calls[0];
+    expect(callArgs[0]).toBe('/custom/whisper');
+  });
+
+  it('throws error when whisper binary is not found in PATH', async () => {
+    mockExecFile.mockImplementation(((cmd: string, args: any, options: any, cb: Function) => {
+      if (cmd === 'whisper') {
+        cb(new Error('not found'));
+      }
+    }) as any);
+
+    mockExistsSync.mockReturnValue(true);
+
+    await expect(checkWhisperDeps()).rejects.toThrow(
+      /whisper not found in PATH.*TRM_WHISPER_BIN/
+    );
+  });
+
+  it('throws detailed error when configured whisper binary path does not exist', async () => {
+    process.env.TRM_WHISPER_BIN = '/nonexistent/whisper';
+
+    mockExecFile.mockImplementation(((cmd: string, args: any, options: any, cb: Function) => {
+      if (cmd === '/nonexistent/whisper') {
+        cb(new Error('no such file or directory'));
+      }
+    }) as any);
+
+    mockExistsSync.mockReturnValue(true);
+
+    await expect(checkWhisperDeps()).rejects.toThrow(
+      /Failed to find whisper at configured path.*\/nonexistent\/whisper.*TRM_WHISPER_BIN/
+    );
+  });
+
+  it('throws error when model file is not found at default path', async () => {
+    mockExecFile.mockImplementation(((cmd: string, args: any, options: any, cb: Function) => {
+      if (cmd === 'whisper') {
+        cb(null, { stdout: 'whisper help' });
+      }
+    }) as any);
+
+    mockExistsSync.mockReturnValue(false);
+
+    await expect(checkWhisperDeps()).rejects.toThrow(
+      /Whisper model not found at default path/
+    );
+
+    // Also verify the error mentions the env var
+    try {
+      __resetWhisperCheckForTesting();
+      await checkWhisperDeps();
+    } catch (err: any) {
+      expect(err.message).toContain('TRM_WHISPER_MODEL');
+    }
+  });
+
+  it('uses configured TRM_WHISPER_MODEL path', async () => {
+    process.env.TRM_WHISPER_MODEL = '/custom/model.pt';
+
+    mockExecFile.mockImplementation(((cmd: string, args: any, options: any, cb: Function) => {
+      if (cmd === 'whisper') {
+        cb(null, { stdout: 'whisper help' });
+      }
+    }) as any);
+
+    mockExistsSync.mockReturnValue(true);
+
+    await expect(checkWhisperDeps()).resolves.toBeUndefined();
+
+    expect(mockExistsSync).toHaveBeenCalledWith('/custom/model.pt');
+  });
+
+  it('throws detailed error when configured model path does not exist', async () => {
+    process.env.TRM_WHISPER_MODEL = '/nonexistent/model.pt';
+
+    mockExecFile.mockImplementation(((cmd: string, args: any, options: any, cb: Function) => {
+      if (cmd === 'whisper') {
+        cb(null, { stdout: 'whisper help' });
+      }
+    }) as any);
+
+    mockExistsSync.mockReturnValue(false);
+
+    await expect(checkWhisperDeps()).rejects.toThrow(
+      /Failed to find whisper model at configured path.*\/nonexistent\/model.pt.*TRM_WHISPER_MODEL/
+    );
+  });
+
+  it('includes stderr in error message when binary check fails', async () => {
+    mockExecFile.mockImplementation(((cmd: string, args: any, options: any, cb: Function) => {
+      if (cmd === 'whisper') {
+        const error = new Error('Command failed');
+        (error as any).stderr = 'whisper: error loading CUDA';
+        cb(error);
+      }
+    }) as any);
+
+    mockExistsSync.mockReturnValue(true);
+
+    await expect(checkWhisperDeps()).rejects.toThrow(
+      /whisper not found in PATH.*Details: whisper: error loading CUDA/
+    );
+  });
+
+  it('passes timeout option to execFile for whisper binary check', async () => {
+    mockExecFile.mockImplementation(((cmd: string, args: any, options: any, cb: Function) => {
+      if (cmd === 'whisper') {
+        cb(null, { stdout: 'whisper help' });
+      }
+    }) as any);
+
+    mockExistsSync.mockReturnValue(true);
+
+    await checkWhisperDeps();
+
+    const callArgs = mockExecFile.mock.calls[0];
+    expect(callArgs[0]).toBe('whisper');
+    expect(callArgs[1]).toEqual(['-h']);
+    expect(callArgs[2]).toEqual({ timeout: 5000 });
+  });
+
+  it('memoizes the result and does not reset after resolution', async () => {
+    mockExecFile.mockImplementation(((cmd: string, args: any, options: any, cb: Function) => {
+      if (cmd === 'whisper') {
+        cb(null, { stdout: 'whisper help' });
+      }
+    }) as any);
+
+    mockExistsSync.mockReturnValue(true);
+
+    // First call
+    await checkWhisperDeps();
+    const firstCallCount = mockExecFile.mock.calls.length;
+
+    // Second call should reuse memoized promise
+    await checkWhisperDeps();
+    const secondCallCount = mockExecFile.mock.calls.length;
+
+    // Binary check should not have been called again
+    expect(secondCallCount).toBe(firstCallCount);
   });
 });
