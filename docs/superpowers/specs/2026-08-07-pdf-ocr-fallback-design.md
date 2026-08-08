@@ -58,8 +58,12 @@ is today — a thin `pdf-parse` wrapper. `convertFileToText` already has
 access to every converter on the `FileConverters` object, so it's the
 right place to sequence "try extractPdf, then fall back."
 
-1. **Size guard.** Check `buffer.length` against `TRM_PDF_MAX_BYTES`
-   (default 100MB) before anything else. Over limit → throw immediately.
+1. **Size guard.** Applies only inside the fallback — i.e. only after
+   `extractPdf` has already returned empty text. Text-layer PDFs of any
+   size still go through the unchanged fast path with no size check
+   (matches the "no cost added to existing PDFs" goal). Check
+   `buffer.length` against `TRM_PDF_MAX_BYTES` (default 100MB). Over limit
+   → throw immediately.
 2. **Page-count guard.** Call `converters.getPdfPageCount(buffer)` — a
    cheap pdfjs-dist `getDocument().numPages` lookup that does *not* render
    any page — and check against `TRM_PDF_MAX_PAGES` (default 50). Over
@@ -85,21 +89,30 @@ right place to sequence "try extractPdf, then fall back."
 4. **Inspect results correctly.** `ImageAnalyzer.ocr()` does not throw on
    failure — it returns `OcrResult` with `metadata.error` set and
    `text: ''`. Fallback logic must check `metadata.error` and
-   empty/whitespace `text`, not rely on try/catch.
-5. **Reassemble in order.** The indexed array of per-page promises is
-   awaited via `Promise.all`, then joined by original page index — never by
-   completion order (rendering/OCR still complete out of order under the
-   pools; only the final join is order-fixed). Multi-page docs get
-   `\n\n--- page N ---\n\n` separators between pages; single-page docs omit
-   the marker (no reordering ambiguity to signal).
-6. **Partial-failure contract.** A page that fails OCR (per step 4) gets an
-   inline `[OCR FAILED: page N]` marker in its place; the document still
-   succeeds if *any* page produced usable text. The list of failed page
-   numbers is logged to stderr (visibility) but not persisted anywhere —
-   no new manifest field, per Non-goals. If *all* pages fail, the result is
-   effectively empty and falls through to the same existing
-   `"produced no extractable text"` error `convertFileToText` already
-   throws for empty extraction — no new error type, no new status value.
+   empty/whitespace `text`. A **thrown** rejection from `ocrPage()` (e.g. a
+   fake/injected implementation that throws instead of resolving with an
+   error result) is caught and treated identically to a `metadata.error`
+   result — both are "this page failed," not a whole-document abort (unlike
+   a `renderPdfPage` failure — see Error handling).
+5. **Reassemble in order, success counted before markers are inserted.**
+   The indexed array of per-page promises is awaited via `Promise.all`.
+   Each settled result is classified as *successful* (non-empty text, no
+   error) or *failed* (per step 4). Count `successfulPages`. Build the
+   joined string by page index — never by completion order — using page
+   text for successes and `[OCR FAILED: page N]` for failures, with
+   `\n\n--- page N ---\n\n` separators for multi-page docs (single-page
+   docs omit the marker).
+   **`successfulPages === 0` short-circuits to returning `''`, discarding
+   the joined string entirely** — a string made entirely of
+   `[OCR FAILED: page N]` markers is non-empty text but contains zero
+   usable content, and must not be returned as if it were real extracted
+   text. `convertFileToText`'s existing empty-text check then throws
+   `"produced no extractable text"` exactly as it does for the plain
+   `pdf-parse`-empty case.
+6. **Partial-failure contract.** When `successfulPages >= 1`, the joined
+   string (successes + `[OCR FAILED: page N]` markers) is returned as-is.
+   The list of failed page numbers is logged to stderr (visibility) but not
+   persisted anywhere — no new manifest field, per Non-goals.
 
 ### Concurrency
 
@@ -164,10 +177,14 @@ injection pattern used for the other three converters.
   `pdf-to-png-converter` — this aborts the whole document (unlike an OCR
   failure, a render failure means we have no image to even attempt OCR on,
   so it isn't treated as a per-page partial failure).
-- Per-page OCR failure: not thrown — becomes an inline
+- Per-page OCR failure (`metadata.error` set, empty text, or `ocrPage()`
+  throwing) is not treated as a whole-document error — becomes an inline
   `[OCR FAILED: page N]` marker (see Partial-failure contract above).
-- All-pages-failed: falls through to the existing
-  `"produced no extractable text"` error — no new error type.
+- All-pages-failed: `successfulPages === 0` forces the fallback to return
+  `''`, discarding any `[OCR FAILED: page N]` markers — those markers are
+  non-empty text but not usable content, so they must never be what
+  `convertFileToText` sees as "success." The existing empty-text check then
+  throws `"produced no extractable text"` — no new error type.
 
 ## Testing
 
@@ -187,8 +204,16 @@ conventions:
    inserted, other pages unaffected.
 5. `ocrPage` returns empty/whitespace `text` with no `metadata.error` →
    same treatment as case 4.
-6. All pages fail → `convertFileToText` throws the existing
-   `"produced no extractable text"` error.
+6. All pages fail (mix of `metadata.error` and empty-text results across
+   all pages) → fallback returns `''`, NOT a string of
+   `[OCR FAILED: page N]` markers — `convertFileToText` throws the existing
+   `"produced no extractable text"` error. This is the regression case:
+   asserts the all-failed result is not mistaken for non-empty success
+   text.
+6b. `ocrPage()` throws (rejects) for one page rather than resolving with
+    `metadata.error` → treated identically to case 4/5 (page failure, not
+    document abort); mix with successful pages elsewhere in the doc to
+    confirm the thrown-rejection path is caught, not left unhandled.
 7. `renderPdfPage` throws for one page (corrupt page) → error surfaces as-is,
    whole document aborts (per Error handling — a render failure isn't a
    per-page partial-failure case).
