@@ -15,6 +15,8 @@ import * as transcribeModule from '../../src/ingestion/videoExtract/transcribe';
 import { readRawEnvelope } from '../../src/core/rawSource';
 import { readVideoMetrics } from '../../src/core/videoMetricsLog';
 import { readVideoPartialProgress } from '../../src/core/videoPartialProgress';
+import * as videoDepsVersionLogModule from '../../src/core/videoDepsVersionLog';
+import { readVideoDepsVersions } from '../../src/core/videoDepsVersionLog';
 import { ExtractionRunner } from '../../src/extraction/types';
 import { FrameAnalysis } from '../../src/ingestion/videoExtract/analyzeFrames';
 
@@ -334,6 +336,7 @@ describe('runIngestDir', () => {
 
   describe('video pipeline (Task 5.3)', () => {
     let ffmpegSpy: jest.SpyInstance;
+    let depsVersionsSpy: jest.SpyInstance;
     let consoleErrorSpy: jest.SpyInstance;
     let consoleLogSpy: jest.SpyInstance;
 
@@ -342,12 +345,19 @@ describe('runIngestDir', () => {
       // present; stub it out rather than require a real ffmpeg install on the
       // test box.
       ffmpegSpy = jest.spyOn(videoDeps, 'checkFfmpegDeps').mockResolvedValue();
+      // Same reasoning as ffmpegSpy -- runs alongside it whenever a video
+      // file is present, and would otherwise spawn real (missing-on-CI)
+      // ffmpeg/ffprobe/whisper-cli processes per batch.
+      depsVersionsSpy = jest
+        .spyOn(videoDepsVersionLogModule, 'captureVideoDepsVersions')
+        .mockResolvedValue({ ffmpegVersion: 'ffmpeg version test-stub' });
       consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
       consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
     });
 
     afterEach(() => {
       ffmpegSpy.mockRestore();
+      depsVersionsSpy.mockRestore();
       consoleErrorSpy.mockRestore();
       consoleLogSpy.mockRestore();
     });
@@ -542,6 +552,46 @@ describe('runIngestDir', () => {
       expect(metrics[0].frameCount).toBeUndefined();
 
       restoreVideoPipelineMocks(spies);
+    });
+
+    it('logs dependency versions once per batch (not once per video)', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'one.mp4'), 'fake mp4 bytes 1', 'utf-8');
+      fs.writeFileSync(path.join(dir, 'two.mp4'), 'fake mp4 bytes 2', 'utf-8');
+
+      const spies = mockVideoPipeline({ durationMs: 60000, hasAudioStream: false });
+      const { runner } = makeRunSpyRunner();
+
+      const summary = await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+      expect(summary.successCount).toBe(2);
+
+      expect(depsVersionsSpy).toHaveBeenCalledTimes(1);
+      const versions = readVideoDepsVersions(root);
+      expect(versions).toHaveLength(1);
+      expect(versions[0]).toMatchObject({
+        topic: 'topic1',
+        ffmpegVersion: 'ffmpeg version test-stub',
+      });
+
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('does not log dependency versions when the batch has no video files', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'doc.txt'), 'just text', 'utf-8');
+
+      await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true });
+
+      expect(depsVersionsSpy).not.toHaveBeenCalled();
+      expect(readVideoDepsVersions(root)).toEqual([]);
     });
 
     it('<10s clip: probeVideo/extractFrames wired via midpoint strategy, single runner.run() call', async () => {

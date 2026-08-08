@@ -19,6 +19,7 @@ import { readTopicMeta } from '../../core/topicNode';
 import { regenerateExtractJson } from '../../core/regenerateExtractJson';
 import { appendOcrTiming } from '../../core/ocrTimingLog';
 import { appendVideoMetrics } from '../../core/videoMetricsLog';
+import { captureVideoDepsVersions, appendVideoDepsVersions } from '../../core/videoDepsVersionLog';
 import {
   readVideoPartialProgress,
   writeVideoPartialProgress,
@@ -150,6 +151,15 @@ export async function runIngestDir(
   );
   if (hasVideoFiles) {
     await checkFfmpegDeps();
+    // Best-effort, never throws -- logged once per batch (not per video) for
+    // field reproducibility, independent of the real preflight check above.
+    const depsVersions = await captureVideoDepsVersions();
+    appendVideoDepsVersions(root, {
+      schema_version: 1,
+      topic: targetTopicPath,
+      ts: new Date().toISOString(),
+      ...depsVersions,
+    });
   }
 
   const cicIngestionUrl = process.env.CIC_INGESTION_URL || 'http://localhost:3000';
