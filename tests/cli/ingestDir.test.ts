@@ -7,6 +7,13 @@ import * as manifestStore from '../../src/core/manifestStore';
 import * as failedStore from '../../src/core/failedStore';
 import { hashFile } from '../../src/core/contentHash';
 import * as videoDeps from '../../src/core/videoDeps';
+import * as videoProbe from '../../src/core/videoProbe';
+import * as extractFramesModule from '../../src/ingestion/videoExtract/extractFrames';
+import * as analyzeFramesModule from '../../src/ingestion/videoExtract/analyzeFrames';
+import * as transcribeModule from '../../src/ingestion/videoExtract/transcribe';
+import { readRawEnvelope } from '../../src/core/rawSource';
+import { ExtractionRunner } from '../../src/extraction/types';
+import { FrameAnalysis } from '../../src/ingestion/videoExtract/analyzeFrames';
 
 function makeRoot() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'trm-ingestdir-'));
@@ -25,6 +32,54 @@ function makeRoot() {
 const FIXTURES_DIR = path.join(__dirname, '../../src/ingestion/imageExtract/fixtures');
 const TEXT_DOC_FIXTURE = path.join(FIXTURES_DIR, 'text-doc-valid-scanned-page.png');
 const PHOTO_FIXTURE = path.join(FIXTURES_DIR, 'photo-valid-landscape.png');
+
+interface VideoPipelineFixture {
+  durationMs: number;
+  hasAudioStream: boolean;
+  transcript?: string;
+  framePaths?: string[];
+  frameAnalyses?: FrameAnalysis[];
+}
+
+// Mocks the video subprocess-backed modules (ffprobe/ffmpeg/whisper are never
+// actually invoked in these tests -- probeVideo/extractFrames/analyzeFrames/
+// transcribeAudio/checkWhisperDeps are all stubbed at the module boundary,
+// matching the existing checkFfmpegDeps spy convention used elsewhere in this
+// file). Returns the spies so a test can assert call counts/args or override
+// one to reject for the failure-path test.
+function mockVideoPipeline(fixture: VideoPipelineFixture) {
+  const probeSpy = jest.spyOn(videoProbe, 'probeVideo').mockResolvedValue({
+    durationMs: fixture.durationMs,
+    hasAudioStream: fixture.hasAudioStream,
+  });
+  const extractSpy = jest
+    .spyOn(extractFramesModule, 'extractFrames')
+    .mockResolvedValue(fixture.framePaths ?? ['frame-000.jpg']);
+  const analyzeSpy = jest
+    .spyOn(analyzeFramesModule, 'analyzeFrames')
+    .mockResolvedValue(
+      fixture.frameAnalyses ?? [{ timestampMs: 0, labels: [{ description: 'object', score: 0.7 }] }]
+    );
+  const transcribeSpy = jest
+    .spyOn(transcribeModule, 'transcribeAudio')
+    .mockResolvedValue(fixture.transcript ?? '');
+  const whisperDepsSpy = jest.spyOn(videoDeps, 'checkWhisperDeps').mockResolvedValue();
+
+  return { probeSpy, extractSpy, analyzeSpy, transcribeSpy, whisperDepsSpy };
+}
+
+function restoreVideoPipelineMocks(spies: ReturnType<typeof mockVideoPipeline>) {
+  spies.probeSpy.mockRestore();
+  spies.extractSpy.mockRestore();
+  spies.analyzeSpy.mockRestore();
+  spies.transcribeSpy.mockRestore();
+  spies.whisperDepsSpy.mockRestore();
+}
+
+function makeRunSpyRunner(): { runner: ExtractionRunner; runSpy: jest.Mock } {
+  const runSpy = jest.fn().mockReturnValue({ facts: [], summary: 'video summary' });
+  return { runner: { run: runSpy }, runSpy };
+}
 
 describe('runIngestDir', () => {
   let originalFetch: typeof global.fetch;
@@ -264,52 +319,218 @@ describe('runIngestDir', () => {
     expect(failed[0].sourcePath).toContain('bad.png');
   });
 
-  it('a video file is routed to the stub branch: no throw, no envelope, does not break the batch', async () => {
-    const root = makeRoot();
-    runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+  describe('video pipeline (Task 5.3)', () => {
+    let ffmpegSpy: jest.SpyInstance;
+    let consoleErrorSpy: jest.SpyInstance;
+    let consoleLogSpy: jest.SpyInstance;
 
-    const dir = path.join(root, 'input-dir');
-    fs.mkdirSync(dir);
-    fs.writeFileSync(path.join(dir, 'clip.mp4'), 'fake mp4 bytes', 'utf-8');
-    fs.writeFileSync(path.join(dir, 'doc1.txt'), 'Content for doc 1', 'utf-8');
+    beforeEach(() => {
+      // Batch-start ffmpeg preflight (Task 1.1) runs whenever a video file is
+      // present; stub it out rather than require a real ffmpeg install on the
+      // test box.
+      ffmpegSpy = jest.spyOn(videoDeps, 'checkFfmpegDeps').mockResolvedValue();
+      consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+      consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
+    });
 
-    // Batch-start ffmpeg preflight (Task 1.1) runs whenever a video file is
-    // present; this test only exercises classification routing, so stub the
-    // dep check out rather than require a real ffmpeg install on the test box.
-    const ffmpegSpy = jest.spyOn(videoDeps, 'checkFfmpegDeps').mockResolvedValue();
+    afterEach(() => {
+      ffmpegSpy.mockRestore();
+      consoleErrorSpy.mockRestore();
+      consoleLogSpy.mockRestore();
+    });
 
-    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
-    const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
-    const summary = await runIngestDir(
-      root,
-      'topic1',
-      { actor: 'ACTOR-001', dir, stub: true }
-    );
+    it('silent video (no audio stream): transcribeAudio/checkWhisperDeps never called, envelope written from frames only', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
 
-    expect(summary.totalFiles).toBe(2);
-    expect(summary.successCount).toBe(1);
-    expect(summary.failureCount).toBe(0);
-    expect(summary.duplicateCount).toBe(0);
-    expect(summary.videoSkippedCount).toBe(1);
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'silent.mp4'), 'fake mp4 bytes', 'utf-8');
 
-    // Batch-complete log line must surface the skip so totalFiles !=
-    // successCount + duplicateCount + failureCount is explained, not silent.
-    // Read mock.calls before mockRestore(), which internally does a
-    // mockReset() and would otherwise wipe the recorded call history.
-    const batchCompleteLine = consoleLogSpy.mock.calls
-      .map((args) => args.join(' '))
-      .find((line) => line.includes('Batch complete'));
-    expect(batchCompleteLine).toContain('1 videos skipped');
+      const spies = mockVideoPipeline({
+        durationMs: 60000,
+        hasAudioStream: false,
+        framePaths: ['frame-000.jpg'],
+        frameAnalyses: [{ timestampMs: 0, labels: [{ description: 'outdoor', score: 0.8 }] }],
+      });
+      const { runner, runSpy } = makeRunSpyRunner();
 
-    consoleErrorSpy.mockRestore();
-    consoleLogSpy.mockRestore();
-    ffmpegSpy.mockRestore();
+      const summary = await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
 
-    expect(failedStore.readFailed(root, 'topic1')).toEqual([]);
+      expect(summary.successCount).toBe(1);
+      expect(summary.failureCount).toBe(0);
+      expect(spies.transcribeSpy).not.toHaveBeenCalled();
+      expect(spies.whisperDepsSpy).not.toHaveBeenCalled();
+      expect(runSpy).toHaveBeenCalledTimes(1);
 
-    const hash = await hashFile(path.join(dir, 'clip.mp4'));
-    expect(manifestStore.isDone(root, 'topic1', hash)).toBe(false);
-    expect(manifestStore.readExtract(root, 'topic1', hash)).toBeNull();
+      const envelope = readRawEnvelope(root, 'topic1', 'SRC-001');
+      expect(envelope?.kind).toBe('video');
+      expect(envelope?.text).toBe('\n[frame @ 00:00] labels: outdoor');
+      expect(envelope?.frames).toEqual([{ timestampMs: 0, labels: [{ description: 'outdoor', score: 0.8 }] }]);
+
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('audio-only-content video: transcript present, low-signal frame labels are not an error', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'audio-only.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      const spies = mockVideoPipeline({
+        durationMs: 60000,
+        hasAudioStream: true,
+        transcript: 'Hello from the archive recording.',
+        framePaths: ['frame-000.jpg'],
+        frameAnalyses: [{ timestampMs: 0, labels: [] }],
+      });
+      const { runner, runSpy } = makeRunSpyRunner();
+
+      const summary = await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+
+      expect(summary.successCount).toBe(1);
+      expect(spies.whisperDepsSpy).toHaveBeenCalledTimes(1);
+      expect(spies.transcribeSpy).toHaveBeenCalledWith(path.join(dir, 'audio-only.mp4'), 60000);
+      expect(runSpy).toHaveBeenCalledTimes(1);
+
+      const envelope = readRawEnvelope(root, 'topic1', 'SRC-001');
+      expect(envelope?.kind).toBe('video');
+      expect(envelope?.text).toBe('Hello from the archive recording.\n[frame @ 00:00] labels: ');
+
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('mixed video: meaningful transcript and frame labels both flow into composed text', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'mixed.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      const spies = mockVideoPipeline({
+        durationMs: 72000,
+        hasAudioStream: true,
+        transcript: 'A walk along the beach at sunset.',
+        framePaths: ['frame-000.jpg', 'frame-001.jpg'],
+        frameAnalyses: [
+          { timestampMs: 0, labels: [{ description: 'person', score: 0.9 }] },
+          { timestampMs: 10000, labels: [{ description: 'beach', score: 0.85 }, { description: 'outdoor', score: 0.8 }] },
+        ],
+      });
+      const { runner, runSpy } = makeRunSpyRunner();
+
+      const summary = await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+
+      expect(summary.successCount).toBe(1);
+      expect(runSpy).toHaveBeenCalledTimes(1);
+
+      const envelope = readRawEnvelope(root, 'topic1', 'SRC-001');
+      expect(envelope?.text).toBe(
+        'A walk along the beach at sunset.\n[frame @ 00:00] labels: person\n[frame @ 00:10] labels: beach, outdoor'
+      );
+      expect(envelope?.frames).toHaveLength(2);
+
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('<10s clip: probeVideo/extractFrames wired via midpoint strategy, single runner.run() call', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'short.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      const spies = mockVideoPipeline({
+        durationMs: 4000,
+        hasAudioStream: false,
+        framePaths: ['frame-000.jpg'],
+        frameAnalyses: [{ timestampMs: 2000, labels: [{ description: 'closeup', score: 0.6 }] }],
+      });
+      const { runner, runSpy } = makeRunSpyRunner();
+
+      const summary = await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+
+      expect(summary.successCount).toBe(1);
+      expect(runSpy).toHaveBeenCalledTimes(1);
+      expect(spies.extractSpy).toHaveBeenCalledWith(path.join(dir, 'short.mp4'), 4000, expect.any(String));
+      // Midpoint strategy: analyzeFrames receives a single timestamp at durationMs / 2.
+      expect(spies.analyzeSpy).toHaveBeenCalledWith(['frame-000.jpg'], [2000], expect.anything());
+
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('>=300s video: select-filter strategy, still <=30 frames feeding analyzeFrames', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'long.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      const durationMs = 600000; // 10 minutes
+      const framePaths = Array.from({ length: 30 }, (_, i) => `frame-${String(i).padStart(3, '0')}.jpg`);
+      const frameAnalyses: FrameAnalysis[] = framePaths.map((_, i) => ({
+        timestampMs: i * (durationMs / 30),
+        labels: [{ description: 'scene', score: 0.5 }],
+      }));
+
+      const spies = mockVideoPipeline({
+        durationMs,
+        hasAudioStream: false,
+        framePaths,
+        frameAnalyses,
+      });
+      const { runner, runSpy } = makeRunSpyRunner();
+
+      const summary = await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+
+      expect(summary.successCount).toBe(1);
+      expect(runSpy).toHaveBeenCalledTimes(1);
+
+      const analyzeCallArgs = spies.analyzeSpy.mock.calls[0];
+      const timestampsArg = analyzeCallArgs[1] as number[];
+      expect(timestampsArg).toHaveLength(30);
+      expect(timestampsArg[1] - timestampsArg[0]).toBeCloseTo(durationMs / 30);
+
+      const envelope = readRawEnvelope(root, 'topic1', 'SRC-001');
+      expect(envelope?.frames).toHaveLength(30);
+
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('an injected failure (extractFrames rejects) lands in failedStore/manifestStore.markFailed via the existing outer catch', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      const filePath = path.join(dir, 'broken.mp4');
+      fs.writeFileSync(filePath, 'fake mp4 bytes', 'utf-8');
+
+      const spies = mockVideoPipeline({ durationMs: 60000, hasAudioStream: false });
+      spies.extractSpy.mockRejectedValue(new Error('ffmpeg exploded'));
+      const { runner, runSpy } = makeRunSpyRunner();
+
+      const summary = await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+
+      expect(summary.successCount).toBe(0);
+      expect(summary.failureCount).toBe(1);
+      expect(runSpy).not.toHaveBeenCalled();
+
+      const failed = failedStore.readFailed(root, 'topic1');
+      expect(failed.length).toBe(1);
+      expect(failed[0].sourcePath).toContain('broken.mp4');
+      expect(failed[0].error).toContain('ffmpeg exploded');
+
+      const hash = await hashFile(filePath);
+      expect(manifestStore.isDone(root, 'topic1', hash)).toBe(false);
+
+      restoreVideoPipelineMocks(spies);
+    });
   });
 
   it('--retry-failed reprocesses only failed items', async () => {

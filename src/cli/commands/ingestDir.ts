@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import pLimit from 'p-limit';
 import { hashFile } from '../../core/contentHash';
@@ -17,10 +18,40 @@ import { resolveActor } from '../../registry/actorRegistry';
 import { readTopicMeta } from '../../core/topicNode';
 import { regenerateExtractJson } from '../../core/regenerateExtractJson';
 import { appendOcrTiming } from '../../core/ocrTimingLog';
-import { checkFfmpegDeps } from '../../core/videoDeps';
+import { checkFfmpegDeps, checkWhisperDeps } from '../../core/videoDeps';
+import { probeVideo } from '../../core/videoProbe';
+import { extractFrames } from '../../ingestion/videoExtract/extractFrames';
+import { analyzeFrames, FrameAnalysis } from '../../ingestion/videoExtract/analyzeFrames';
+import { transcribeAudio } from '../../ingestion/videoExtract/transcribe';
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv']);
+
+// Mirrors the duration-strategy boundaries in extractFrames.ts
+// (MIDPOINT_THRESHOLD_MS / FPS_THRESHOLD_MS / MAX_SELECT_FRAMES). extractFrames()
+// returns only file paths, not timestamps, so this derives an approximate
+// timestamp per returned frame based on which strategy produced it. These are
+// provenance/debugging approximations (CONTEXT.md #12), not frame-accurate
+// timestamps -- do not attempt to reverse-engineer ffmpeg's exact selected times.
+const VIDEO_MIDPOINT_THRESHOLD_MS = 10000;
+const VIDEO_FPS_THRESHOLD_MS = 300000;
+const VIDEO_MAX_SELECT_FRAMES = 30;
+
+function computeFrameTimestamps(durationMs: number, frameCount: number): number[] {
+  if (durationMs < VIDEO_MIDPOINT_THRESHOLD_MS) {
+    return [durationMs / 2];
+  }
+  const stepMs =
+    durationMs < VIDEO_FPS_THRESHOLD_MS ? 10000 : durationMs / VIDEO_MAX_SELECT_FRAMES;
+  return Array.from({ length: frameCount }, (_, i) => i * stepMs);
+}
+
+function formatTimestamp(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
 
 export interface IngestDirOptions {
   actor?: string;
@@ -41,7 +72,6 @@ export interface IngestDirSummary {
   successCount: number;
   duplicateCount: number;
   failureCount: number;
-  videoSkippedCount: number;
 }
 
 export async function runIngestDir(
@@ -98,7 +128,6 @@ export async function runIngestDir(
   let duplicateCount = 0;
   let successCount = 0;
   let failureCount = 0;
-  let videoSkippedCount = 0;
 
   // Check for ffmpeg/ffprobe if batch contains video files
   const hasVideoFiles = workItems.some((item) =>
@@ -149,15 +178,77 @@ export async function runIngestDir(
 
       try {
         if (isVideo) {
-          // Video pipeline stub (Task 2.1): classification only, routes here
-          // instead of the non-image/text branch. Real handling (ffmpeg probe,
-          // transcription, envelope write) lands in Task 5.3 -- until then this
-          // is a deliberate no-op that neither succeeds nor fails the item, so
-          // it does not corrupt success/failure/duplicate accounting ahead of
-          // that pipeline existing.
-          console.error(`[ingest-dir] Skipping video (pipeline not yet implemented): ${path.basename(filePath)}`);
-          videoSkippedCount++;
-          return;
+          const { durationMs, hasAudioStream } = await probeVideo(filePath);
+
+          const [transcript, frameAnalyses] = await Promise.all([
+            hasAudioStream
+              ? (async () => {
+                  await checkWhisperDeps();
+                  return transcribeAudio(filePath, durationMs);
+                })()
+              : Promise.resolve(''),
+            (async () => {
+              const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'trm-video-'));
+              try {
+                const framePaths = await extractFrames(filePath, durationMs, tempDir);
+                const timestampsMs = computeFrameTimestamps(durationMs, framePaths.length);
+                return await analyzeFrames(framePaths, timestampsMs, analyzer);
+              } finally {
+                await fs.promises.rm(tempDir, { recursive: true, force: true });
+              }
+            })(),
+          ]);
+
+          const composedText =
+            transcript +
+            '\n' +
+            frameAnalyses
+              .map(
+                (f: FrameAnalysis) =>
+                  `[frame @ ${formatTimestamp(f.timestampMs)}] labels: ${f.labels
+                    .map((l) => l.description)
+                    .join(', ')}`
+              )
+              .join('\n');
+
+          const tempSource: SourceEntry = {
+            id: 'SRC-TEMP',
+            type: cliArgs.type ?? 'video',
+            title: cliArgs.title ?? path.basename(filePath),
+            origin: cliArgs.origin ?? 'local',
+            url: cliArgs.url || `local:${path.basename(filePath)}`,
+            added_at: new Date().toISOString(),
+            actor,
+          };
+
+          const { facts, summary } = await claudePool(() =>
+            Promise.resolve(runner.run(tempSource, composedText))
+          );
+
+          await storeLock(async () => {
+            const entry = addSource(root, targetTopicPath, actor, {
+              type: cliArgs.type ?? 'video',
+              title: cliArgs.title ?? path.basename(filePath),
+              origin: cliArgs.origin ?? 'local',
+              url: cliArgs.url || `local:${path.basename(filePath)}`,
+              contentHash: hash,
+            });
+
+            const updatedFacts = facts.map((f) => ({ ...f, source_id: entry.id }));
+
+            const envelope: RawSourceEnvelope = {
+              sourceId: entry.id,
+              kind: 'video',
+              capturedAt: new Date().toISOString(),
+              text: composedText,
+              frames: frameAnalyses,
+            };
+
+            writeRawEnvelope(root, targetTopicPath, envelope);
+            manifestStore.markDone(root, targetTopicPath, hash!, filePath);
+            manifestStore.writeExtract(root, targetTopicPath, hash!, { facts: updatedFacts, summary });
+            failedStore.clearFailure(root, targetTopicPath, hash!);
+          });
         } else if (isImage) {
           const kind = await classifyImage(filePath, { kind: cliArgs.kind });
 
@@ -329,7 +420,7 @@ export async function runIngestDir(
 
   const totalProcessed = successCount + failureCount;
   console.log(
-    `[ingest-dir] Batch complete: ${totalFiles} total files, ${successCount} succeeded, ${duplicateCount} duplicates skipped, ${videoSkippedCount} videos skipped (pipeline not yet implemented), ${failureCount} failed.`
+    `[ingest-dir] Batch complete: ${totalFiles} total files, ${successCount} succeeded, ${duplicateCount} duplicates skipped, ${failureCount} failed.`
   );
 
   return {
@@ -338,6 +429,5 @@ export async function runIngestDir(
     successCount,
     duplicateCount,
     failureCount,
-    videoSkippedCount,
   };
 }
