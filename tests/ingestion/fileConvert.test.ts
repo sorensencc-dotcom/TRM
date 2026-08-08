@@ -22,7 +22,7 @@ function makeFile(name: string, content: string): string {
 
 const fakeConverters: FileConverters = {
   extractDocx: async () => 'docx extracted text',
-  extractPdf: async () => 'pdf extracted text',
+  extractPdf: async () => 'pdf extracted text, long enough to clear the fallback length floor',
   extractEpub: async () => 'epub extracted text',
 };
 
@@ -48,7 +48,7 @@ describe('convertFileToText', () => {
   it('routes .pdf through the injected extractPdf converter', async () => {
     const file = makeFile('doc.pdf', 'ignored binary placeholder');
     const text = await convertFileToText(file, fakeConverters);
-    expect(text).toBe('pdf extracted text');
+    expect(text).toBe('pdf extracted text, long enough to clear the fallback length floor');
   });
 
   it('routes .epub through the injected extractEpub converter', async () => {

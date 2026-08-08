@@ -28,7 +28,7 @@ describe('convertFileToText: scanned-PDF OCR fallback', () => {
     const ocrPage = jest.fn();
     const converters: FileConverters = {
       extractDocx: async () => '',
-      extractPdf: async () => 'real text-layer text',
+      extractPdf: async () => 'real text-layer text with substantially more real extracted content than a page stamp',
       extractEpub: async () => '',
       getPdfPageCount,
       renderPdfPage,
@@ -37,10 +37,29 @@ describe('convertFileToText: scanned-PDF OCR fallback', () => {
 
     const text = await convertFileToText(scannedFile(), converters);
 
-    expect(text).toBe('real text-layer text');
+    expect(text).toBe('real text-layer text with substantially more real extracted content than a page stamp');
     expect(getPdfPageCount).not.toHaveBeenCalled();
     expect(renderPdfPage).not.toHaveBeenCalled();
     expect(ocrPage).not.toHaveBeenCalled();
+  });
+
+  it('invokes the fallback when extractPdf returns non-empty but too-short text (e.g. a scanner page-count stamp)', async () => {
+    // Real-world scanned PDFs sometimes have a tiny non-empty text layer --
+    // a "-- 1 of 1 --" style stamp added by scanner/export software -- with
+    // no actual document content. "non-empty" alone is not "usable"; a
+    // length floor catches this without needing to inspect content.
+    const converters: FileConverters = {
+      extractDocx: async () => '',
+      extractPdf: async () => '\n\n-- 1 of 1 --\n\n',
+      extractEpub: async () => '',
+      getPdfPageCount: async () => 1,
+      renderPdfPage: async () => Buffer.from('page-1-png'),
+      ocrPage: async () => okResult('real OCR text from the actual scanned content'),
+    };
+
+    const text = await convertFileToText(scannedFile(), converters);
+
+    expect(text).toBe('real OCR text from the actual scanned content');
   });
 
   it('OCRs every page and joins with page markers in order', async () => {

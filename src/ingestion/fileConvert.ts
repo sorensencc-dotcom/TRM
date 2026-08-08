@@ -108,9 +108,17 @@ function pdfMaxPages(): number {
   return Number.isInteger(value) && value > 0 ? value : 50;
 }
 
+// Real-world scanned PDFs can carry a tiny non-empty text layer with no
+// actual document content -- a "-- 1 of 1 --" style page-count stamp added
+// by scanner/export software, not real text. "non-empty" alone is not
+// "usable"; below this floor, treat pdf-parse's result as if it were empty
+// and fall back to OCR. Chosen as a coarse floor above typical stamp
+// lengths, well below any real paragraph of extracted text.
+const MIN_USABLE_PDF_PARSE_TEXT_LENGTH = 40;
+
 async function extractPdfWithOcrFallback(buffer: Buffer, converters: FileConverters): Promise<string> {
   const pdfParseText = await converters.extractPdf(buffer);
-  if (pdfParseText.trim().length > 0) {
+  if (pdfParseText.trim().length > MIN_USABLE_PDF_PARSE_TEXT_LENGTH) {
     return pdfParseText;
   }
 
