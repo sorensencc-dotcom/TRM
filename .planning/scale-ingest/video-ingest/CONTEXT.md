@@ -1,6 +1,6 @@
 # CONTEXT — scale-ingest / video-ingest
 
-**Locked:** 2026-08-07 (rev 2 — resolves 2026-08-07 review blockers)
+**Locked:** 2026-08-07 (rev 4 — resolves 2026-08-07 caveman-review findings)
 
 ## Gray areas resolved (rev 1)
 
@@ -59,9 +59,12 @@ Not treated as ordinary npm deps (they're native binaries):
 - **Whisper preflight is lazy, not global.** whisper.cpp binary + model
   existence is checked only when the *first* file in the batch reports an
   audio stream (via ffprobe), not at batch start. A video-only batch (all
-  silent reels) never touches whisper and never pays its startup cost. Once
-  triggered, the check result is cached for the rest of the batch run — it
-  does not re-check per file.
+  silent reels) never touches whisper and never pays its startup cost. The
+  check is single-flight: under `ioLimit` concurrency, multiple files can
+  report an audio stream before the first check resolves — all of them
+  await the same in-flight check promise (memoized), not each independently
+  triggering their own check. Once resolved, the result is cached for the
+  rest of the batch run.
 - **Config surface** (mirrors existing `CIC_INGESTION_URL` pattern):
   `TRM_FFMPEG_PATH`, `TRM_FFPROBE_PATH`, `TRM_WHISPER_BIN`,
   `TRM_WHISPER_MODEL` — default to PATH lookup if unset.
@@ -120,9 +123,9 @@ env-var overridable (mirrors `TRM_IO_CONCURRENCY`):
 - `TRM_FFMPEG_CONCURRENCY` (default 2) — frame extraction.
 - `TRM_WHISPER_CONCURRENCY` (default 1) — transcription, the heaviest
   single workload; serialized by default.
-- Frame *analysis* (Vision API calls on sampled frames) reuses the existing
-  `visionPool` — it's network-bound like the current photo path, not a new
-  local-resource pool.
+- Frame *analysis* (Vision API calls on sampled frames) still goes through
+  the existing `visionPool` for the network call itself — but see #10, a
+  second, per-video submission-rate limiter sits in front of it.
 
 ## Review blockers (2026-08-07, rev 3) — performance
 
@@ -135,10 +138,11 @@ the text once both resolve. Do not serialize frame-sampling after transcript
 ### 9. One ffmpeg process per video, not one per frame
 Frame extraction is a single ffmpeg invocation per video producing the
 entire bounded frame set, not N spawned processes (one per timestamp).
-ffprobe-derived duration selects the extraction strategy:
-- Duration < 5 min: `fps=1/10` filter (matches the 1-frame/10s default,
-  naturally caps under the 30-frame limit for anything ≤ 5 min).
-- Duration ≥ 5 min: explicit evenly-spaced timestamp/`select` filter,
+ffprobe-derived duration selects the extraction strategy (boundary at
+exactly 300s belongs to the `fps=1/10` branch, i.e. `< 300s`):
+- Duration < 300s (5 min): `fps=1/10` filter (matches the 1-frame/10s
+  default, naturally caps under the 30-frame limit for anything ≤ 5 min).
+- Duration ≥ 300s: explicit evenly-spaced timestamp/`select` filter,
   capped at 30 frames total (not 1/10s, which would exceed the cap).
 - Duration < 10s (short-clip fast path): single representative frame
   (midpoint), not multiple near-duplicate samples.
@@ -147,12 +151,15 @@ ffprobe-derived duration selects the extraction strategy:
 `ioLimit=8` videos × 30 frames = up to 240 queued Vision calls if frame
 analysis is unbounded — that's a resource-exhaustion repeat of the same
 problem `ioLimit` itself was introduced to prevent (see `ingestDir.ts:105`
-comment). Frame analysis uses a small per-video limiter (bounded
-producer/consumer): frames are analyzed incrementally through `visionPool`,
-and each frame buffer is discarded immediately after its Vision call
-resolves and labels are captured — full-resolution frame buffers are never
-held for the whole file at once, only one (or a small bounded batch) in
-flight.
+comment). Fixed with a dedicated `TRM_FRAME_ANALYSIS_CONCURRENCY` pool
+(default 3), mirroring the `TRM_FFMPEG_CONCURRENCY`/`TRM_WHISPER_CONCURRENCY`
+pattern rather than an unspecified "small limiter" — this pool sits in
+front of `visionPool` and bounds how many of one video's frames are
+in flight at once, independent of `visionPool`'s own batch-wide bound.
+Frames are analyzed incrementally through it, and each frame buffer is
+discarded immediately after its Vision call resolves and labels are
+captured — full-resolution frame buffers are never held for the whole file
+at once.
 
 ### 11. Duration/audio-stream caching
 A single ffprobe call per file returns both duration and audio-stream
@@ -168,6 +175,10 @@ Therefore `envelope.frames` entries do **not** store a frame file path
 `envelope.frames[i]` shape: `{ timestampMs: number, labels: Label[] }` only.
 No content hash in v1 (deferred — not needed unless/until frame archival
 becomes an actual requirement, which is out of scope per rev 1).
+`envelope.frames` is ordered ascending by `timestampMs`, matching the
+`[frame @ mm:ss] labels: ...` line order used to compose the extraction
+text (#1) — array order is not incidental, it's the same order the runner
+sees.
 
 ## Build vs. buy (GitHub research) — unchanged from rev 1
 No existing repo replaces the TRM-specific glue (classify → extract → fact
