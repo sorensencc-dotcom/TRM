@@ -531,6 +531,113 @@ describe('runIngestDir', () => {
 
       restoreVideoPipelineMocks(spies);
     });
+
+    it('runs the transcript and frame paths concurrently, not serialized (CONTEXT.md #8)', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'concurrent.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      let resolveTranscribe: (value: string) => void;
+      const transcribeDeferred = new Promise<string>((resolve) => {
+        resolveTranscribe = resolve;
+      });
+
+      const probeSpy = jest
+        .spyOn(videoProbe, 'probeVideo')
+        .mockResolvedValue({ durationMs: 60000, hasAudioStream: true });
+      const whisperDepsSpy = jest.spyOn(videoDeps, 'checkWhisperDeps').mockResolvedValue();
+      // transcribeAudio deliberately hangs on an unresolved promise -- if the
+      // implementation were serialized (`await transcript; await frames;`),
+      // extractFrames would never be invoked until this resolves. Under real
+      // concurrency (Promise.all), extractFrames starts (and, being mocked
+      // synchronous-ish, completes) well before we ever resolve it below.
+      const transcribeSpy = jest
+        .spyOn(transcribeModule, 'transcribeAudio')
+        .mockImplementation(() => transcribeDeferred);
+
+      let extractFramesCalledWhileTranscribeStillPending = false;
+      const extractSpy = jest
+        .spyOn(extractFramesModule, 'extractFrames')
+        .mockImplementation(async () => {
+          extractFramesCalledWhileTranscribeStillPending = true;
+          return ['frame-000.jpg'];
+        });
+      const analyzeSpy = jest
+        .spyOn(analyzeFramesModule, 'analyzeFrames')
+        .mockResolvedValue([{ timestampMs: 0, labels: [{ description: 'object', score: 0.7 }] }]);
+
+      const { runner } = makeRunSpyRunner();
+      const runPromise = runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+
+      // Give the frame path's real async work (mkdtemp, extractFrames,
+      // analyzeFrames) a window to run while transcribeAudio's promise is
+      // still deliberately unresolved.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(extractFramesCalledWhileTranscribeStillPending).toBe(true);
+
+      resolveTranscribe!('late transcript');
+      const summary = await runPromise;
+      expect(summary.successCount).toBe(1);
+
+      probeSpy.mockRestore();
+      whisperDepsSpy.mockRestore();
+      transcribeSpy.mockRestore();
+      extractSpy.mockRestore();
+      analyzeSpy.mockRestore();
+    });
+
+    it('removes the per-video temp dir in a finally block on the success path', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'ok.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      const spies = mockVideoPipeline({ durationMs: 60000, hasAudioStream: false });
+      const mkdtempSpy = jest.spyOn(fs.promises, 'mkdtemp');
+      const { runner } = makeRunSpyRunner();
+
+      const summary = await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+
+      expect(summary.successCount).toBe(1);
+      expect(mkdtempSpy.mock.results.length).toBe(1);
+      const tempDir = await mkdtempSpy.mock.results[0].value;
+      expect(fs.existsSync(tempDir)).toBe(false);
+
+      mkdtempSpy.mockRestore();
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('removes the per-video temp dir in a finally block on the failure path', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'broken.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      const spies = mockVideoPipeline({ durationMs: 60000, hasAudioStream: false });
+      spies.analyzeSpy.mockRejectedValue(new Error('vision call exploded'));
+      const mkdtempSpy = jest.spyOn(fs.promises, 'mkdtemp');
+      const { runner } = makeRunSpyRunner();
+
+      const summary = await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+
+      expect(summary.failureCount).toBe(1);
+      expect(mkdtempSpy.mock.results.length).toBe(1);
+      const tempDir = await mkdtempSpy.mock.results[0].value;
+      expect(fs.existsSync(tempDir)).toBe(false);
+
+      const failed = failedStore.readFailed(root, 'topic1');
+      expect(failed[0].error).toContain('vision call exploded');
+
+      mkdtempSpy.mockRestore();
+      restoreVideoPipelineMocks(spies);
+    });
   });
 
   it('--retry-failed reprocesses only failed items', async () => {

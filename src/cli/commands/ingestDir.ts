@@ -39,7 +39,12 @@ const VIDEO_MAX_SELECT_FRAMES = 30;
 
 function computeFrameTimestamps(durationMs: number, frameCount: number): number[] {
   if (durationMs < VIDEO_MIDPOINT_THRESHOLD_MS) {
-    return [durationMs / 2];
+    // Midpoint strategy nominally yields exactly one frame, but build the
+    // array from the actual frameCount rather than hardcoding length 1 --
+    // guards against a length mismatch feeding analyzeFrames() if
+    // extractFrames() ever returns 0 or 2+ frames for a sub-10s clip.
+    const midpointMs = durationMs / 2;
+    return Array.from({ length: frameCount }, () => midpointMs);
   }
   const stepMs =
     durationMs < VIDEO_FPS_THRESHOLD_MS ? 10000 : durationMs / VIDEO_MAX_SELECT_FRAMES;
@@ -194,7 +199,13 @@ export async function runIngestDir(
                 const timestampsMs = computeFrameTimestamps(durationMs, framePaths.length);
                 return await analyzeFrames(framePaths, timestampsMs, analyzer);
               } finally {
-                await fs.promises.rm(tempDir, { recursive: true, force: true });
+                // Swallow cleanup errors (e.g. Windows EPERM/EBUSY from an AV
+                // scanner or file-handle timing) -- a cleanup hiccup must never
+                // mask the real underlying error from extractFrames/analyzeFrames,
+                // nor turn an otherwise-successful video into a failureCount
+                // entry after the Vision API calls have already been paid for.
+                // Mirrors the per-frame unlink().catch() pattern in analyzeFrames.ts.
+                await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
               }
             })(),
           ]);
