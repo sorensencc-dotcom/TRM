@@ -1,6 +1,6 @@
 # SPEC — scale-ingest / video-ingest
 
-**Locked:** 2026-08-07 (rev 2)  **Status:** Blocked pending final read — see CONTEXT.md rev 2
+**Locked:** 2026-08-07 (rev 3)  **Status:** Ready for plan-phase
 
 ## Goal
 
@@ -13,15 +13,23 @@ composed transcript+frame-label text input per video.
 1. `ingestDir.ts` classifies files by extension into three branches: image,
    text-doc, video. Video files never fall through to `convertFileToText`
    and never error as "unsupported extension".
-2. Before any video file is processed, a preflight check verifies `ffmpeg`,
-   `ffprobe`, and the configured whisper.cpp binary + model file are present
-   and runnable. Missing dependency aborts the whole batch with one
-   actionable error — it does not surface as N per-file failures.
-3. Frame sampling always runs for every video file: 1 frame/10s, capped at
-   30 frames (evenly sampled across full duration for longer videos),
-   downscaled to 1024px max long edge before Vision analysis.
+2. Before any video file is processed, a preflight check verifies `ffmpeg`
+   and `ffprobe` are present and runnable; missing either aborts the whole
+   batch with one actionable error — it does not surface as N per-file
+   failures. whisper.cpp binary + model existence is checked lazily, only
+   when the first file in the batch reports an audio stream (not at batch
+   start) — a video-only batch never touches whisper.
+3. Frame sampling always runs for every video file via a single ffmpeg
+   process per video (not one process per timestamp): `fps=1/10` filter for
+   videos under 5 minutes, an evenly-spaced `select` filter capped at 30
+   frames for videos ≥ 5 minutes, and a single midpoint frame for clips
+   under 10 seconds. Frames downscaled to 1024px max long edge before
+   Vision analysis. Duration and audio-stream presence come from one cached
+   ffprobe call per file, not separate subprocess calls per property.
 4. Transcript extraction (whisper.cpp, stream index 0) runs only when
-   ffprobe reports an audio stream present on the file.
+   ffprobe reports an audio stream present on the file. Transcript
+   extraction and frame sampling run concurrently per video (`Promise.all`),
+   not sequentially.
 5. Transcript text (if any) and per-frame Vision `labels` (if any, rendered
    as `[frame @ mm:ss] labels: ...` lines) are concatenated into a single
    text blob, stored in `envelope.text`, and passed to exactly one
@@ -30,8 +38,10 @@ composed transcript+frame-label text input per video.
    `kind === 'image'` skip branch is confirmed (by explicit test) to NOT
    catch `'video'` — video envelopes fall through to the existing
    text-extraction branch using `envelope.text`. `envelope.frames` (new,
-   optional) stores per-frame provenance metadata only, not a second
-   extraction input.
+   optional) stores per-frame provenance metadata only — `{ timestampMs,
+   labels }`, no frame file path (frames live in a per-run temp dir and are
+   deleted after analysis; a path into a deleted temp dir would dangle) —
+   and is not a second extraction input.
 7. ffprobe edge cases handled without crashing the batch: malformed/corrupt
    media and ffprobe timeout (10s) route through the existing
    `failedStore`/`manifestStore.markFailed` path; video-only and
@@ -45,6 +55,12 @@ composed transcript+frame-label text input per video.
 10. ffmpeg and whisper.cpp workloads run under dedicated bounded pools
     (`TRM_FFMPEG_CONCURRENCY` default 2, `TRM_WHISPER_CONCURRENCY` default
     1), independent of `ioLimit`/`claudePool`/`visionPool`.
+11. Frame Vision analysis is bounded per-video (not just per-batch via
+    `ioLimit`) — a small producer/consumer limiter analyzes sampled frames
+    incrementally through `visionPool`, and each frame buffer is discarded
+    immediately after its Vision call resolves. No full-file frame-buffer
+    set is held in memory at once; `ioLimit=8` × 30 frames never queues 240
+    simultaneous Vision calls.
 
 ## In Scope
 
@@ -107,7 +123,7 @@ existing mammoth/pdf-parse/Vision-API deps.
 
 ## Canonical References
 
-- CONTEXT.md (this slice's decisions, rev 2 resolves 2026-08-07 review)
+- CONTEXT.md (this slice's decisions, rev 3 resolves 2026-08-07 correctness + performance review)
 - `src/cli/commands/ingestDir.ts` (existing photo/text-doc branches to extend)
 - `src/cli/commands/extract.ts:36` (kind==='image' skip branch — audited, video falls through safely)
 - `src/ingestion/imageExtract/imageAnalyzer.ts:21` (existing `labels` field, reused for frame descriptions)

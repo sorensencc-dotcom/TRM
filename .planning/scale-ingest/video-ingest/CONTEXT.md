@@ -52,11 +52,16 @@ Grepped all `envelope.kind` / `kind: '...'` usages in `src/`:
 Not treated as ordinary npm deps (they're native binaries):
 
 - **Preflight, not per-file failure.** Before `ingest-dir` processes any
-  video file, run a one-time check: `ffmpeg -version`, `ffprobe -version`,
-  and whisper.cpp binary + model file existence. Any missing → abort the
-  whole batch with one actionable error naming the missing binary/model and
-  the env var to configure it. Do not let missing binaries surface as N
-  per-file failures in `failedStore`.
+  video file, run a one-time check: `ffmpeg -version`, `ffprobe -version`.
+  Any missing → abort the whole batch with one actionable error naming the
+  missing binary and the env var to configure it. Do not let missing
+  binaries surface as N per-file failures in `failedStore`.
+- **Whisper preflight is lazy, not global.** whisper.cpp binary + model
+  existence is checked only when the *first* file in the batch reports an
+  audio stream (via ffprobe), not at batch start. A video-only batch (all
+  silent reels) never touches whisper and never pays its startup cost. Once
+  triggered, the check result is cached for the rest of the batch run — it
+  does not re-check per file.
 - **Config surface** (mirrors existing `CIC_INGESTION_URL` pattern):
   `TRM_FFMPEG_PATH`, `TRM_FFPROBE_PATH`, `TRM_WHISPER_BIN`,
   `TRM_WHISPER_MODEL` — default to PATH lookup if unset.
@@ -118,6 +123,51 @@ env-var overridable (mirrors `TRM_IO_CONCURRENCY`):
 - Frame *analysis* (Vision API calls on sampled frames) reuses the existing
   `visionPool` — it's network-bound like the current photo path, not a new
   local-resource pool.
+
+## Review blockers (2026-08-07, rev 3) — performance
+
+### 8. Concurrent transcript + frame extraction per video
+Transcript extraction and frame sampling are independent CPU workflows for a
+given video — run them concurrently (`Promise.all`) per file, then compose
+the text once both resolve. Do not serialize frame-sampling after transcript
+(or vice versa) within a single file's processing.
+
+### 9. One ffmpeg process per video, not one per frame
+Frame extraction is a single ffmpeg invocation per video producing the
+entire bounded frame set, not N spawned processes (one per timestamp).
+ffprobe-derived duration selects the extraction strategy:
+- Duration < 5 min: `fps=1/10` filter (matches the 1-frame/10s default,
+  naturally caps under the 30-frame limit for anything ≤ 5 min).
+- Duration ≥ 5 min: explicit evenly-spaced timestamp/`select` filter,
+  capped at 30 frames total (not 1/10s, which would exceed the cap).
+- Duration < 10s (short-clip fast path): single representative frame
+  (midpoint), not multiple near-duplicate samples.
+
+### 10. Bounded per-video frame-analysis, buffers not retained
+`ioLimit=8` videos × 30 frames = up to 240 queued Vision calls if frame
+analysis is unbounded — that's a resource-exhaustion repeat of the same
+problem `ioLimit` itself was introduced to prevent (see `ingestDir.ts:105`
+comment). Frame analysis uses a small per-video limiter (bounded
+producer/consumer): frames are analyzed incrementally through `visionPool`,
+and each frame buffer is discarded immediately after its Vision call
+resolves and labels are captured — full-resolution frame buffers are never
+held for the whole file at once, only one (or a small bounded batch) in
+flight.
+
+### 11. Duration/audio-stream caching
+A single ffprobe call per file returns both duration and audio-stream
+presence — these are not separate subprocess invocations. The cached result
+feeds both the frame-extraction-strategy decision (#9) and the
+transcript-path decision (#6).
+
+### 12. envelope.frames path semantics — locked
+Sampled frames are written to the per-run temp directory, analyzed, and
+deleted (per the runtime contract in #3) — they are **not** archived.
+Therefore `envelope.frames` entries do **not** store a frame file path
+(a path into a deleted temp dir would be a dangling reference post-cleanup).
+`envelope.frames[i]` shape: `{ timestampMs: number, labels: Label[] }` only.
+No content hash in v1 (deferred — not needed unless/until frame archival
+becomes an actual requirement, which is out of scope per rev 1).
 
 ## Build vs. buy (GitHub research) — unchanged from rev 1
 No existing repo replaces the TRM-specific glue (classify → extract → fact
