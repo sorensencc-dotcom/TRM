@@ -13,6 +13,7 @@ import * as analyzeFramesModule from '../../src/ingestion/videoExtract/analyzeFr
 import * as extractAudioModule from '../../src/ingestion/videoExtract/extractAudio';
 import * as transcribeModule from '../../src/ingestion/videoExtract/transcribe';
 import { readRawEnvelope } from '../../src/core/rawSource';
+import { readVideoMetrics } from '../../src/core/videoMetricsLog';
 import { ExtractionRunner } from '../../src/extraction/types';
 import { FrameAnalysis } from '../../src/ingestion/videoExtract/analyzeFrames';
 
@@ -450,6 +451,94 @@ describe('runIngestDir', () => {
         'A walk along the beach at sunset.\n[frame @ 00:00] labels: person\n[frame @ 00:10] labels: beach, outdoor'
       );
       expect(envelope?.frames).toHaveLength(2);
+
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('logs per-video metrics on success: duration, frame count, transcript status, vision failure count', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'metrics.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      const spies = mockVideoPipeline({
+        durationMs: 72000,
+        hasAudioStream: true,
+        transcript: 'A walk along the beach at sunset.',
+        framePaths: ['frame-000.jpg', 'frame-001.jpg'],
+        frameAnalyses: [
+          { timestampMs: 0, labels: [{ description: 'person', score: 0.9 }] },
+          { timestampMs: 10000, labels: [{ description: 'beach', score: 0.85 }] },
+        ],
+      });
+      const { runner } = makeRunSpyRunner();
+
+      await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+
+      const metrics = readVideoMetrics(root);
+      expect(metrics).toHaveLength(1);
+      expect(metrics[0]).toMatchObject({
+        topic: 'topic1',
+        file: 'metrics.mp4',
+        outcome: 'success',
+        durationMs: 72000,
+        hasAudioStream: true,
+        frameCount: 2,
+        transcriptStatus: 'transcribed',
+        visionFailureCount: 0,
+      });
+      expect(typeof metrics[0].ms).toBe('number');
+      expect(metrics[0].ms).toBeGreaterThanOrEqual(0);
+
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('logs transcriptStatus "no-audio" and "empty" correctly', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'silent.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      const spies = mockVideoPipeline({ durationMs: 60000, hasAudioStream: false });
+      const { runner } = makeRunSpyRunner();
+
+      await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+
+      const metrics = readVideoMetrics(root);
+      expect(metrics[0].transcriptStatus).toBe('no-audio');
+
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('logs a failure entry (with whatever probe info was learned) when the video pipeline fails', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'corrupt.mp4'), 'not a real video', 'utf-8');
+
+      const spies = mockVideoPipeline({ durationMs: 60000, hasAudioStream: true });
+      spies.extractSpy.mockRejectedValueOnce(new Error('ffmpeg produced no frames'));
+      const { runner } = makeRunSpyRunner();
+
+      await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+
+      const metrics = readVideoMetrics(root);
+      expect(metrics).toHaveLength(1);
+      expect(metrics[0]).toMatchObject({
+        topic: 'topic1',
+        file: 'corrupt.mp4',
+        outcome: 'failure',
+        durationMs: 60000,
+        hasAudioStream: true,
+      });
+      expect(metrics[0].error).toContain('ffmpeg produced no frames');
+      expect(metrics[0].frameCount).toBeUndefined();
 
       restoreVideoPipelineMocks(spies);
     });

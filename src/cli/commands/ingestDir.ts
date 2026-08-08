@@ -18,6 +18,7 @@ import { resolveActor } from '../../registry/actorRegistry';
 import { readTopicMeta } from '../../core/topicNode';
 import { regenerateExtractJson } from '../../core/regenerateExtractJson';
 import { appendOcrTiming } from '../../core/ocrTimingLog';
+import { appendVideoMetrics } from '../../core/videoMetricsLog';
 import { checkFfmpegDeps, checkWhisperDeps, getVideoMaxBytes, getVideoMaxDurationMs } from '../../core/videoDeps';
 import { probeVideo } from '../../core/videoProbe';
 import {
@@ -184,6 +185,15 @@ export async function runIngestDir(
       const isImage = IMAGE_EXTENSIONS.has(ext);
       const isVideo = VIDEO_EXTENSIONS.has(ext);
 
+      // Hoisted out of the isVideo block below so the outer catch (any
+      // failure, at any stage) can still log what was learned about this
+      // video before it failed -- e.g. a probe succeeded but transcription
+      // then failed, so durationMs/hasAudioStream are worth recording even
+      // though the video ultimately failed.
+      const videoStartedAt = Date.now();
+      let videoDurationMs: number | undefined;
+      let videoHasAudioStream: boolean | undefined;
+
       try {
         if (isVideo) {
           const stat = await fs.promises.stat(filePath);
@@ -195,6 +205,8 @@ export async function runIngestDir(
           }
 
           const { durationMs, hasAudioStream } = await probeVideo(filePath);
+          videoDurationMs = durationMs;
+          videoHasAudioStream = hasAudioStream;
 
           const maxDurationMs = getVideoMaxDurationMs();
           if (durationMs > maxDurationMs) {
@@ -252,6 +264,23 @@ export async function runIngestDir(
             // already settled, so this never races a still-running sibling.
             await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
           }
+
+          appendVideoMetrics(root, {
+            schema_version: 1,
+            topic: targetTopicPath,
+            file: path.basename(filePath),
+            outcome: 'success',
+            ms: Date.now() - videoStartedAt,
+            ts: new Date().toISOString(),
+            durationMs,
+            hasAudioStream,
+            frameCount: frameAnalyses.length,
+            transcriptStatus: !hasAudioStream ? 'no-audio' : transcript.trim().length > 0 ? 'transcribed' : 'empty',
+            // analyzeFrames() throws on the first Vision failure rather than
+            // collecting partial results (see videoMetricsLog.ts), so
+            // reaching this line means every frame's Vision call succeeded.
+            visionFailureCount: 0,
+          });
 
           const composedText =
             transcript +
@@ -459,6 +488,20 @@ export async function runIngestDir(
       } catch (err) {
         const errorMsg = (err as Error).message || String(err);
         console.error(`[ingest-dir] Error processing ${path.basename(filePath)}: ${errorMsg}`);
+
+        if (isVideo) {
+          appendVideoMetrics(root, {
+            schema_version: 1,
+            topic: targetTopicPath,
+            file: path.basename(filePath),
+            outcome: 'failure',
+            ms: Date.now() - videoStartedAt,
+            ts: new Date().toISOString(),
+            durationMs: videoDurationMs,
+            hasAudioStream: videoHasAudioStream,
+            error: errorMsg,
+          });
+        }
 
         await storeLock(async () => {
           manifestStore.markFailed(root, targetTopicPath, hash!, filePath, errorMsg);
