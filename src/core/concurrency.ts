@@ -17,3 +17,11 @@ export const docPool = pLimit(configuredLimit('TRM_DOC_CONCURRENCY'));
 // configuredLimit()'s constant. Mirrors the ioLimit idiom in
 // src/cli/commands/ingestDir.ts (`pLimit(Number(process.env.X) || N)`).
 export const ffmpegPool = pLimit(Number(process.env.TRM_FFMPEG_CONCURRENCY) || 2);
+
+// Bounds how many frames of a SINGLE video are submitted/in-flight for
+// analysis at once. Sits in front of visionPool: frameAnalysisPool bounds
+// per-video fan-out (default 3), visionPool remains the shared, batch-wide
+// network-call-rate limiter used by both the photo path and this pool's
+// eventual analyzer.extract() calls. Deliberately separate knobs -- see
+// analyzeFrames.ts for how they nest.
+export const frameAnalysisPool = pLimit(Number(process.env.TRM_FRAME_ANALYSIS_CONCURRENCY) || 3);
