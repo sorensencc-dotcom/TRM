@@ -15,7 +15,7 @@
 - `TRM_PDF_MAX_BYTES` env var, default 100MB (104857600 bytes) — checked before any fallback rendering.
 - `TRM_PDF_MAX_PAGES` env var, default 50 — checked via `getPdfPageCount` before any rendering.
 - `TRM_PDF_OCR_CONCURRENCY` env var, default 4 — bounds concurrent Vision OCR calls during PDF fallback.
-- Page rendering reuses the existing `TRM_DOC_CONCURRENCY` / `docPool`.
+- `TRM_PDF_RENDER_CONCURRENCY` env var, default 4 — bounds concurrent page-render calls during PDF fallback, via a dedicated `pdfRenderPool`. Page rendering does **not** reuse `TRM_DOC_CONCURRENCY` / `docPool`: `triage-intake.ts` already wraps its whole `convertFileToText(...)` call in `docPool(...)`, and `p-limit` is not re-entrant -- acquiring `docPool` again inside the fallback for rendering deadlocks once all outer `docPool` slots are held by tasks each awaiting an inner `docPool` acquisition that can never be granted. `pdfRenderPool` is a separate pool specifically to avoid this (post-whole-branch-review fix, 2026-08-07/08).
 - `ImageAnalyzer` for PDF-page OCR must be constructed as `new ImageAnalyzer(cicIngestionUrl, 90000, 2)` — the class defaults (5000ms timeout, 3 retries) are wrong for real Vision `DOCUMENT_TEXT_DETECTION` latency (observed 60s+ under load in `ingestDir.ts`).
 - Render DPI fixed at 150 (`viewportScale: 150 / 72`, passed to `page.getViewport({ scale })` per **the amendment above** — no longer a `pdf-to-png-converter` option).
 - `defaultRenderPdfPage` must set `cMapUrl`/`standardFontDataUrl` to absolute, forward-slash-normalized paths under the installed `pdfjs-dist` package (`cmaps/` and `standard_fonts/` respectively, both with a trailing `/`) — backslash paths (Windows default) make `pdfjs-dist` throw. Build the forward-slash form explicitly (e.g. `.split(path.sep).join('/')` on the resolved absolute path); do not rely on any library default.
@@ -446,7 +446,7 @@ git commit -m "feat(fileConvert): add PDF page-count/render/OCR default implemen
 - Test: `tests/ingestion/fileConvert.pdfOcrFallback.test.ts` (new file)
 
 **Interfaces:**
-- Consumes: `docPool`, `pdfOcrPool` from `../core/concurrency` (Task 1); `FileConverters`, `defaultGetPdfPageCount`, `defaultRenderPdfPage`, `defaultOcrPage` from this file (Task 2); `OcrResult` type from `./imageExtract/imageAnalyzer`.
+- Consumes: `pdfRenderPool`, `pdfOcrPool` from `../core/concurrency` (Task 1); `FileConverters`, `defaultGetPdfPageCount`, `defaultRenderPdfPage`, `defaultOcrPage` from this file (Task 2); `OcrResult` type from `./imageExtract/imageAnalyzer`. (Amended post-whole-branch-review: page rendering uses a dedicated `pdfRenderPool`, not `docPool` -- see Global Constraints.)
 - Produces: `convertFileToText`'s existing exported signature is unchanged (`(filePath: string, converters?: FileConverters) => Promise<string>`) — this task only changes what happens internally for `.pdf` files.
 
 - [ ] **Step 1: Write the failing tests**
@@ -796,7 +796,7 @@ async function extractPdfWithOcrFallback(buffer: Buffer, converters: FileConvert
   const pageNumbers = Array.from({ length: pageCount }, (_, i) => i + 1);
   const pageResults = await Promise.all(
     pageNumbers.map((pageNumber) =>
-      docPool(() => renderPdfPage(buffer, pageNumber))
+      pdfRenderPool(() => renderPdfPage(buffer, pageNumber))
         .then((pageBuffer) => pdfOcrPool(() => ocrPage(pageBuffer)))
         .then((ocrResult) => ({
           pageNumber,
@@ -842,7 +842,7 @@ to:
 Add the two new imports at the top of the file (alongside the Task 2 imports):
 
 ```ts
-import { docPool, pdfOcrPool } from '../core/concurrency';
+import { pdfRenderPool, pdfOcrPool } from '../core/concurrency';
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**

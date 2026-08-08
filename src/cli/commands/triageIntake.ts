@@ -8,7 +8,25 @@ import {
   openIntakeManifest,
 } from '../../core/intakeManifest';
 import { classifyImageDetailed } from '../../ingestion/imageExtract/classify';
-import { convertFileToText } from '../../ingestion/fileConvert';
+import { convertFileToText, defaultConverters, FileConverters } from '../../ingestion/fileConvert';
+import type { OcrResult } from '../../ingestion/imageExtract/imageAnalyzer';
+
+// triage-intake only needs to know whether a PDF/DOCX/EPUB produces
+// extractable text -- the text itself is discarded. For scanned PDFs, the
+// real fallback path would render every page (genuine signal: proves the
+// PDF is actually renderable) and then OCR every page via the real Vision
+// endpoint (real API cost/latency) purely to throw the result away. Stub
+// ocrPage with a cheap synthetic success so pages still "count" as
+// classified without a real network call, while getPdfPageCount/renderPdfPage
+// are left as the real defaults -- those still need to genuinely succeed to
+// prove the file is a real, parseable/renderable PDF.
+const triageOnlyConverters: FileConverters = {
+  ...defaultConverters,
+  ocrPage: async (): Promise<OcrResult> => ({
+    text: 'x',
+    metadata: { format: 'png', size: 0, processedAt: new Date().toISOString(), latencyMs: 0 },
+  }),
+};
 
 // Zero-cost text classification: extension check only, no file read.
 const TEXT_EXTENSIONS = new Set(['.txt', '.md', '.json']);
@@ -217,7 +235,7 @@ export async function runTriageIntake(
 
     if (EXTRACTABLE_TEXT_EXTENSIONS.has(ext)) {
       try {
-        await docPool(() => convertFileToText(filePath));
+        await docPool(() => convertFileToText(filePath, triageOnlyConverters));
         manifest.write({
           ...baseEntry,
           kind: 'text',

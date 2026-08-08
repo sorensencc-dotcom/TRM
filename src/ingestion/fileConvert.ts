@@ -6,7 +6,7 @@ import { extractEpub } from './epubExtract';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.js';
 import { createCanvas } from '@napi-rs/canvas';
 import { ImageAnalyzer, OcrResult } from './imageExtract/imageAnalyzer';
-import { docPool, pdfOcrPool } from '../core/concurrency';
+import { docPool, pdfOcrPool, pdfRenderPool } from '../core/concurrency';
 
 export interface FileConverters {
   extractDocx: (filePath: string) => Promise<string>;
@@ -61,11 +61,13 @@ class NapiCanvasFactory {
 }
 
 export async function defaultGetPdfPageCount(buffer: Buffer): Promise<number> {
-  const loadingTask = getDocument({ data: new Uint8Array(buffer) });
+  const loadingTask = getDocument({ data: new Uint8Array(buffer), isEvalSupported: false });
   const doc = await loadingTask.promise;
-  const numPages = doc.numPages;
-  await doc.destroy();
-  return numPages;
+  try {
+    return doc.numPages;
+  } finally {
+    await doc.destroy();
+  }
 }
 
 export async function defaultRenderPdfPage(buffer: Buffer, pageNumber: number): Promise<Buffer> {
@@ -75,6 +77,7 @@ export async function defaultRenderPdfPage(buffer: Buffer, pageNumber: number): 
     cMapPacked: true,
     standardFontDataUrl: PDFJS_STANDARD_FONT_DATA_URL,
     canvasFactory: new NapiCanvasFactory() as any,
+    isEvalSupported: false,
   });
   const doc = await loadingTask.promise;
   try {
@@ -113,7 +116,7 @@ async function extractPdfWithOcrFallback(buffer: Buffer, converters: FileConvert
 
   // extractPdf yielded empty text (e.g. scanned PDF, no text layer) -- fall
   // back to render-and-OCR. Any of these three overrides being unset falls
-  // through to the real default (real pdfjs-dist/pdf-to-png-converter/Vision
+  // through to the real default (real pdfjs-dist/@napi-rs/canvas/Vision
   // call) -- tests exercising this path must always override all three.
   const getPdfPageCount = converters.getPdfPageCount ?? defaultGetPdfPageCount;
   const renderPdfPage = converters.renderPdfPage ?? defaultRenderPdfPage;
@@ -134,16 +137,27 @@ async function extractPdfWithOcrFallback(buffer: Buffer, converters: FileConvert
     );
   }
 
+  // Page rendering uses its own dedicated pool (pdfRenderPool), NOT docPool.
+  // triage-intake.ts already wraps its whole convertFileToText(...) call in
+  // docPool(...); p-limit is not re-entrant, so acquiring docPool again here
+  // (for rendering) while an outer docPool slot is held deadlocks once all
+  // outer slots are occupied by tasks each awaiting an inner docPool
+  // acquisition that can never be granted. A separate pool sidesteps that
+  // entirely.
   const pageNumbers = Array.from({ length: pageCount }, (_, i) => i + 1);
   const pageResults = await Promise.all(
     pageNumbers.map((pageNumber) =>
-      docPool(() => renderPdfPage(buffer, pageNumber)).then((pageBuffer) =>
+      pdfRenderPool(() => renderPdfPage(buffer, pageNumber)).then((pageBuffer) =>
         pdfOcrPool(() => ocrPage(pageBuffer))
           .then((ocrResult) => ({
             pageNumber,
             text: ocrResult.metadata.error || ocrResult.text.trim().length === 0 ? null : ocrResult.text,
           }))
-          .catch(() => ({ pageNumber, text: null as string | null }))
+          .catch((err) => ({
+            pageNumber,
+            text: null as string | null,
+            errorMessage: err instanceof Error ? err.message : String(err),
+          }))
       )
     )
   );
@@ -153,9 +167,12 @@ async function extractPdfWithOcrFallback(buffer: Buffer, converters: FileConvert
     return '';
   }
 
-  const failedPages = pageResults.filter((r) => r.text === null).map((r) => r.pageNumber);
+  const failedPages = pageResults.filter((r) => r.text === null);
   if (failedPages.length > 0) {
-    console.error(`[fileConvert] OCR failed for pages: ${failedPages.join(', ')}`);
+    const detail = failedPages
+      .map((r) => `${r.pageNumber}${'errorMessage' in r && r.errorMessage ? ` (${r.errorMessage})` : ''}`)
+      .join(', ');
+    console.error(`[fileConvert] OCR failed for pages: ${detail}`);
   }
 
   return pageResults
@@ -166,7 +183,7 @@ async function extractPdfWithOcrFallback(buffer: Buffer, converters: FileConvert
     .join('');
 }
 
-const defaultConverters: FileConverters = {
+export const defaultConverters: FileConverters = {
   extractDocx: async (filePath) => (await mammoth.extractRawText({ path: filePath })).value,
   extractPdf: async (buffer) => {
     const parser = new PDFParse({ data: buffer });

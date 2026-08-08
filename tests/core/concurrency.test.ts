@@ -1,5 +1,5 @@
 describe('concurrency', () => {
-  const ENV_KEYS = ['TRM_VISION_CONCURRENCY', 'TRM_CLAUDE_CONCURRENCY', 'TRM_DOC_CONCURRENCY', 'TRM_PDF_OCR_CONCURRENCY'];
+  const ENV_KEYS = ['TRM_VISION_CONCURRENCY', 'TRM_CLAUDE_CONCURRENCY', 'TRM_DOC_CONCURRENCY', 'TRM_PDF_OCR_CONCURRENCY', 'TRM_PDF_RENDER_CONCURRENCY'];
   const originalEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
@@ -115,5 +115,36 @@ describe('concurrency', () => {
 
     expect(docMax).toBe(1);
     expect(pdfOcrMax).toBe(5);
+  });
+
+  it('pdfRenderPool defaults to a concurrency of 4 when no env var is set', async () => {
+    delete process.env.TRM_PDF_RENDER_CONCURRENCY;
+    const { pdfRenderPool } = require('../../src/core/concurrency');
+
+    const maxActive = await trackConcurrency(pdfRenderPool, 10);
+    expect(maxActive).toBe(4);
+  });
+
+  it('bounds concurrent execution to the configured TRM_PDF_RENDER_CONCURRENCY limit', async () => {
+    process.env.TRM_PDF_RENDER_CONCURRENCY = '2';
+    const { pdfRenderPool } = require('../../src/core/concurrency');
+
+    const maxActive = await trackConcurrency(pdfRenderPool, 10);
+    expect(maxActive).toBeLessThanOrEqual(2);
+    expect(maxActive).toBeGreaterThan(0);
+  });
+
+  it('pdfRenderPool is independent of docPool (regression: re-entrant pool deadlock fix)', async () => {
+    process.env.TRM_DOC_CONCURRENCY = '1';
+    process.env.TRM_PDF_RENDER_CONCURRENCY = '5';
+    const { docPool, pdfRenderPool } = require('../../src/core/concurrency');
+
+    const [docMax, renderMax] = await Promise.all([
+      trackConcurrency(docPool, 8),
+      trackConcurrency(pdfRenderPool, 8),
+    ]);
+
+    expect(docMax).toBe(1);
+    expect(renderMax).toBe(5);
   });
 });

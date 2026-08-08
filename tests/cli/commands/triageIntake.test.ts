@@ -34,6 +34,7 @@ import { runTriageIntake } from '../../../src/cli/commands/triageIntake';
 import { readIntakeManifest } from '../../../src/core/intakeManifest';
 import * as classifyModule from '../../../src/ingestion/imageExtract/classify';
 import * as fileConvertModule from '../../../src/ingestion/fileConvert';
+import { ImageAnalyzer } from '../../../src/ingestion/imageExtract/imageAnalyzer';
 
 function makeRoot(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'trm-triage-'));
@@ -324,7 +325,7 @@ describe('runTriageIntake', () => {
     const manifest = readIntakeManifest(root);
     const entry = Object.values(manifest.entries)[0];
 
-    expect(convertSpy).toHaveBeenCalledWith(expect.stringContaining('report.pdf'));
+    expect(convertSpy).toHaveBeenCalledWith(expect.stringContaining('report.pdf'), expect.any(Object));
     expect(entry.classifiedType).toBe('text');
     expect(entry.status).toBe('done');
     expect(summary.processedCount).toBe(1);
@@ -377,6 +378,41 @@ describe('runTriageIntake', () => {
     expect(entry.status).toBe('failed');
     expect(entry.error).toBe('trm ingest --file: "scanned.pdf" produced no extractable text');
     expect(summary.failedCount).toBe(1);
+  });
+
+  it('classifies a scanned PDF as text using a stubbed ocrPage, never the real Vision endpoint (finding #4 regression)', async () => {
+    const root = makeRoot();
+    writeIntakeFile(root, 'docs', 'scanned.pdf', Buffer.from('scanned image pdf'));
+    const ocrSpy = jest.spyOn(ImageAnalyzer.prototype, 'ocr');
+    let capturedConverters: fileConvertModule.FileConverters | undefined;
+    jest
+      .spyOn(fileConvertModule, 'convertFileToText')
+      .mockImplementationOnce(async (_filePath, converters) => {
+        capturedConverters = converters;
+        return 'extracted text';
+      });
+
+    const summary = await runTriageIntake(root, {});
+    const manifest = readIntakeManifest(root);
+    const entry = Object.values(manifest.entries)[0];
+
+    expect(entry.classifiedType).toBe('text');
+    expect(entry.status).toBe('done');
+    expect(summary.processedCount).toBe(1);
+    expect(summary.failedCount).toBe(0);
+
+    // The converters passed by triage-intake must keep the real
+    // getPdfPageCount/renderPdfPage (proving the PDF is genuinely
+    // renderable -- real classification signal) but stub ocrPage so no
+    // real Vision network call happens for output that's discarded anyway.
+    expect(capturedConverters).toBeDefined();
+    expect(capturedConverters!.getPdfPageCount).toBe(fileConvertModule.defaultConverters.getPdfPageCount);
+    expect(capturedConverters!.renderPdfPage).toBe(fileConvertModule.defaultConverters.renderPdfPage);
+    expect(capturedConverters!.ocrPage).not.toBe(fileConvertModule.defaultConverters.ocrPage);
+
+    const stubbedResult = await capturedConverters!.ocrPage!(Buffer.from('fake-page-png'));
+    expect(stubbedResult.text).toBe('x');
+    expect(ocrSpy).not.toHaveBeenCalled();
   });
 
   it('does not call convertFileToText for plain text files', async () => {

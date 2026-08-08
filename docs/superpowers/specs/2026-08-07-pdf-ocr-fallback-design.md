@@ -71,21 +71,26 @@ right place to sequence "try extractPdf, then fall back."
    before rendering starts, not "resolved at implementation time."
 3. **Render + OCR, one page at a time, pipelined.** For each page number
    `1..count`, in order:
-   - `docPool(() => converters.renderPdfPage(buffer, pageNumber))` — renders
-     *one* page to a PNG buffer via `pdf-to-png-converter`'s
-     `pagesToProcess: [pageNumber]` option (wraps `pdfjs-dist` +
-     `@napi-rs/canvas`; prebuilt binaries, no node-gyp/compiler step,
+   - `pdfRenderPool(() => converters.renderPdfPage(buffer, pageNumber))` —
+     renders *one* page to a PNG buffer directly via `pdfjs-dist` +
+     `@napi-rs/canvas` (prebuilt binaries, no node-gyp/compiler step,
      Windows-safe, requires Node ≥20 — repo runs Node 24), at a fixed 150
-     DPI (bounds per-page image size). `docPool` is the same pool already
-     bounding `pdf-parse`/`mammoth` in `triageIntake.ts` — same kind of
-     CPU/memory-bound, non-network work.
+     DPI (bounds per-page image size). `pdfRenderPool` is a dedicated pool
+     (`TRM_PDF_RENDER_CONCURRENCY`, default 4), deliberately separate from
+     `docPool` (which `triageIntake.ts` already holds for the whole
+     `convertFileToText` call — `p-limit` is not re-entrant, so reusing
+     `docPool` here would deadlock).
    - `.then(pageBuffer => pdfOcrPool(() => converters.ocrPage(pageBuffer)))`
      — OCRs that one page (see Concurrency below).
-   - Each page's render+OCR is one promise in an indexed array; at most
-     `docPool`'s concurrency limit worth of pages are rendered at once
-     (default 4), so the full document's pages are never all held in
-     memory simultaneously — only as many in flight as the pool allows,
-     regardless of the 50-page cap.
+   - Each page's render+OCR is one promise in an indexed array. Rendering
+     is fast (ms-scale) and releases its `pdfRenderPool` slot immediately;
+     OCR is much slower (60s+) and is bounded separately by `pdfOcrPool`.
+     Rendered PNG buffers therefore queue up waiting for an OCR slot —
+     worst case, all pages' PNGs are resident in memory at once. Memory is
+     bounded by `TRM_PDF_MAX_PAGES` (default 50) × one PNG buffer per page,
+     **not** by the render pool's concurrency limit — the render pool only
+     bounds how many pages are being rendered concurrently, not how many
+     already-rendered buffers are waiting on OCR.
 4. **Inspect results correctly.** `ImageAnalyzer.ocr()` does not throw on
    failure — it returns `OcrResult` with `metadata.error` set and
    `text: ''`. Fallback logic must check `metadata.error` and

@@ -238,10 +238,39 @@ describe('convertFileToText: scanned-PDF OCR fallback', () => {
     }
   });
 
+  it('completes when called from inside a docPool task (regression: re-entrant pool deadlock)', async () => {
+    const { docPool } = require('../../src/core/concurrency');
+    const converters: FileConverters = {
+      extractDocx: async () => '',
+      extractPdf: async () => '',
+      extractEpub: async () => '',
+      getPdfPageCount: async () => 1,
+      renderPdfPage: async () => Buffer.from('p1'),
+      ocrPage: async () => okResult('page text'),
+    };
+
+    const text = await docPool(() => convertFileToText(scannedFile(), converters));
+
+    expect(text).toBe('page text');
+  }, 5000); // explicit timeout so a regression hangs visibly rather than hitting Jest's default and looking like a slow test
+
+  it('a zero-page PDF falls through to the existing "no extractable text" error, not a crash', async () => {
+    const converters: FileConverters = {
+      extractDocx: async () => '',
+      extractPdf: async () => '',
+      extractEpub: async () => '',
+      getPdfPageCount: async () => 0,
+      renderPdfPage: async () => Buffer.from('unused'),
+      ocrPage: async () => okResult('unused'),
+    };
+
+    await expect(convertFileToText(scannedFile(), converters)).rejects.toThrow(/no extractable text/);
+  });
+
   it('render and OCR concurrency stay within configured pool limits', async () => {
-    const previousDoc = process.env.TRM_DOC_CONCURRENCY;
+    const previousRender = process.env.TRM_PDF_RENDER_CONCURRENCY;
     const previousOcr = process.env.TRM_PDF_OCR_CONCURRENCY;
-    process.env.TRM_DOC_CONCURRENCY = '2';
+    process.env.TRM_PDF_RENDER_CONCURRENCY = '2';
     process.env.TRM_PDF_OCR_CONCURRENCY = '2';
     jest.resetModules();
     try {
@@ -278,8 +307,8 @@ describe('convertFileToText: scanned-PDF OCR fallback', () => {
       expect(maxActiveRenders).toBeLessThanOrEqual(2);
       expect(maxActiveOcr).toBeLessThanOrEqual(2);
     } finally {
-      if (previousDoc === undefined) delete process.env.TRM_DOC_CONCURRENCY;
-      else process.env.TRM_DOC_CONCURRENCY = previousDoc;
+      if (previousRender === undefined) delete process.env.TRM_PDF_RENDER_CONCURRENCY;
+      else process.env.TRM_PDF_RENDER_CONCURRENCY = previousRender;
       if (previousOcr === undefined) delete process.env.TRM_PDF_OCR_CONCURRENCY;
       else process.env.TRM_PDF_OCR_CONCURRENCY = previousOcr;
       jest.resetModules();
