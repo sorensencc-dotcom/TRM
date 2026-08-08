@@ -638,6 +638,192 @@ describe('runIngestDir', () => {
       mkdtempSpy.mockRestore();
       restoreVideoPipelineMocks(spies);
     });
+
+    it('a probeVideo failure (corrupt media) lands in failedStore with the underlying message preserved, and --retry-failed reprocesses it once fixed (Task 5.4)', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      const filePath = path.join(dir, 'corrupt.mp4');
+      fs.writeFileSync(filePath, 'not a real video', 'utf-8');
+
+      const spies = mockVideoPipeline({ durationMs: 60000, hasAudioStream: false });
+      spies.probeSpy.mockRejectedValueOnce(
+        new Error(
+          `Failed to probe video file "${filePath}": Invalid data found when processing input`
+        )
+      );
+      const { runner, runSpy } = makeRunSpyRunner();
+
+      const summary = await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+
+      expect(summary.successCount).toBe(0);
+      expect(summary.failureCount).toBe(1);
+      expect(runSpy).not.toHaveBeenCalled();
+
+      const failed = failedStore.readFailed(root, 'topic1');
+      expect(failed.length).toBe(1);
+      expect(failed[0].sourcePath).toContain('corrupt.mp4');
+      expect(failed[0].error).toContain('Invalid data found when processing input');
+
+      const hash = await hashFile(filePath);
+      expect(manifestStore.isDone(root, 'topic1', hash)).toBe(false);
+
+      // probeSpy's mockRejectedValueOnce is consumed -- the retry run below
+      // falls through to the mockResolvedValue set up by mockVideoPipeline,
+      // i.e. the fix actually reprocesses the file rather than just re-reading
+      // the failure record.
+      const retrySummary = await runIngestDir(
+        root,
+        'topic1',
+        { actor: 'ACTOR-001', dir, retryFailed: true, stub: true },
+        runner
+      );
+
+      expect(retrySummary.totalFiles).toBe(1);
+      expect(retrySummary.successCount).toBe(1);
+      expect(retrySummary.failureCount).toBe(0);
+      expect(failedStore.readFailed(root, 'topic1')).toEqual([]);
+      expect(manifestStore.isDone(root, 'topic1', hash)).toBe(true);
+
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('a probeVideo timeout-shaped failure lands in failedStore with the underlying message preserved (Task 5.4)', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      const filePath = path.join(dir, 'slow.mp4');
+      fs.writeFileSync(filePath, 'fake mp4 bytes', 'utf-8');
+
+      const spies = mockVideoPipeline({ durationMs: 60000, hasAudioStream: false });
+      // Mirrors the wrapped message shape probeVideo() produces when
+      // execFileAsync's subprocess is killed for exceeding its timeout
+      // (getErrorDetail() falls back to err.message, which for a killed
+      // child process reads "Command failed: ... " with no stderr set).
+      spies.probeSpy.mockRejectedValue(
+        new Error(`Failed to probe video file "${filePath}": Command failed: ffprobe ${filePath}`)
+      );
+      const { runner, runSpy } = makeRunSpyRunner();
+
+      const summary = await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+
+      expect(summary.successCount).toBe(0);
+      expect(summary.failureCount).toBe(1);
+      expect(runSpy).not.toHaveBeenCalled();
+
+      const failed = failedStore.readFailed(root, 'topic1');
+      expect(failed.length).toBe(1);
+      expect(failed[0].sourcePath).toContain('slow.mp4');
+      expect(failed[0].error).toContain('Command failed: ffprobe');
+
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('an extractFrames timeout-shaped failure lands in failedStore with the underlying message preserved (Task 5.4)', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      const filePath = path.join(dir, 'stuck.mp4');
+      fs.writeFileSync(filePath, 'fake mp4 bytes', 'utf-8');
+
+      const spies = mockVideoPipeline({ durationMs: 60000, hasAudioStream: false });
+      spies.extractSpy.mockRejectedValue(
+        new Error(`Failed to extract frames from video file "${filePath}": Command failed: ffmpeg ${filePath}`)
+      );
+      const { runner, runSpy } = makeRunSpyRunner();
+
+      const summary = await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+
+      expect(summary.successCount).toBe(0);
+      expect(summary.failureCount).toBe(1);
+      expect(runSpy).not.toHaveBeenCalled();
+
+      const failed = failedStore.readFailed(root, 'topic1');
+      expect(failed.length).toBe(1);
+      expect(failed[0].error).toContain('Command failed: ffmpeg');
+
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('a transcribeAudio failure (whisper timeout) lands in failedStore with the underlying message preserved (Task 5.4)', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      const filePath = path.join(dir, 'has-audio.mp4');
+      fs.writeFileSync(filePath, 'fake mp4 bytes', 'utf-8');
+
+      const spies = mockVideoPipeline({ durationMs: 60000, hasAudioStream: true });
+      spies.transcribeSpy.mockRejectedValue(
+        new Error(
+          `Whisper transcription timed out after 30000ms for file "${filePath}": Command failed: whisper ${filePath}`
+        )
+      );
+      const { runner, runSpy } = makeRunSpyRunner();
+
+      const summary = await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+
+      expect(summary.successCount).toBe(0);
+      expect(summary.failureCount).toBe(1);
+      expect(runSpy).not.toHaveBeenCalled();
+
+      const failed = failedStore.readFailed(root, 'topic1');
+      expect(failed.length).toBe(1);
+      expect(failed[0].sourcePath).toContain('has-audio.mp4');
+      expect(failed[0].error).toContain('Whisper transcription timed out after 30000ms');
+
+      const hash = await hashFile(filePath);
+      expect(manifestStore.isDone(root, 'topic1', hash)).toBe(false);
+
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('a video failure does not abort the batch -- other files (video and non-video) in the same batch still succeed (Task 5.4)', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'good.txt'), 'A good text doc file', 'utf-8');
+      const badVideoPath = path.join(dir, 'bad.mp4');
+      fs.writeFileSync(badVideoPath, 'fake mp4 bytes -- bad', 'utf-8');
+      const goodVideoPath = path.join(dir, 'good.mp4');
+      fs.writeFileSync(goodVideoPath, 'fake mp4 bytes -- good', 'utf-8');
+
+      const spies = mockVideoPipeline({ durationMs: 60000, hasAudioStream: false });
+      spies.probeSpy.mockImplementation(async (filePath: string) => {
+        if (filePath === badVideoPath) {
+          throw new Error(
+            `Failed to probe video file "${badVideoPath}": Invalid data found when processing input`
+          );
+        }
+        return { durationMs: 60000, hasAudioStream: false };
+      });
+      const { runner } = makeRunSpyRunner();
+
+      const summary = await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+
+      expect(summary.totalFiles).toBe(3);
+      expect(summary.successCount).toBe(2);
+      expect(summary.failureCount).toBe(1);
+
+      const failed = failedStore.readFailed(root, 'topic1');
+      expect(failed.length).toBe(1);
+      expect(failed[0].sourcePath).toContain('bad.mp4');
+      expect(failed[0].error).toContain('Invalid data found when processing input');
+
+      const goodVideoHash = await hashFile(goodVideoPath);
+      expect(manifestStore.isDone(root, 'topic1', goodVideoHash)).toBe(true);
+
+      restoreVideoPipelineMocks(spies);
+    });
   });
 
   it('--retry-failed reprocesses only failed items', async () => {
