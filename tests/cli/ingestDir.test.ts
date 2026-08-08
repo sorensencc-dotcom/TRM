@@ -278,19 +278,32 @@ describe('runIngestDir', () => {
     // dep check out rather than require a real ffmpeg install on the test box.
     const ffmpegSpy = jest.spyOn(videoDeps, 'checkFfmpegDeps').mockResolvedValue();
 
-    const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+    const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
     const summary = await runIngestDir(
       root,
       'topic1',
       { actor: 'ACTOR-001', dir, stub: true }
     );
-    consoleSpy.mockRestore();
-    ffmpegSpy.mockRestore();
 
     expect(summary.totalFiles).toBe(2);
     expect(summary.successCount).toBe(1);
     expect(summary.failureCount).toBe(0);
     expect(summary.duplicateCount).toBe(0);
+    expect(summary.videoSkippedCount).toBe(1);
+
+    // Batch-complete log line must surface the skip so totalFiles !=
+    // successCount + duplicateCount + failureCount is explained, not silent.
+    // Read mock.calls before mockRestore(), which internally does a
+    // mockReset() and would otherwise wipe the recorded call history.
+    const batchCompleteLine = consoleLogSpy.mock.calls
+      .map((args) => args.join(' '))
+      .find((line) => line.includes('Batch complete'));
+    expect(batchCompleteLine).toContain('1 videos skipped');
+
+    consoleErrorSpy.mockRestore();
+    consoleLogSpy.mockRestore();
+    ffmpegSpy.mockRestore();
 
     expect(failedStore.readFailed(root, 'topic1')).toEqual([]);
 

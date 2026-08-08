@@ -41,6 +41,7 @@ export interface IngestDirSummary {
   successCount: number;
   duplicateCount: number;
   failureCount: number;
+  videoSkippedCount: number;
 }
 
 export async function runIngestDir(
@@ -97,6 +98,7 @@ export async function runIngestDir(
   let duplicateCount = 0;
   let successCount = 0;
   let failureCount = 0;
+  let videoSkippedCount = 0;
 
   // Check for ffmpeg/ffprobe if batch contains video files
   const hasVideoFiles = workItems.some((item) =>
@@ -154,6 +156,7 @@ export async function runIngestDir(
           // it does not corrupt success/failure/duplicate accounting ahead of
           // that pipeline existing.
           console.error(`[ingest-dir] Skipping video (pipeline not yet implemented): ${path.basename(filePath)}`);
+          videoSkippedCount++;
           return;
         } else if (isImage) {
           const kind = await classifyImage(filePath, { kind: cliArgs.kind });
@@ -326,7 +329,7 @@ export async function runIngestDir(
 
   const totalProcessed = successCount + failureCount;
   console.log(
-    `[ingest-dir] Batch complete: ${totalFiles} total files, ${successCount} succeeded, ${duplicateCount} duplicates skipped, ${failureCount} failed.`
+    `[ingest-dir] Batch complete: ${totalFiles} total files, ${successCount} succeeded, ${duplicateCount} duplicates skipped, ${videoSkippedCount} videos skipped (pipeline not yet implemented), ${failureCount} failed.`
   );
 
   return {
@@ -335,5 +338,6 @@ export async function runIngestDir(
     successCount,
     duplicateCount,
     failureCount,
+    videoSkippedCount,
   };
 }
