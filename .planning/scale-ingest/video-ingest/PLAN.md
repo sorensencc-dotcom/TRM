@@ -226,4 +226,4 @@ sampling params, binary version pinning — none of these get tasks.
 - [x] No task drops SPEC scope; out-of-scope items have zero tasks.
 - [x] Dependencies ordered — no task references a module before its
       producing task.
-- [ ] User approval to proceed to execution (pending).
+- [x] User approval to proceed to execution — approved 2026-08-07.
