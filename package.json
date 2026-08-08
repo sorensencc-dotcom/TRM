@@ -27,6 +27,7 @@
     "typescript": "^5.4.5"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^0.1.100",
     "ajv": "^8.12.0",
     "commander": "^12.0.0",
     "epub2": "^3.0.2",
@@ -34,7 +35,6 @@
     "mammoth": "^1.12.0",
     "p-limit": "^3.1.0",
     "pdf-parse": "^2.4.5",
-    "pdf-to-png-converter": "^3.18.0",
     "pdfjs-dist": "^3.11.174"
   }
 }

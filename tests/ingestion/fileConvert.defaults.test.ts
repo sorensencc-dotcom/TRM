@@ -7,10 +7,12 @@ jest.mock('pdfjs-dist/legacy/build/pdf.js', () => ({
   getDocument: (...args: unknown[]) => mockGetDocument(...args),
 }));
 
-const mockPdfToPng = jest.fn();
+const mockToBuffer = jest.fn();
+const mockGetContext = jest.fn();
+const mockCreateCanvas = jest.fn();
 
-jest.mock('pdf-to-png-converter', () => ({
-  pdfToPng: (...args: unknown[]) => mockPdfToPng(...args),
+jest.mock('@napi-rs/canvas', () => ({
+  createCanvas: (...args: unknown[]) => mockCreateCanvas(...args),
 }));
 
 const mockOcr = jest.fn();
@@ -39,26 +41,44 @@ describe('defaultGetPdfPageCount', () => {
 
 describe('defaultRenderPdfPage', () => {
   beforeEach(() => {
-    mockPdfToPng.mockReset();
+    mockGetDocument.mockReset();
+    mockDocDestroy.mockClear();
+    mockToBuffer.mockReset();
+    mockGetContext.mockReset();
+    mockCreateCanvas.mockReset();
   });
 
   it('renders exactly the requested page at 150 DPI and returns its PNG buffer', async () => {
     const pngBuffer = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
-    mockPdfToPng.mockResolvedValue([{ pageNumber: 2, content: pngBuffer }]);
+    mockToBuffer.mockReturnValue(pngBuffer);
+    mockGetContext.mockReturnValue({});
+    mockCreateCanvas.mockReturnValue({ getContext: mockGetContext, toBuffer: mockToBuffer });
+
+    const mockRender = jest.fn().mockReturnValue({ promise: Promise.resolve(undefined) });
+    const mockGetViewport = jest.fn().mockReturnValue({ width: 620, height: 877 });
+    const mockGetPage = jest.fn().mockResolvedValue({ getViewport: mockGetViewport, render: mockRender });
+    mockGetDocument.mockReturnValue({
+      promise: Promise.resolve({ getPage: mockGetPage, destroy: mockDocDestroy }),
+    });
 
     const result = await defaultRenderPdfPage(Buffer.from('fake pdf bytes'), 2);
 
     expect(result).toBe(pngBuffer);
-    expect(mockPdfToPng).toHaveBeenCalledWith(
-      expect.any(Buffer),
-      expect.objectContaining({ pagesToProcess: [2], viewportScale: 150 / 72 })
-    );
+    expect(mockGetPage).toHaveBeenCalledWith(2);
+    expect(mockGetViewport).toHaveBeenCalledWith(expect.objectContaining({ scale: 150 / 72 }));
+    expect(mockCreateCanvas).toHaveBeenCalledWith(620, 877);
+    expect(mockToBuffer).toHaveBeenCalledWith('image/png');
+    expect(mockDocDestroy).toHaveBeenCalledTimes(1);
   });
 
-  it('throws when pdf-to-png-converter returns no pages', async () => {
-    mockPdfToPng.mockResolvedValue([]);
+  it('throws when pdfjs-dist reports the requested page does not exist', async () => {
+    const mockGetPage = jest.fn().mockRejectedValue(new Error('Invalid page request'));
+    mockGetDocument.mockReturnValue({
+      promise: Promise.resolve({ getPage: mockGetPage, destroy: mockDocDestroy }),
+    });
 
-    await expect(defaultRenderPdfPage(Buffer.from('fake pdf bytes'), 5)).rejects.toThrow(/page 5/);
+    await expect(defaultRenderPdfPage(Buffer.from('fake pdf bytes'), 5)).rejects.toThrow(/Invalid page request/);
+    expect(mockDocDestroy).toHaveBeenCalledTimes(1);
   });
 });
 

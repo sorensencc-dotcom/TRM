@@ -4,7 +4,7 @@ import * as mammoth from 'mammoth';
 import { PDFParse } from 'pdf-parse';
 import { extractEpub } from './epubExtract';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.js';
-import { pdfToPng } from 'pdf-to-png-converter';
+import { createCanvas } from '@napi-rs/canvas';
 import { ImageAnalyzer, OcrResult } from './imageExtract/imageAnalyzer';
 import { docPool, pdfOcrPool } from '../core/concurrency';
 
@@ -14,13 +14,25 @@ export interface FileConverters {
   extractEpub: (filePath: string) => Promise<string>;
   // Scanned-PDF OCR fallback (all optional -- unset means "use the real
   // default," so a test that overrides only extractPdf and forgets these
-  // will silently hit real pdfjs-dist/pdf-to-png-converter/Vision calls if
-  // its extractPdf ever resolves empty. Tests exercising the fallback path
-  // must always override all three.
+  // will silently hit real pdfjs-dist/canvas/Vision calls if its extractPdf
+  // ever resolves empty. Tests exercising the fallback path must always
+  // override all three.
   getPdfPageCount?: (buffer: Buffer) => Promise<number>;
   renderPdfPage?: (buffer: Buffer, pageNumber: number) => Promise<Buffer>;
   ocrPage?: (buffer: Buffer) => Promise<OcrResult>;
 }
+
+// pdfjs-dist requires cMapUrl/standardFontDataUrl as forward-slash URL
+// strings with a trailing slash. path.resolve()/path.join() produce
+// backslash paths on Windows, which pdfjs-dist rejects outright -- this
+// normalizes explicitly rather than relying on any library default.
+function pdfjsAssetUrl(...segments: string[]): string {
+  const absolute = path.resolve(path.dirname(require.resolve('pdfjs-dist/package.json')), ...segments);
+  return absolute.split(path.sep).join('/') + '/';
+}
+
+const PDFJS_CMAP_URL = pdfjsAssetUrl('cmaps');
+const PDFJS_STANDARD_FONT_DATA_URL = pdfjsAssetUrl('standard_fonts');
 
 export async function defaultGetPdfPageCount(buffer: Buffer): Promise<number> {
   const loadingTask = getDocument({ data: new Uint8Array(buffer) });
@@ -31,15 +43,23 @@ export async function defaultGetPdfPageCount(buffer: Buffer): Promise<number> {
 }
 
 export async function defaultRenderPdfPage(buffer: Buffer, pageNumber: number): Promise<Buffer> {
-  const pages = await pdfToPng(buffer, {
-    pagesToProcess: [pageNumber],
-    viewportScale: 150 / 72, // 150 DPI (PDF points are 1/72 inch)
+  const loadingTask = getDocument({
+    data: new Uint8Array(buffer),
+    cMapUrl: PDFJS_CMAP_URL,
+    cMapPacked: true,
+    standardFontDataUrl: PDFJS_STANDARD_FONT_DATA_URL,
   });
-  const page = pages[0];
-  if (!page || !page.content) {
-    throw new Error(`defaultRenderPdfPage: page ${pageNumber} not found in rendered output`);
+  const doc = await loadingTask.promise;
+  try {
+    const page = await doc.getPage(pageNumber);
+    const viewport = page.getViewport({ scale: 150 / 72 }); // 150 DPI (PDF points are 1/72 inch)
+    const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+    const context = canvas.getContext('2d');
+    await page.render({ canvasContext: context as any, viewport }).promise;
+    return canvas.toBuffer('image/png');
+  } finally {
+    await doc.destroy();
   }
-  return page.content;
 }
 
 export async function defaultOcrPage(buffer: Buffer): Promise<OcrResult> {
