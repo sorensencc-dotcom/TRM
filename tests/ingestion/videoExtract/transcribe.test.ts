@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { transcribeAudio } from '../../../src/ingestion/videoExtract/transcribe';
+import { getDefaultWhisperModelPath } from '../../../src/core/videoDeps';
 
 jest.mock('node:child_process');
 
@@ -52,7 +53,7 @@ describe('transcribeAudio', () => {
     expect(callArgs[0]).toBe('/custom/whisper');
   });
 
-  it('defaults to whisper from PATH when env var not set', async () => {
+  it('defaults to the whisper.cpp CLI (whisper-cli) from PATH when env var not set', async () => {
     mockExecFile.mockImplementation(
       ((cmd: string, args: any, options: any, cb: Function) => {
         cb(null, { stdout: 'text', stderr: '' });
@@ -62,7 +63,7 @@ describe('transcribeAudio', () => {
     await transcribeAudio('/path/to/audio.wav');
 
     const callArgs = mockExecFile.mock.calls[0];
-    expect(callArgs[0]).toBe('whisper');
+    expect(callArgs[0]).toBe('whisper-cli');
   });
 
   it('passes filePath to whisper args', async () => {
@@ -79,7 +80,7 @@ describe('transcribeAudio', () => {
   });
 
   it('uses TRM_WHISPER_MODEL env var when set', async () => {
-    process.env.TRM_WHISPER_MODEL = '/custom/model.pt';
+    process.env.TRM_WHISPER_MODEL = '/custom/model.bin';
 
     mockExecFile.mockImplementation(
       ((cmd: string, args: any, options: any, cb: Function) => {
@@ -90,7 +91,25 @@ describe('transcribeAudio', () => {
     await transcribeAudio('/path/to/audio.wav');
 
     const callArgs = mockExecFile.mock.calls[0];
-    expect(callArgs[1]).toContain('/custom/model.pt');
+    expect(callArgs[1]).toContain('/custom/model.bin');
+  });
+
+  it('defaults the model to a whisper.cpp ggml .bin path, matching videoDeps preflight', async () => {
+    mockExecFile.mockImplementation(
+      ((cmd: string, args: any, options: any, cb: Function) => {
+        cb(null, { stdout: 'text', stderr: '' });
+      }) as any
+    );
+
+    await transcribeAudio('/path/to/audio.wav');
+
+    const passedArgs = mockExecFile.mock.calls[0][1] as string[];
+    // Must be the exact path checkWhisperDeps() preflights -- the two are
+    // imported from one source of truth in src/core/videoDeps.ts.
+    expect(passedArgs).toContain(getDefaultWhisperModelPath());
+    expect(getDefaultWhisperModelPath()).toContain('ggml-base.en.bin');
+    // whisper.cpp cannot load openai-whisper's PyTorch checkpoints.
+    expect(passedArgs.some((a) => typeof a === 'string' && a.endsWith('.pt'))).toBe(false);
   });
 
   it('sizes timeout as max(30s, durationMs * 0.5) when durationMs provided', async () => {

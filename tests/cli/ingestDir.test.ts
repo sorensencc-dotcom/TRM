@@ -10,6 +10,7 @@ import * as videoDeps from '../../src/core/videoDeps';
 import * as videoProbe from '../../src/core/videoProbe';
 import * as extractFramesModule from '../../src/ingestion/videoExtract/extractFrames';
 import * as analyzeFramesModule from '../../src/ingestion/videoExtract/analyzeFrames';
+import * as extractAudioModule from '../../src/ingestion/videoExtract/extractAudio';
 import * as transcribeModule from '../../src/ingestion/videoExtract/transcribe';
 import { readRawEnvelope } from '../../src/core/rawSource';
 import { ExtractionRunner } from '../../src/extraction/types';
@@ -60,18 +61,28 @@ function mockVideoPipeline(fixture: VideoPipelineFixture) {
     .mockResolvedValue(
       fixture.frameAnalyses ?? [{ timestampMs: 0, labels: [{ description: 'object', score: 0.7 }] }]
     );
+  // extractAudio() is the ffmpeg step that turns the video container into the
+  // 16kHz mono WAV whisper.cpp can actually read. Its default mock returns a
+  // path inside the per-video temp dir it was handed, so a test can assert the
+  // WAV path (not the raw video path) is what reaches transcribeAudio.
+  const extractAudioSpy = jest
+    .spyOn(extractAudioModule, 'extractAudio')
+    .mockImplementation(async (_filePath: string, tempDir: string) =>
+      path.join(tempDir, 'audio.wav')
+    );
   const transcribeSpy = jest
     .spyOn(transcribeModule, 'transcribeAudio')
     .mockResolvedValue(fixture.transcript ?? '');
   const whisperDepsSpy = jest.spyOn(videoDeps, 'checkWhisperDeps').mockResolvedValue();
 
-  return { probeSpy, extractSpy, analyzeSpy, transcribeSpy, whisperDepsSpy };
+  return { probeSpy, extractSpy, analyzeSpy, extractAudioSpy, transcribeSpy, whisperDepsSpy };
 }
 
 function restoreVideoPipelineMocks(spies: ReturnType<typeof mockVideoPipeline>) {
   spies.probeSpy.mockRestore();
   spies.extractSpy.mockRestore();
   spies.analyzeSpy.mockRestore();
+  spies.extractAudioSpy.mockRestore();
   spies.transcribeSpy.mockRestore();
   spies.whisperDepsSpy.mockRestore();
 }
@@ -392,7 +403,14 @@ describe('runIngestDir', () => {
 
       expect(summary.successCount).toBe(1);
       expect(spies.whisperDepsSpy).toHaveBeenCalledTimes(1);
-      expect(spies.transcribeSpy).toHaveBeenCalledWith(path.join(dir, 'audio-only.mp4'), 60000);
+      // The extracted WAV is what reaches whisper.cpp -- never the .mp4 itself.
+      expect(spies.extractAudioSpy).toHaveBeenCalledWith(
+        path.join(dir, 'audio-only.mp4'),
+        expect.any(String)
+      );
+      const wavPath = await spies.extractAudioSpy.mock.results[0].value;
+      expect(spies.transcribeSpy).toHaveBeenCalledWith(wavPath, 60000);
+      expect(wavPath.endsWith('.wav')).toBe(true);
       expect(runSpy).toHaveBeenCalledTimes(1);
 
       const envelope = readRawEnvelope(root, 'topic1', 'SRC-001');
@@ -554,6 +572,9 @@ describe('runIngestDir', () => {
       // extractFrames would never be invoked until this resolves. Under real
       // concurrency (Promise.all), extractFrames starts (and, being mocked
       // synchronous-ish, completes) well before we ever resolve it below.
+      const extractAudioSpy = jest
+        .spyOn(extractAudioModule, 'extractAudio')
+        .mockImplementation(async (_f: string, tempDir: string) => path.join(tempDir, 'audio.wav'));
       const transcribeSpy = jest
         .spyOn(transcribeModule, 'transcribeAudio')
         .mockImplementation(() => transcribeDeferred);
@@ -584,6 +605,7 @@ describe('runIngestDir', () => {
 
       probeSpy.mockRestore();
       whisperDepsSpy.mockRestore();
+      extractAudioSpy.mockRestore();
       transcribeSpy.mockRestore();
       extractSpy.mockRestore();
       analyzeSpy.mockRestore();
@@ -779,6 +801,142 @@ describe('runIngestDir', () => {
       expect(failed[0].sourcePath).toContain('has-audio.mp4');
       expect(failed[0].error).toContain('Whisper transcription timed out after 30000ms');
 
+      const hash = await hashFile(filePath);
+      expect(manifestStore.isDone(root, 'topic1', hash)).toBe(false);
+
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('extracts audio to a 16kHz mono WAV via ffmpeg before transcribing (whisper.cpp cannot read an mp4 container)', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      const filePath = path.join(dir, 'has-audio.mp4');
+      fs.writeFileSync(filePath, 'fake mp4 bytes', 'utf-8');
+
+      const spies = mockVideoPipeline({
+        durationMs: 60000,
+        hasAudioStream: true,
+        transcript: 'spoken words',
+      });
+
+      const { runner } = makeRunSpyRunner();
+      const summary = await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+
+      expect(summary.successCount).toBe(1);
+
+      // The audio-extraction step runs, on the source video, before whisper.
+      // (The exact ffmpeg argv -- `-map 0:a:0 -ar 16000 -ac 1 -f wav` -- is
+      // asserted against a mocked execFile in
+      // tests/ingestion/videoExtract/extractAudio.test.ts; extractAudio
+      // promisify()s execFile at import time, so it cannot be intercepted by a
+      // post-import spy here. This test covers the wiring.)
+      expect(spies.extractAudioSpy).toHaveBeenCalledTimes(1);
+      expect(spies.extractAudioSpy).toHaveBeenCalledWith(filePath, expect.any(String));
+
+      // whisper receives the WAV, not the source video container.
+      const transcribedPath = spies.transcribeSpy.mock.calls[0][0] as string;
+      expect(transcribedPath.endsWith('.wav')).toBe(true);
+      expect(transcribedPath).not.toBe(filePath);
+
+      // Ordering: extraction must resolve before transcription is invoked.
+      expect(spies.extractAudioSpy.mock.invocationCallOrder[0]).toBeLessThan(
+        spies.transcribeSpy.mock.invocationCallOrder[0]
+      );
+
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('writes the extracted WAV into the SAME per-video temp dir as the frames (one mkdtemp, one cleanup)', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'has-audio.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      const spies = mockVideoPipeline({ durationMs: 60000, hasAudioStream: true, transcript: 'x' });
+      const mkdtempSpy = jest.spyOn(fs.promises, 'mkdtemp');
+      const { runner } = makeRunSpyRunner();
+
+      const summary = await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+
+      expect(summary.successCount).toBe(1);
+      // Exactly one temp dir for the whole video, shared by both branches.
+      expect(mkdtempSpy.mock.results.length).toBe(1);
+      const tempDir = await mkdtempSpy.mock.results[0].value;
+      expect(spies.extractAudioSpy).toHaveBeenCalledWith(expect.any(String), tempDir);
+      expect(spies.extractSpy).toHaveBeenCalledWith(expect.any(String), 60000, tempDir);
+      // ...and it is still cleaned up.
+      expect(fs.existsSync(tempDir)).toBe(false);
+
+      mkdtempSpy.mockRestore();
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('an extractAudio (ffmpeg) failure lands in failedStore with the underlying message preserved', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      const filePath = path.join(dir, 'no-decodable-audio.mp4');
+      fs.writeFileSync(filePath, 'fake mp4 bytes', 'utf-8');
+
+      const spies = mockVideoPipeline({ durationMs: 60000, hasAudioStream: true });
+      spies.extractAudioSpy.mockRejectedValue(
+        new Error(
+          `Failed to extract audio from video file "${filePath}": Stream map 0:a:0 matches no streams`
+        )
+      );
+      const { runner, runSpy } = makeRunSpyRunner();
+
+      const summary = await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+
+      expect(summary.successCount).toBe(0);
+      expect(summary.failureCount).toBe(1);
+      expect(runSpy).not.toHaveBeenCalled();
+      expect(spies.transcribeSpy).not.toHaveBeenCalled();
+
+      const failed = failedStore.readFailed(root, 'topic1');
+      expect(failed.length).toBe(1);
+      expect(failed[0].error).toContain('Stream map 0:a:0 matches no streams');
+
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('a Vision failure on a frame lands the video in failedStore, not a silent zero-label success', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      const filePath = path.join(dir, 'vision-down.mp4');
+      fs.writeFileSync(filePath, 'fake mp4 bytes', 'utf-8');
+
+      const spies = mockVideoPipeline({ durationMs: 60000, hasAudioStream: false });
+      // analyzeFrames promotes ImageAnalyzer's resolve-with-metadata.error
+      // shape into a real rejection (mirrors the photo branch); assert the
+      // video-branch wiring carries that through to failedStore.
+      spies.analyzeSpy.mockRejectedValue(
+        new Error('Vision analysis failed: Vision API unavailable (503)')
+      );
+      const { runner, runSpy } = makeRunSpyRunner();
+
+      const summary = await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+
+      expect(summary.successCount).toBe(0);
+      expect(summary.failureCount).toBe(1);
+      expect(runSpy).not.toHaveBeenCalled();
+
+      const failed = failedStore.readFailed(root, 'topic1');
+      expect(failed.length).toBe(1);
+      expect(failed[0].sourcePath).toContain('vision-down.mp4');
+      expect(failed[0].error).toContain('Vision API unavailable (503)');
+
+      // Not marked done -- so --retry-failed will revisit it.
       const hash = await hashFile(filePath);
       expect(manifestStore.isDone(root, 'topic1', hash)).toBe(false);
 

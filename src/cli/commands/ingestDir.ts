@@ -20,25 +20,28 @@ import { regenerateExtractJson } from '../../core/regenerateExtractJson';
 import { appendOcrTiming } from '../../core/ocrTimingLog';
 import { checkFfmpegDeps, checkWhisperDeps } from '../../core/videoDeps';
 import { probeVideo } from '../../core/videoProbe';
-import { extractFrames } from '../../ingestion/videoExtract/extractFrames';
+import {
+  extractFrames,
+  MIDPOINT_THRESHOLD_MS,
+  FPS_THRESHOLD_MS,
+  MAX_SELECT_FRAMES,
+} from '../../ingestion/videoExtract/extractFrames';
 import { analyzeFrames, FrameAnalysis } from '../../ingestion/videoExtract/analyzeFrames';
+import { extractAudio } from '../../ingestion/videoExtract/extractAudio';
 import { transcribeAudio } from '../../ingestion/videoExtract/transcribe';
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv']);
 
-// Mirrors the duration-strategy boundaries in extractFrames.ts
-// (MIDPOINT_THRESHOLD_MS / FPS_THRESHOLD_MS / MAX_SELECT_FRAMES). extractFrames()
-// returns only file paths, not timestamps, so this derives an approximate
-// timestamp per returned frame based on which strategy produced it. These are
-// provenance/debugging approximations (CONTEXT.md #12), not frame-accurate
-// timestamps -- do not attempt to reverse-engineer ffmpeg's exact selected times.
-const VIDEO_MIDPOINT_THRESHOLD_MS = 10000;
-const VIDEO_FPS_THRESHOLD_MS = 300000;
-const VIDEO_MAX_SELECT_FRAMES = 30;
-
+// Timestamp derivation reuses extractFrames.ts's own strategy boundaries
+// (imported, not re-declared -- a local copy would silently drift if those
+// change). extractFrames() returns only file paths, not timestamps, so this
+// derives an approximate timestamp per returned frame based on which strategy
+// produced it. These are provenance/debugging approximations (CONTEXT.md #12),
+// not frame-accurate timestamps -- do not attempt to reverse-engineer ffmpeg's
+// exact selected times.
 function computeFrameTimestamps(durationMs: number, frameCount: number): number[] {
-  if (durationMs < VIDEO_MIDPOINT_THRESHOLD_MS) {
+  if (durationMs < MIDPOINT_THRESHOLD_MS) {
     // Midpoint strategy nominally yields exactly one frame, but build the
     // array from the actual frameCount rather than hardcoding length 1 --
     // guards against a length mismatch feeding analyzeFrames() if
@@ -47,7 +50,7 @@ function computeFrameTimestamps(durationMs: number, frameCount: number): number[
     return Array.from({ length: frameCount }, () => midpointMs);
   }
   const stepMs =
-    durationMs < VIDEO_FPS_THRESHOLD_MS ? 10000 : durationMs / VIDEO_MAX_SELECT_FRAMES;
+    durationMs < FPS_THRESHOLD_MS ? 10000 : durationMs / MAX_SELECT_FRAMES;
   return Array.from({ length: frameCount }, (_, i) => i * stepMs);
 }
 
@@ -185,30 +188,41 @@ export async function runIngestDir(
         if (isVideo) {
           const { durationMs, hasAudioStream } = await probeVideo(filePath);
 
-          const [transcript, frameAnalyses] = await Promise.all([
-            hasAudioStream
-              ? (async () => {
-                  await checkWhisperDeps();
-                  return transcribeAudio(filePath, durationMs);
-                })()
-              : Promise.resolve(''),
-            (async () => {
-              const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'trm-video-'));
-              try {
+          // One temp dir per video, shared by both concurrent branches (the
+          // extracted WAV and the sampled frame files), removed once both
+          // resolve. Deliberately a single dir, not one per branch.
+          const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'trm-video-'));
+          let transcript: string;
+          let frameAnalyses: FrameAnalysis[];
+          try {
+            [transcript, frameAnalyses] = await Promise.all([
+              hasAudioStream
+                ? (async () => {
+                    await checkWhisperDeps();
+                    // whisper.cpp cannot read an .mp4/.mov container -- extract
+                    // audio stream 0 to a 16kHz mono WAV first (CONTEXT.md #5).
+                    // Part of preparing the transcript, so it lives inside this
+                    // branch and stays concurrent with frame sampling.
+                    const audioPath = await extractAudio(filePath, tempDir);
+                    return transcribeAudio(audioPath, durationMs);
+                  })()
+                : Promise.resolve(''),
+              (async () => {
                 const framePaths = await extractFrames(filePath, durationMs, tempDir);
                 const timestampsMs = computeFrameTimestamps(durationMs, framePaths.length);
                 return await analyzeFrames(framePaths, timestampsMs, analyzer);
-              } finally {
-                // Swallow cleanup errors (e.g. Windows EPERM/EBUSY from an AV
-                // scanner or file-handle timing) -- a cleanup hiccup must never
-                // mask the real underlying error from extractFrames/analyzeFrames,
-                // nor turn an otherwise-successful video into a failureCount
-                // entry after the Vision API calls have already been paid for.
-                // Mirrors the per-frame unlink().catch() pattern in analyzeFrames.ts.
-                await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
-              }
-            })(),
-          ]);
+              })(),
+            ]);
+          } finally {
+            // Swallow cleanup errors (e.g. Windows EPERM/EBUSY from an AV
+            // scanner or file-handle timing) -- a cleanup hiccup must never
+            // mask the real underlying error from extractAudio/transcribeAudio/
+            // extractFrames/analyzeFrames, nor turn an otherwise-successful
+            // video into a failureCount entry after the Vision API calls have
+            // already been paid for. Mirrors the per-frame unlink().catch()
+            // pattern in analyzeFrames.ts.
+            await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+          }
 
           const composedText =
             transcript +

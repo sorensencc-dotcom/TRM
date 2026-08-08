@@ -127,6 +127,51 @@ describe('analyzeFrames', () => {
     expect(results.map((r) => r.timestampMs)).toEqual(expectedSorted);
   });
 
+  it('REJECTS when a frame analysis resolves with metadata.error (does not treat it as an empty-label frame)', async () => {
+    const analyzer: FrameAnalyzer = {
+      // ImageAnalyzer.extract() never throws -- it resolves with an
+      // error-shaped result. Left unchecked, this whole video would be marked
+      // successful with silently zero labels and never reach failedStore.
+      extract: jest.fn(async (_buffer: Buffer) => ({
+        labels: [] as Label[],
+        metadata: { error: 'Vision API unavailable (503)' },
+      })),
+    };
+
+    await expect(analyzeFrames(framePaths, timestampsMs, analyzer)).rejects.toThrow(
+      /Vision analysis failed: Vision API unavailable \(503\)/
+    );
+  });
+
+  it('rejects even when only one frame of many carries metadata.error', async () => {
+    let callIndex = 0;
+    const analyzer: FrameAnalyzer = {
+      extract: jest.fn(async (_buffer: Buffer) => {
+        const myCall = callIndex++;
+        if (myCall === 5) {
+          return { labels: [] as Label[], metadata: { error: 'quota exceeded' } };
+        }
+        return { labels: [{ description: 'ok', score: 0.5 }] as Label[] };
+      }),
+    };
+
+    await expect(analyzeFrames(framePaths, timestampsMs, analyzer)).rejects.toThrow(
+      /quota exceeded/
+    );
+  });
+
+  it('does not reject when metadata is present without an error field', async () => {
+    const analyzer: FrameAnalyzer = {
+      extract: jest.fn(async (_buffer: Buffer) => ({
+        labels: [{ description: 'ok', score: 0.5 }] as Label[],
+        metadata: {},
+      })),
+    };
+
+    const results = await analyzeFrames(framePaths, timestampsMs, analyzer);
+    expect(results).toHaveLength(FRAME_COUNT);
+  });
+
   it('propagates labels from each frame analysis into the result', async () => {
     const analyzer: FrameAnalyzer = {
       extract: jest.fn(async (buffer: Buffer) => ({

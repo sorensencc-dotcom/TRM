@@ -7,8 +7,13 @@ import { Label } from '../imageExtract/imageAnalyzer';
 // a compatible extract() (real service client, test double, future wrapper)
 // can be injected. Task 5.3 (batch pipeline wiring) constructs the real
 // instance and passes it in; this module never constructs its own.
+// `metadata.error` is how ImageAnalyzer.extract() reports failure -- it never
+// throws, it resolves with an error-shaped result (see
+// imageExtract/imageAnalyzer.ts `_createErrorResult`). Declaring it here keeps
+// this module from silently treating a Vision outage as a legitimate
+// zero-label frame.
 export interface FrameAnalyzer {
-  extract(imageBuffer: Buffer): Promise<{ labels: Label[] }>;
+  extract(imageBuffer: Buffer): Promise<{ labels: Label[]; metadata?: { error?: string } }>;
 }
 
 export interface FrameAnalysis {
@@ -51,6 +56,14 @@ export async function analyzeFrames(
         const buffer = await fs.promises.readFile(framePath);
         try {
           const result = await visionPool(() => analyzer.extract(buffer));
+          // Mirrors the photo branch in ingestDir.ts: extract() resolves (never
+          // throws) on failure, so an error in metadata must be promoted to a
+          // real rejection. Otherwise a Vision outage would surface as a
+          // zero-label frame and the whole video would be marked successful,
+          // never reaching failedStore / --retry-failed.
+          if (result.metadata?.error) {
+            throw new Error(`Vision analysis failed: ${result.metadata.error}`);
+          }
           return { timestampMs, labels: result.labels };
         } finally {
           await fs.promises.unlink(framePath).catch(() => undefined);

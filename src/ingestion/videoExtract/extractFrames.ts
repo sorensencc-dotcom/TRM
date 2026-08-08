@@ -21,13 +21,16 @@ function getErrorDetail(err: unknown): string {
 }
 
 // Duration boundaries (ms) selecting which single-pass ffmpeg strategy to use.
-const MIDPOINT_THRESHOLD_MS = 10000; // < 10s -> single midpoint frame
-const FPS_THRESHOLD_MS = 300000; // < 300s (and >= 10s) -> fps=1/10; >= 300s -> evenly-spaced select
+// Exported as the single source of truth: ingestDir.ts derives each returned
+// frame's timestamp from these same boundaries, and would silently mislabel
+// envelope frame timestamps if it kept its own copy that drifted from these.
+export const MIDPOINT_THRESHOLD_MS = 10000; // < 10s -> single midpoint frame
+export const FPS_THRESHOLD_MS = 300000; // < 300s (and >= 10s) -> fps=1/10; >= 300s -> evenly-spaced select
 
 // Hard cap on frames produced by the evenly-spaced select-filter strategy for
 // long-form video (>= 300s). fps=1/10 never needs this cap: at just under the
 // 300s boundary it already tops out at 30 frames (t=0,10,...,290).
-const MAX_SELECT_FRAMES = 30;
+export const MAX_SELECT_FRAMES = 30;
 
 // Frames downscaled to fit within a 1024x1024 box, preserving aspect ratio,
 // shrinking only (never upscaling smaller source frames).
@@ -83,6 +86,16 @@ export async function extractFrames(
     .filter((name) => FRAME_FILENAME_REGEX.test(name))
     .sort()
     .map((name) => path.join(tempDir, name));
+
+  // ffmpeg can exit 0 while writing nothing (unusual codec, a select
+  // expression that matched no frames). Frame sampling is unconditional for
+  // every video (CONTEXT.md #6), so an empty result is a real extraction
+  // failure, not a valid low-signal outcome -- throw so it routes through the
+  // caller's failedStore path and is revisitable via --retry-failed, rather
+  // than being recorded as a successful video with zero frames.
+  if (framePaths.length === 0) {
+    throw new Error(`ffmpeg produced no frames for video file "${filePath}"`);
+  }
 
   return framePaths;
 }

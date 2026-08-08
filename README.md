@@ -88,6 +88,24 @@ A `config.json` at the root controls defaults (`TrmConfig` in `src/core/types.ts
 }
 ```
 
+## Environment variables
+
+Optional; all have working defaults. Video ingestion (`ingest-dir` on `.mp4`/`.mov`/`.avi`/`.mkv`) additionally needs **ffmpeg/ffprobe** and, for files with an audio stream, a **whisper.cpp** build plus a ggml model — the last two rarely land on the PATH/cache defaults, so expect to set `TRM_WHISPER_BIN` and `TRM_WHISPER_MODEL`.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `TRM_ALLOW_GIT_ROOT` | unset | Set to `1` to override the `assertSafeRoot` guardrail (see above). |
+| `CIC_INGESTION_URL` | `http://localhost:3000` | Base URL of the CIC ingestion service used for OCR / Vision image analysis. |
+| `TRM_IO_CONCURRENCY` | `8` | Max files processed concurrently by `ingest-dir` (hash + read + classify + store). |
+| `TRM_VISION_CONCURRENCY` | `4` | Batch-wide cap on concurrent Vision API calls. |
+| `TRM_FFMPEG_PATH` | `ffmpeg` (PATH lookup) | Path to the `ffmpeg` binary used for frame and audio extraction. |
+| `TRM_FFPROBE_PATH` | `ffprobe` (PATH lookup) | Path to the `ffprobe` binary used to probe video duration / audio-stream presence. |
+| `TRM_WHISPER_BIN` | `whisper-cli` (PATH lookup) | Path to the **whisper.cpp** CLI binary (older builds ship it as `main`). Not the openai-whisper Python CLI — its flags are incompatible. |
+| `TRM_WHISPER_MODEL` | `~/.cache/whisper/ggml-base.en.bin` | Path to a whisper.cpp **ggml `.bin`** model file (not a PyTorch `.pt` checkpoint). |
+| `TRM_FFMPEG_CONCURRENCY` | `2` | Max concurrent ffmpeg subprocesses (frame + audio extraction). |
+| `TRM_FRAME_ANALYSIS_CONCURRENCY` | `3` | Max frames of a single video analyzed concurrently, in front of `TRM_VISION_CONCURRENCY`. |
+| `TRM_WHISPER_CONCURRENCY` | `1` | Max concurrent whisper transcriptions; serialized by default (heaviest local workload). |
+
 ## Development
 
 ```bash

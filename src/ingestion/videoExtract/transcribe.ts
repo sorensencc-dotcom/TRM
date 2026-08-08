@@ -1,8 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import path from 'node:path';
-import os from 'node:os';
 import { whisperPool } from '../../core/concurrency';
+import { DEFAULT_WHISPER_BIN, getDefaultWhisperModelPath } from '../../core/videoDeps';
 
 const execFileAsync = promisify(execFile);
 
@@ -45,29 +44,23 @@ function computeTimeoutMs(durationMs: number | undefined): number {
   return Math.max(MIN_TIMEOUT_MS, Math.round(durationMs * 0.5));
 }
 
-// Helper to get default whisper model path -- mirrors
-// getDefaultWhisperModelPath() in src/core/videoDeps.ts (checkWhisperDeps),
-// which this module's preflight-gated caller has already validated exists
-// before the first real transcription call of a batch.
-function getDefaultWhisperModelPath(): string {
-  const homeDir = os.homedir();
-  return path.join(homeDir, '.cache', 'whisper', 'base.en.pt');
-}
-
 /**
- * Transcribe the audio track of a video/audio file using whisper. Runs a
- * single subprocess call under `whisperPool` (TRM_WHISPER_CONCURRENCY,
- * default 1 -- deliberately serialized, whisper is the heaviest local
- * workload per file).
+ * Transcribe an audio file using the whisper.cpp CLI. Runs a single subprocess
+ * call under `whisperPool` (TRM_WHISPER_CONCURRENCY, default 1 -- deliberately
+ * serialized, whisper is the heaviest local workload per file).
  *
- * The file passed in is expected to already carry (or resolve to) a single
- * audio stream at index 0 -- this module does not itself select among
- * multiple audio streams; any multi-stream selection is the caller's
- * responsibility (e.g. an upstream ffmpeg extraction step), consistent with
- * the "one ffprobe/extraction call feeds everything downstream" pattern used
- * elsewhere in this codebase.
+ * The binary name and model path defaults are imported from
+ * `src/core/videoDeps.ts` so this call site can never drift from what
+ * `checkWhisperDeps()` preflighted. Both assume whisper.cpp (ggml `.bin`
+ * model, `-m/-f/-nt` argument syntax), not the openai-whisper Python CLI.
  *
- * @param filePath Path to the audio (or video) file to transcribe.
+ * The file passed in MUST be an audio file whisper.cpp can decode -- stock
+ * whisper.cpp reads WAV only (via `dr_wav`); ffmpeg-based container decoding
+ * is a non-default build flag. Callers pass the 16kHz mono WAV produced by
+ * `extractAudio()` (which selects audio stream index 0, per CONTEXT.md #5),
+ * NOT the original `.mp4`/`.mov` video file.
+ *
+ * @param filePath Path to the WAV audio file to transcribe.
  * @param durationMs Optional source duration in milliseconds, used to size
  *   the subprocess timeout (`max(30s, durationMs * 0.5)`). When omitted, the
  *   30s floor is used. Callers that already have duration from their own
@@ -82,7 +75,7 @@ export async function transcribeAudio(
   filePath: string,
   durationMs?: number
 ): Promise<string> {
-  const whisperBin = process.env.TRM_WHISPER_BIN || 'whisper';
+  const whisperBin = process.env.TRM_WHISPER_BIN || DEFAULT_WHISPER_BIN;
   const modelPath = process.env.TRM_WHISPER_MODEL || getDefaultWhisperModelPath();
   const timeoutMs = computeTimeoutMs(durationMs);
 

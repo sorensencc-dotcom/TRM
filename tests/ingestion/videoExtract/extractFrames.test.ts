@@ -185,6 +185,36 @@ describe('extractFrames', () => {
     expect(callArgs[2]).toEqual({ timeout: 120000 });
   });
 
+  it('throws when ffmpeg exits 0 but writes no frames', async () => {
+    // Unusual codec / a select expression matching nothing: ffmpeg can succeed
+    // while producing nothing. Frame sampling is unconditional for every video
+    // (CONTEXT.md #6), so this is a real failure -- it must throw and route
+    // through failedStore rather than silently yielding a zero-frame success.
+    mockExecFile.mockImplementation(
+      ((cmd: string, args: any, options: any, cb: Function) => {
+        cb(null, { stdout: '', stderr: '' });
+      }) as any
+    );
+
+    await expect(extractFrames('/videos/empty.mp4', 60000, tempDir)).rejects.toThrow(
+      /ffmpeg produced no frames for video file "\/videos\/empty\.mp4"/
+    );
+  });
+
+  it('throws when ffmpeg exits 0 and tempDir holds only non-frame files', async () => {
+    fs.writeFileSync(path.join(tempDir, 'audio.wav'), '');
+
+    mockExecFile.mockImplementation(
+      ((cmd: string, args: any, options: any, cb: Function) => {
+        cb(null, { stdout: '', stderr: '' });
+      }) as any
+    );
+
+    await expect(extractFrames('/videos/empty.mp4', 60000, tempDir)).rejects.toThrow(
+      /produced no frames/
+    );
+  });
+
   it('throws a contextualized error when ffmpeg fails', async () => {
     const execError = new Error('Command failed');
     (execError as any).stderr = 'Invalid data found when processing input';
