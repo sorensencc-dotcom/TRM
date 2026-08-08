@@ -3,11 +3,48 @@ import * as path from 'node:path';
 import * as mammoth from 'mammoth';
 import { PDFParse } from 'pdf-parse';
 import { extractEpub } from './epubExtract';
+import { getDocument } from 'pdfjs-dist/legacy/build/pdf.js';
+import { pdfToPng } from 'pdf-to-png-converter';
+import { ImageAnalyzer, OcrResult } from './imageExtract/imageAnalyzer';
 
 export interface FileConverters {
   extractDocx: (filePath: string) => Promise<string>;
   extractPdf: (buffer: Buffer) => Promise<string>;
   extractEpub: (filePath: string) => Promise<string>;
+  // Scanned-PDF OCR fallback (all optional -- unset means "use the real
+  // default," so a test that overrides only extractPdf and forgets these
+  // will silently hit real pdfjs-dist/pdf-to-png-converter/Vision calls if
+  // its extractPdf ever resolves empty. Tests exercising the fallback path
+  // must always override all three.
+  getPdfPageCount?: (buffer: Buffer) => Promise<number>;
+  renderPdfPage?: (buffer: Buffer, pageNumber: number) => Promise<Buffer>;
+  ocrPage?: (buffer: Buffer) => Promise<OcrResult>;
+}
+
+export async function defaultGetPdfPageCount(buffer: Buffer): Promise<number> {
+  const loadingTask = getDocument({ data: new Uint8Array(buffer) });
+  const doc = await loadingTask.promise;
+  const numPages = doc.numPages;
+  await doc.destroy();
+  return numPages;
+}
+
+export async function defaultRenderPdfPage(buffer: Buffer, pageNumber: number): Promise<Buffer> {
+  const pages = await pdfToPng(buffer, {
+    pagesToProcess: [pageNumber],
+    viewportScale: 150 / 72, // 150 DPI (PDF points are 1/72 inch)
+  });
+  const page = pages[0];
+  if (!page || !page.content) {
+    throw new Error(`defaultRenderPdfPage: page ${pageNumber} not found in rendered output`);
+  }
+  return page.content;
+}
+
+export async function defaultOcrPage(buffer: Buffer): Promise<OcrResult> {
+  const cicIngestionUrl = process.env.CIC_INGESTION_URL || 'http://localhost:3000';
+  const analyzer = new ImageAnalyzer(cicIngestionUrl, 90000, 2);
+  return analyzer.ocr(buffer);
 }
 
 const defaultConverters: FileConverters = {
@@ -22,6 +59,9 @@ const defaultConverters: FileConverters = {
     }
   },
   extractEpub: async (filePath) => extractEpub(filePath),
+  getPdfPageCount: defaultGetPdfPageCount,
+  renderPdfPage: defaultRenderPdfPage,
+  ocrPage: defaultOcrPage,
 };
 
 const SUPPORTED_EXTENSIONS = ['.txt', '.md', '.docx', '.pdf', '.epub'];
