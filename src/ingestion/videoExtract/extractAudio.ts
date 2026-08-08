@@ -28,8 +28,13 @@ const CHANNELS = '1';
 // Audio-only transcode of an arbitrarily long source. Same order of magnitude
 // as frame extraction's budget (extractFrames.ts uses 120s); audio decode is
 // cheaper than decode+scale+write of 30 frames, but a long source still needs
-// real headroom.
-const FFMPEG_AUDIO_TIMEOUT_MS = 120000;
+// real headroom. Overridable so tests can force a fast, deterministic timeout
+// against a real hung ffmpeg process without waiting out the real default. A
+// function, not a module-level const -- read per call, so an override set
+// after this module is first imported (e.g. by a test) still takes effect.
+function getFfmpegAudioTimeoutMs(): number {
+  return Number(process.env.TRM_FFMPEG_AUDIO_TIMEOUT_MS) || 120000;
+}
 
 /**
  * Extract a video file's first audio stream into a 16kHz mono WAV file that
@@ -66,7 +71,7 @@ export async function extractAudio(filePath: string, tempDir: string): Promise<s
 
   try {
     await ffmpegPool(() =>
-      execFileAsync(ffmpegPath, args, { timeout: FFMPEG_AUDIO_TIMEOUT_MS })
+      execFileAsync(ffmpegPath, args, { timeout: getFfmpegAudioTimeoutMs() })
     );
   } catch (err) {
     const detail = getErrorDetail(err);

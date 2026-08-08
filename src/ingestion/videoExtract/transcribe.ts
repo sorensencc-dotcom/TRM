@@ -32,16 +32,23 @@ function isTimeoutError(err: unknown): boolean {
 
 // Minimum timeout floor, regardless of duration -- guards very short clips
 // (and the no-duration-provided case) against an unrealistically tight
-// subprocess timeout.
-const MIN_TIMEOUT_MS = 30000;
+// subprocess timeout. Overridable so tests can force a fast, deterministic
+// timeout against a real hung whisper-cli process without waiting out the
+// real 30s floor. A function, not a module-level const -- read per call, so
+// an override set after this module is first imported (e.g. by a test)
+// still takes effect.
+function getMinTimeoutMs(): number {
+  return Number(process.env.TRM_WHISPER_MIN_TIMEOUT_MS) || 30000;
+}
 
 // Timeout scales with source duration (whisper transcription is roughly
 // linear in audio length on CPU): max(30s, durationMs * 0.5).
 function computeTimeoutMs(durationMs: number | undefined): number {
+  const minTimeoutMs = getMinTimeoutMs();
   if (typeof durationMs !== 'number' || !Number.isFinite(durationMs) || durationMs <= 0) {
-    return MIN_TIMEOUT_MS;
+    return minTimeoutMs;
   }
-  return Math.max(MIN_TIMEOUT_MS, Math.round(durationMs * 0.5));
+  return Math.max(minTimeoutMs, Math.round(durationMs * 0.5));
 }
 
 /**

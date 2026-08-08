@@ -42,8 +42,14 @@ const FRAME_FILENAME_REGEX = /^frame-\d{3}\.jpg$/;
 // ffmpeg extraction can take substantially longer than the ffprobe metadata
 // read (probeVideo uses 10s) -- decoding + scaling + writing up to 30 frames
 // from an arbitrarily long source file. 2 minutes gives real-world headroom
-// without hanging indefinitely on a stuck subprocess.
-const FFMPEG_TIMEOUT_MS = 120000;
+// without hanging indefinitely on a stuck subprocess. Overridable so tests
+// can force a fast, deterministic timeout against a real hung ffmpeg process
+// without waiting out the real 2-minute default. A function, not a
+// module-level const -- read per call, so an override set after this module
+// is first imported (e.g. by a test) still takes effect.
+function getFfmpegTimeoutMs(): number {
+  return Number(process.env.TRM_FFMPEG_FRAME_TIMEOUT_MS) || 120000;
+}
 
 /**
  * Extract a bounded, evenly-representative set of frames from a video file
@@ -72,7 +78,7 @@ export async function extractFrames(
 
   try {
     await ffmpegPool(() =>
-      execFileAsync(ffmpegPath, args, { timeout: FFMPEG_TIMEOUT_MS })
+      execFileAsync(ffmpegPath, args, { timeout: getFfmpegTimeoutMs() })
     );
   } catch (err) {
     const detail = getErrorDetail(err);
