@@ -6,6 +6,7 @@ import { runIngestDir } from '../../src/cli/commands/ingestDir';
 import * as manifestStore from '../../src/core/manifestStore';
 import * as failedStore from '../../src/core/failedStore';
 import { hashFile } from '../../src/core/contentHash';
+import * as videoDeps from '../../src/core/videoDeps';
 
 function makeRoot() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'trm-ingestdir-'));
@@ -261,6 +262,41 @@ describe('runIngestDir', () => {
     const failed = failedStore.readFailed(root, 'topic1');
     expect(failed.length).toBe(1);
     expect(failed[0].sourcePath).toContain('bad.png');
+  });
+
+  it('a video file is routed to the stub branch: no throw, no envelope, does not break the batch', async () => {
+    const root = makeRoot();
+    runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+    const dir = path.join(root, 'input-dir');
+    fs.mkdirSync(dir);
+    fs.writeFileSync(path.join(dir, 'clip.mp4'), 'fake mp4 bytes', 'utf-8');
+    fs.writeFileSync(path.join(dir, 'doc1.txt'), 'Content for doc 1', 'utf-8');
+
+    // Batch-start ffmpeg preflight (Task 1.1) runs whenever a video file is
+    // present; this test only exercises classification routing, so stub the
+    // dep check out rather than require a real ffmpeg install on the test box.
+    const ffmpegSpy = jest.spyOn(videoDeps, 'checkFfmpegDeps').mockResolvedValue();
+
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+    const summary = await runIngestDir(
+      root,
+      'topic1',
+      { actor: 'ACTOR-001', dir, stub: true }
+    );
+    consoleSpy.mockRestore();
+    ffmpegSpy.mockRestore();
+
+    expect(summary.totalFiles).toBe(2);
+    expect(summary.successCount).toBe(1);
+    expect(summary.failureCount).toBe(0);
+    expect(summary.duplicateCount).toBe(0);
+
+    expect(failedStore.readFailed(root, 'topic1')).toEqual([]);
+
+    const hash = await hashFile(path.join(dir, 'clip.mp4'));
+    expect(manifestStore.isDone(root, 'topic1', hash)).toBe(false);
+    expect(manifestStore.readExtract(root, 'topic1', hash)).toBeNull();
   });
 
   it('--retry-failed reprocesses only failed items', async () => {

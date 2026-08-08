@@ -141,10 +141,21 @@ export async function runIngestDir(
         return;
       }
 
-      const isImage = IMAGE_EXTENSIONS.has(path.extname(filePath).toLowerCase());
+      const ext = path.extname(filePath).toLowerCase();
+      const isImage = IMAGE_EXTENSIONS.has(ext);
+      const isVideo = VIDEO_EXTENSIONS.has(ext);
 
       try {
-        if (isImage) {
+        if (isVideo) {
+          // Video pipeline stub (Task 2.1): classification only, routes here
+          // instead of the non-image/text branch. Real handling (ffmpeg probe,
+          // transcription, envelope write) lands in Task 5.3 -- until then this
+          // is a deliberate no-op that neither succeeds nor fails the item, so
+          // it does not corrupt success/failure/duplicate accounting ahead of
+          // that pipeline existing.
+          console.error(`[ingest-dir] Skipping video (pipeline not yet implemented): ${path.basename(filePath)}`);
+          return;
+        } else if (isImage) {
           const kind = await classifyImage(filePath, { kind: cliArgs.kind });
 
           if (kind === 'text-doc') {
