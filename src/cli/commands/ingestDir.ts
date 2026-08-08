@@ -195,7 +195,16 @@ export async function runIngestDir(
           let transcript: string;
           let frameAnalyses: FrameAnalysis[];
           try {
-            [transcript, frameAnalyses] = await Promise.all([
+            // allSettled, not all: both branches share tempDir, so cleanup
+            // below must never run until BOTH have genuinely finished. With
+            // Promise.all, one branch rejecting lets the finally's rm() race
+            // the still-running sibling -- deleting files out from under a
+            // live ffmpeg/whisper subprocess, or (Windows EPERM/EBUSY on an
+            // open handle) leaking the temp dir permanently since that error
+            // is swallowed below. Settling first removes the race; which
+            // error wins when BOTH branches fail is now fixed (transcript
+            // branch preferred) rather than whichever settled first.
+            const [transcriptResult, frameResult] = await Promise.allSettled([
               hasAudioStream
                 ? (async () => {
                     await checkWhisperDeps();
@@ -213,6 +222,10 @@ export async function runIngestDir(
                 return await analyzeFrames(framePaths, timestampsMs, analyzer);
               })(),
             ]);
+            if (transcriptResult.status === 'rejected') throw transcriptResult.reason;
+            if (frameResult.status === 'rejected') throw frameResult.reason;
+            transcript = transcriptResult.value;
+            frameAnalyses = frameResult.value;
           } finally {
             // Swallow cleanup errors (e.g. Windows EPERM/EBUSY from an AV
             // scanner or file-handle timing) -- a cleanup hiccup must never
@@ -220,7 +233,8 @@ export async function runIngestDir(
             // extractFrames/analyzeFrames, nor turn an otherwise-successful
             // video into a failureCount entry after the Vision API calls have
             // already been paid for. Mirrors the per-frame unlink().catch()
-            // pattern in analyzeFrames.ts.
+            // pattern in analyzeFrames.ts. Safe now: both branches above have
+            // already settled, so this never races a still-running sibling.
             await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
           }
 

@@ -661,6 +661,71 @@ describe('runIngestDir', () => {
       restoreVideoPipelineMocks(spies);
     });
 
+    it('does not clean up the shared temp dir until BOTH branches have settled, even when one rejects early (partial-failure race fix)', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'racey.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      let resolveTranscribe: (value: string) => void;
+      const transcribeDeferred = new Promise<string>((resolve) => {
+        resolveTranscribe = resolve;
+      });
+
+      const probeSpy = jest
+        .spyOn(videoProbe, 'probeVideo')
+        .mockResolvedValue({ durationMs: 60000, hasAudioStream: true });
+      const whisperDepsSpy = jest.spyOn(videoDeps, 'checkWhisperDeps').mockResolvedValue();
+      const extractAudioSpy = jest
+        .spyOn(extractAudioModule, 'extractAudio')
+        .mockImplementation(async (_f: string, tempDir: string) => path.join(tempDir, 'audio.wav'));
+      // Transcript branch deliberately hangs -- still "using" tempDir (the WAV
+      // it already wrote) when the frame branch below rejects immediately.
+      // With Promise.all, the finally's rm() would fire the instant the frame
+      // branch rejects, deleting tempDir out from under this still-pending
+      // branch. With Promise.allSettled, cleanup must wait for this to settle.
+      const transcribeSpy = jest
+        .spyOn(transcribeModule, 'transcribeAudio')
+        .mockImplementation(() => transcribeDeferred);
+      const extractSpy = jest
+        .spyOn(extractFramesModule, 'extractFrames')
+        .mockResolvedValue(['frame-000.jpg']);
+      const analyzeSpy = jest
+        .spyOn(analyzeFramesModule, 'analyzeFrames')
+        .mockRejectedValue(new Error('vision call exploded'));
+      const mkdtempSpy = jest.spyOn(fs.promises, 'mkdtemp');
+
+      const { runner } = makeRunSpyRunner();
+      const runPromise = runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+
+      // Give the frame branch (which rejects synchronously-ish) a window to
+      // settle while the transcript branch is still deliberately pending.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(mkdtempSpy.mock.results.length).toBe(1);
+      const tempDir = await mkdtempSpy.mock.results[0].value;
+      // The frame branch has already rejected by now, but cleanup must NOT
+      // have run yet -- the transcript branch is still pending.
+      expect(fs.existsSync(tempDir)).toBe(true);
+
+      resolveTranscribe!('late transcript, never used since the video fails');
+      const summary = await runPromise;
+
+      expect(summary.failureCount).toBe(1);
+      expect(fs.existsSync(tempDir)).toBe(false);
+      const failed = failedStore.readFailed(root, 'topic1');
+      expect(failed[0].error).toContain('vision call exploded');
+
+      probeSpy.mockRestore();
+      whisperDepsSpy.mockRestore();
+      extractAudioSpy.mockRestore();
+      transcribeSpy.mockRestore();
+      extractSpy.mockRestore();
+      analyzeSpy.mockRestore();
+      mkdtempSpy.mockRestore();
+    });
+
     it('a probeVideo failure (corrupt media) lands in failedStore with the underlying message preserved, and --retry-failed reprocesses it once fixed (Task 5.4)', async () => {
       const root = makeRoot();
       runCreate(root, 'topic1', { actor: 'ACTOR-001' });
