@@ -424,4 +424,40 @@ describe('runTriageIntake', () => {
 
     expect(convertSpy).not.toHaveBeenCalled();
   });
+
+  it('classifies a valid EPUB as classifiedType "text" via convertFileToText', async () => {
+    const root = makeRoot();
+    writeIntakeFile(root, 'docs', 'book.epub', Buffer.from('fake epub bytes'));
+    const convertSpy = jest
+      .spyOn(fileConvertModule, 'convertFileToText')
+      .mockResolvedValueOnce('extracted epub text');
+
+    const summary = await runTriageIntake(root, {});
+    const manifest = readIntakeManifest(root);
+    const entry = Object.values(manifest.entries)[0];
+
+    expect(convertSpy).toHaveBeenCalledWith(expect.stringContaining('book.epub'), expect.anything());
+    expect(entry.classifiedType).toBe('text');
+    expect(entry.status).toBe('done');
+    expect(summary.processedCount).toBe(1);
+    expect(summary.failedCount).toBe(0);
+  });
+
+  it('marks a corrupt EPUB as failed with the parser error preserved', async () => {
+    const root = makeRoot();
+    writeIntakeFile(root, 'docs', 'corrupt.epub', Buffer.from('corrupt epub bytes'));
+    jest
+      .spyOn(fileConvertModule, 'convertFileToText')
+      .mockRejectedValueOnce(new Error('invalid epub container XML'));
+
+    const summary = await runTriageIntake(root, {});
+    const manifest = readIntakeManifest(root);
+    const entry = Object.values(manifest.entries)[0];
+
+    expect(entry.status).toBe('failed');
+    expect(entry.classifiedType).toBe('unsure');
+    expect(entry.error).toBe('invalid epub container XML');
+    expect(summary.failedCount).toBe(1);
+    expect(summary.processedCount).toBe(0);
+  });
 });
