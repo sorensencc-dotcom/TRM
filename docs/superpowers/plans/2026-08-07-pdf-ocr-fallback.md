@@ -1001,6 +1001,8 @@ git commit -m "test(fileConvert): real-fixture test for scanned-PDF render bound
 **Interfaces:**
 - Consumes: `runIngest` from `../../src/cli/commands/ingest` (existing, unchanged — it already calls `convertFileToText(cliArgs.file)` with no injected converters, so this test exercises the full real default chain including the real `ImageAnalyzer` HTTP call, which is mocked at the `fetch` boundary).
 
+**Amendment (pre-existing Jest gap, found while implementing this task):** `pdf-parse`'s bundled nested `pdfjs-dist` uses a dynamic `import()` internally that Jest's default CJS/vm sandbox cannot execute — real `PDFParse` throws `Setting up fake worker failed: dynamic import callback invoked...` under Jest specifically (confirmed: the identical call succeeds under plain Node, so real `trm ingest --file` CLI usage is unaffected — this is a Jest-only limitation). This is pre-existing and unrelated to this plan's own code: no test in the repo has ever exercised real `pdf-parse` under Jest — `tests/ingestion/fileConvert.test.ts` mocks the `pdf-parse` module entirely, and Task 4's fixture test sidesteps it by stubbing `extractPdf: async () => ''`. Since `runIngest` has no `converters` parameter to inject through (and adding one would be an out-of-scope production-code change), the fix is the same `jest.mock('pdf-parse', ...)` pattern `fileConvert.test.ts` already uses, applied in this new test file — it swaps only the `pdf-parse` module for a stub returning empty text (forcing the fallback path deterministically, which is what this test is actually about), while `getPdfPageCount`/`renderPdfPage`/`ocrPage` all stay real/uninjected exactly as originally intended.
+
 - [ ] **Step 1: Write the failing test**
 
 Create `tests/cli/ingest.pdfOcr.test.ts`:
@@ -1011,6 +1013,22 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { runCreate } from '../../src/cli/commands/create';
 import { runIngest } from '../../src/cli/commands/ingest';
+
+// pdf-parse's bundled pdfjs-dist uses a dynamic import() that Jest's
+// sandbox can't execute (Jest-only; real Node usage is unaffected). This
+// test is about the OCR fallback, not pdf-parse itself, so stub it to
+// force the fallback deterministically -- same pattern already used in
+// tests/ingestion/fileConvert.test.ts. Everything downstream
+// (getPdfPageCount/renderPdfPage/ocrPage) stays real/uninjected.
+const mockGetText = jest.fn().mockResolvedValue({ text: '' });
+const mockDestroy = jest.fn().mockResolvedValue(undefined);
+
+jest.mock('pdf-parse', () => ({
+  PDFParse: jest.fn().mockImplementation(() => ({
+    getText: mockGetText,
+    destroy: mockDestroy,
+  })),
+}));
 
 const FIXTURE_PATH = path.join(__dirname, '..', 'fixtures', 'scanned-sample.pdf');
 
