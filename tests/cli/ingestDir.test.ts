@@ -1690,11 +1690,20 @@ describe('runIngestDir', () => {
       const extractAudioSpy = jest
         .spyOn(extractAudioModule, 'extractAudio')
         .mockImplementation(async (_f: string, tempDir: string) => path.join(tempDir, 'audio.wav'));
+      // durationMs=100000 -> computeFrameTimestamps buckets the 2 mocked
+      // frames at [0, 10000] (10s step). The segment below is chosen so its
+      // +/-15s match window ([5000, 35001]) genuinely contains the SECOND
+      // sampled timestamp (10000) but genuinely excludes the FIRST (0) --
+      // proving real subset selection, not an all-frames-excluded accident
+      // (see Finding 3/5: the old fixture matched a segment whose window
+      // excluded BOTH sampled timestamps, so this test used to pass only
+      // because zero frames reached analyzeFrames, not because filtering
+      // correctly kept a strict, non-empty subset).
       const transcribeSegmentsSpy = jest
         .spyOn(transcribeModule, 'transcribeAudioWithSegments')
         .mockResolvedValue({
           text: 'a car passed by',
-          segments: [{ startMs: 40000, endMs: 41000, text: 'a car passed by' }],
+          segments: [{ startMs: 20000, endMs: 20001, text: 'a car passed by' }],
         });
       const extractSpy = jest
         .spyOn(extractFramesModule, 'extractFrames')
@@ -1714,16 +1723,18 @@ describe('runIngestDir', () => {
       );
 
       expect(summary.successCount).toBe(1);
-      // analyzeFrames only receives frames the ingestDir code decided are inside
-      // the match window -- assert it was called with a strict subset of the
-      // full 2-frame extraction, not both.
+      // analyzeFrames only receives frames the ingestDir code decided are
+      // inside the match window -- assert the EXACT expected subset (the
+      // near frame at ts=10000, not the far frame at ts=0), proving real
+      // filtering happened rather than an empty-array accident.
       const analyzeCallArgs = analyzeSpy.mock.calls[0];
-      expect((analyzeCallArgs[0] as string[]).length).toBeLessThan(2);
+      expect(analyzeCallArgs[0] as string[]).toEqual(['frame-near.jpg']);
+      expect(analyzeCallArgs[1] as number[]).toEqual([10000]);
 
       const metrics = readVideoMetrics(root);
       expect(metrics[0].keywordFilterOutcome).toBe('filtered');
       expect(metrics[0].framesConsidered).toBe(2);
-      expect(metrics[0].framesAnalyzed).toBeLessThan(2);
+      expect(metrics[0].framesAnalyzed).toBe(1);
       expect(metrics[0].keywordsUsed).toEqual(['car']);
       expect(metrics[0].keywordSource).toBe('manual');
 
@@ -1856,6 +1867,160 @@ describe('runIngestDir', () => {
       // still reaches a successful outcome.
       expect(transcribeSegmentsSpy).toHaveBeenCalledTimes(1);
       expect(extractSpy).toHaveBeenCalledTimes(2);
+
+      // Call-count parity with the legacy path isn't proof by itself (the
+      // legacy path could produce the same counts under a different mock
+      // setup) -- the thing that can ONLY be true if the staged
+      // (segment-aware) pipeline actually ran on the retry is the recorded
+      // metrics: real keywordsUsed/keywordSource, and a keywordFilterOutcome
+      // that isn't 'not-requested' (the legacy path's only possible outcome
+      // when it isn't hitting one of the two up-front fallback cases).
+      const metrics = readVideoMetrics(root);
+      const retryMetric = metrics[metrics.length - 1];
+      expect(retryMetric.keywordsUsed).toEqual(['car']);
+      expect(retryMetric.keywordSource).toBe('manual');
+      expect(retryMetric.keywordFilterOutcome).toBe('filtered');
+
+      probeSpy.mockRestore();
+      whisperDepsSpy.mockRestore();
+      extractAudioSpy.mockRestore();
+      transcribeSegmentsSpy.mockRestore();
+      extractSpy.mockRestore();
+      analyzeSpy.mockRestore();
+    });
+
+    it('a trimmed video that fails AGAIN during --retry-failed still has its replayed trim window recorded (not silently wiped)', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'trimretry.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      const probeSpy = jest.spyOn(videoProbe, 'probeVideo').mockResolvedValue({ durationMs: 600000, hasAudioStream: true });
+      const whisperDepsSpy = jest.spyOn(videoDeps, 'checkWhisperDeps').mockResolvedValue();
+      const extractAudioSpy = jest
+        .spyOn(extractAudioModule, 'extractAudio')
+        .mockImplementation(async (_f: string, tempDir: string) => path.join(tempDir, 'audio.wav'));
+      const transcribeSpy = jest.spyOn(transcribeModule, 'transcribeAudio').mockResolvedValue('irrelevant');
+      // Persistently broken -- both the original attempt AND the retry fail,
+      // which is exactly the scenario that used to wipe the replayed trim
+      // window (Finding 1): the batch-level trimRequested is always false
+      // during --retry-failed (per Task 9's mutual-exclusion rule), so
+      // without the per-video override the re-written failure record would
+      // lose startMs/endMs on this second failure.
+      const extractSpy = jest
+        .spyOn(extractFramesModule, 'extractFrames')
+        .mockRejectedValue(new Error('ffmpeg exploded, still broken'));
+      const analyzeSpy = jest.spyOn(analyzeFramesModule, 'analyzeFrames').mockResolvedValue([]);
+
+      const { runner } = makeRunSpyRunner();
+      await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true, start: '05:00' }, runner);
+
+      // Unlike the "trim window beyond the video duration" test above,
+      // resolveTrimWindow succeeds here (a 5-minute start on a 10-minute
+      // video is valid) -- so the effective end is the real, resolved,
+      // untrimmed-end value (probedDurationMs), not left undefined by a
+      // pre-throw seed.
+      const failedAfterFirst = failedStore.readFailed(root, 'topic1');
+      expect(failedAfterFirst[0].videoOptions).toEqual({ startMs: 5 * 60000, endMs: 600000 });
+
+      await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, retryFailed: true, stub: true }, runner);
+
+      const failedAfterSecond = failedStore.readFailed(root, 'topic1');
+      expect(failedAfterSecond[0].videoOptions).toEqual({ startMs: 5 * 60000, endMs: 600000 });
+
+      probeSpy.mockRestore();
+      whisperDepsSpy.mockRestore();
+      extractAudioSpy.mockRestore();
+      transcribeSpy.mockRestore();
+      extractSpy.mockRestore();
+      analyzeSpy.mockRestore();
+    });
+
+    it('staged pipeline: an analyzeFrames (Vision) failure still persists the already-succeeded transcript/segments for a later retry to reuse', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      const filePath = path.join(dir, 'visionfail.mp4');
+      fs.writeFileSync(filePath, 'fake mp4 bytes', 'utf-8');
+      const hash = await hashFile(filePath);
+
+      const probeSpy = jest.spyOn(videoProbe, 'probeVideo').mockResolvedValue({ durationMs: 60000, hasAudioStream: true });
+      const whisperDepsSpy = jest.spyOn(videoDeps, 'checkWhisperDeps').mockResolvedValue();
+      const extractAudioSpy = jest
+        .spyOn(extractAudioModule, 'extractAudio')
+        .mockImplementation(async (_f: string, tempDir: string) => path.join(tempDir, 'audio.wav'));
+      const transcribeSegmentsSpy = jest
+        .spyOn(transcribeModule, 'transcribeAudioWithSegments')
+        .mockResolvedValue({ text: 'a car passed', segments: [{ startMs: 0, endMs: 1000, text: 'a car passed' }] });
+      const extractSpy = jest.spyOn(extractFramesModule, 'extractFrames').mockResolvedValue(['a.jpg']);
+      const analyzeSpy = jest
+        .spyOn(analyzeFramesModule, 'analyzeFrames')
+        .mockRejectedValue(new Error('vision quota exceeded'));
+
+      const { runner } = makeRunSpyRunner();
+      const summary = await runIngestDir(
+        root,
+        'topic1',
+        { actor: 'ACTOR-001', dir, stub: true, keywords: ['car'] },
+        runner
+      );
+
+      expect(summary.failureCount).toBe(1);
+      const cached = readVideoPartialProgress(root, hash);
+      expect(cached?.transcript).toBe('a car passed');
+      expect(cached?.transcriptSegments).toEqual([{ startMs: 0, endMs: 1000, text: 'a car passed' }]);
+      // Frames were never successfully analyzed this run -- nothing to cache.
+      expect(cached?.frameAnalyses).toBeUndefined();
+
+      probeSpy.mockRestore();
+      whisperDepsSpy.mockRestore();
+      extractAudioSpy.mockRestore();
+      transcribeSegmentsSpy.mockRestore();
+      extractSpy.mockRestore();
+      analyzeSpy.mockRestore();
+    });
+
+    it('a keyword match in the transcript whose window contains no sampled frame timestamp still analyzes all frames (fallback-no-match), not zero', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'sparsematch.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      // durationMs=60000, 1 sampled frame -> computeFrameTimestamps buckets
+      // it at ts=0. The segment's +/-15s match window ([35000, 60000]) is
+      // real (a keyword genuinely matched) but does not contain ts=0 --
+      // sparse frame sampling relative to where the match actually occurred.
+      const probeSpy = jest.spyOn(videoProbe, 'probeVideo').mockResolvedValue({ durationMs: 60000, hasAudioStream: true });
+      const whisperDepsSpy = jest.spyOn(videoDeps, 'checkWhisperDeps').mockResolvedValue();
+      const extractAudioSpy = jest
+        .spyOn(extractAudioModule, 'extractAudio')
+        .mockImplementation(async (_f: string, tempDir: string) => path.join(tempDir, 'audio.wav'));
+      const transcribeSegmentsSpy = jest
+        .spyOn(transcribeModule, 'transcribeAudioWithSegments')
+        .mockResolvedValue({
+          text: 'a car passed way later',
+          segments: [{ startMs: 50000, endMs: 50001, text: 'a car passed way later' }],
+        });
+      const extractSpy = jest.spyOn(extractFramesModule, 'extractFrames').mockResolvedValue(['only-frame.jpg']);
+      const analyzeSpy = jest
+        .spyOn(analyzeFramesModule, 'analyzeFrames')
+        .mockImplementation(async (paths: string[], timestamps: number[]) =>
+          paths.map((_, i) => ({ timestampMs: timestamps[i], labels: [] }))
+        );
+
+      const { runner } = makeRunSpyRunner();
+      await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true, keywords: ['car'] }, runner);
+
+      const analyzeCallArgs = analyzeSpy.mock.calls[0];
+      expect(analyzeCallArgs[0] as string[]).toEqual(['only-frame.jpg']);
+
+      const metrics = readVideoMetrics(root);
+      expect(metrics[0].keywordFilterOutcome).toBe('fallback-no-match');
+      expect(metrics[0].framesConsidered).toBe(1);
+      expect(metrics[0].framesAnalyzed).toBe(1);
 
       probeSpy.mockRestore();
       whisperDepsSpy.mockRestore();

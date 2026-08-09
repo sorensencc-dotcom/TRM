@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { FrameAnalysis } from '../ingestion/videoExtract/analyzeFrames';
 import { TranscriptSegment } from '../ingestion/videoExtract/transcribe';
+import type { KeywordFilterOutcome } from './videoMetricsLog';
 
 export type KeywordSource = 'manual' | 'auto' | 'manual+auto' | 'none';
 
@@ -34,6 +35,15 @@ export interface VideoPartialProgress {
   transcript?: string;
   transcriptSegments?: TranscriptSegment[];
   frameAnalyses?: FrameAnalysis[];
+  // Persisted alongside a completed staged-pipeline Stage B result so a
+  // later cache-hit resume (a retry that reuses this exact frameAnalyses
+  // array) can report the REAL original outcome/count instead of assuming
+  // 'filtered' -- the cached run may have gone through the fallback-no-match
+  // branch (all frames analyzed, nothing actually filtered). Both optional
+  // and read with a defensive fallback so an older sidecar written before
+  // these fields existed still resumes without throwing.
+  framesConsidered?: number;
+  keywordFilterOutcome?: KeywordFilterOutcome;
 }
 
 function partialProgressPath(root: string, hash: string): string {

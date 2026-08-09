@@ -280,6 +280,16 @@ export async function runIngestDir(
       const perVideoKeywordSource: KeywordSource = cliArgs.retryFailed
         ? item.videoOptions?.keywordSource ?? 'none'
         : batchKeywordSource;
+      // Mirrors the keyword branching above: the batch-level trimRequested
+      // is derived from parsedTrim, which Task 9's mutual-exclusion rule
+      // guarantees is always {} during --retry-failed. Without this
+      // per-video override, a video that fails a SECOND time during a
+      // retry-failed run would have its replayed trim window silently
+      // wiped from the re-written failure record (trimRequested would
+      // evaluate false), losing it for good on a third attempt.
+      const trimRequestedForThisVideo = cliArgs.retryFailed
+        ? item.videoOptions?.startMs !== undefined || item.videoOptions?.endMs !== undefined
+        : trimRequested;
 
       try {
         if (isVideo) {
@@ -447,10 +457,25 @@ export async function runIngestDir(
                       return transcribeAudioWithSegments(audioPath, durationMs);
                     })(),
                 cachedProgress?.frameAnalyses !== undefined
-                  ? Promise.resolve({ framePaths: null, cached: cachedProgress.frameAnalyses })
+                  ? Promise.resolve({
+                      framePaths: null,
+                      cached: cachedProgress.frameAnalyses,
+                      // Carried through so a cache-hit resume in Stage B
+                      // below reports the REAL original outcome/count
+                      // instead of assuming 'filtered' (Finding 4) -- the
+                      // cached run may have gone through the
+                      // fallback-no-match branch instead.
+                      cachedFramesConsidered: cachedProgress.framesConsidered,
+                      cachedKeywordFilterOutcome: cachedProgress.keywordFilterOutcome,
+                    })
                   : (async () => {
                       const framePaths = await extractFrames(filePath, durationMs, tempDir, trim.effectiveStartMs);
-                      return { framePaths, cached: null as FrameAnalysis[] | null };
+                      return {
+                        framePaths,
+                        cached: null as FrameAnalysis[] | null,
+                        cachedFramesConsidered: undefined as number | undefined,
+                        cachedKeywordFilterOutcome: undefined as KeywordFilterOutcome | undefined,
+                      };
                     })(),
               ]);
 
@@ -462,6 +487,8 @@ export async function runIngestDir(
                 }
                 if (frameResult.status === 'fulfilled' && frameResult.value.cached) {
                   progress.frameAnalyses = frameResult.value.cached;
+                  progress.framesConsidered = frameResult.value.cachedFramesConsidered;
+                  progress.keywordFilterOutcome = frameResult.value.cachedKeywordFilterOutcome;
                 }
                 if (progress.transcript !== undefined || progress.frameAnalyses !== undefined) {
                   writeVideoPartialProgress(root, hash!, progress);
@@ -476,8 +503,14 @@ export async function runIngestDir(
               // Stage B: sequential, only reached once both Stage A branches fulfilled.
               if (frameResult.value.cached) {
                 frameAnalyses = frameResult.value.cached;
-                framesConsidered = frameAnalyses.length; // a cached full analysis was already fingerprint-matched
-                keywordFilterOutcome = 'filtered'; // cache only ever holds a completed Stage B result under this fingerprint
+                // Restore the REAL original outcome/count from the cached
+                // sidecar rather than assuming 'filtered' -- the cached run
+                // may have gone through the fallback-no-match branch (all
+                // frames analyzed, nothing actually filtered). Falls back to
+                // the old assumption only for a sidecar written before these
+                // fields existed.
+                framesConsidered = frameResult.value.cachedFramesConsidered ?? frameAnalyses.length;
+                keywordFilterOutcome = frameResult.value.cachedKeywordFilterOutcome ?? 'filtered';
               } else {
                 const framePaths = frameResult.value.framePaths!;
                 framesConsidered = framePaths.length;
@@ -490,24 +523,52 @@ export async function runIngestDir(
                   const kept = allTimestampsMs
                     .map((ts, i) => ({ ts, i }))
                     .filter(({ ts }) => frameInWindows(ts, windows));
-                  filteredPaths = kept.map(({ i }) => framePaths[i]);
-                  filteredTimestamps = kept.map(({ ts }) => ts);
-                  keywordFilterOutcome = 'filtered';
+                  if (kept.length > 0) {
+                    filteredPaths = kept.map(({ i }) => framePaths[i]);
+                    filteredTimestamps = kept.map(({ ts }) => ts);
+                    keywordFilterOutcome = 'filtered';
+                  } else {
+                    // A transcript segment matched a keyword, but no sampled
+                    // frame timestamp actually falls inside the resulting
+                    // +/-15s match window(s) -- e.g. sparse frame sampling
+                    // on a long video. Analyzing zero frames would silently
+                    // "succeed" having looked at nothing, which is exactly
+                    // the failure mode the no-match fallback exists to
+                    // prevent -- treat it the same as no match at all
+                    // (filteredPaths/filteredTimestamps already default to
+                    // the full set above).
+                    keywordFilterOutcome = 'fallback-no-match';
+                  }
                 } else {
                   keywordFilterOutcome = 'fallback-no-match';
                 }
 
-                const analyzed = await analyzeFrames(filteredPaths, filteredTimestamps, analyzer);
-                frameAnalyses =
-                  trim.effectiveStartMs === 0
-                    ? analyzed
-                    : analyzed.map((f) => ({ ...f, timestampMs: f.timestampMs + trim.effectiveStartMs }));
+                try {
+                  const analyzed = await analyzeFrames(filteredPaths, filteredTimestamps, analyzer);
+                  frameAnalyses =
+                    trim.effectiveStartMs === 0
+                      ? analyzed
+                      : analyzed.map((f) => ({ ...f, timestampMs: f.timestampMs + trim.effectiveStartMs }));
+                } catch (analyzeErr) {
+                  // Stage A (transcript + its segments) already succeeded --
+                  // persist it so a retry after a Vision failure doesn't
+                  // redo the whisper transcription too, only re-runs frame
+                  // extraction/analysis.
+                  writeVideoPartialProgress(root, hash!, {
+                    optionsFingerprint,
+                    transcript,
+                    transcriptSegments: segments,
+                  });
+                  throw analyzeErr;
+                }
 
                 const progress: VideoPartialProgress = {
                   optionsFingerprint,
                   transcript,
                   transcriptSegments: segments,
                   frameAnalyses,
+                  framesConsidered,
+                  keywordFilterOutcome,
                 };
                 writeVideoPartialProgress(root, hash!, progress);
               }
@@ -791,12 +852,12 @@ export async function runIngestDir(
           const keywordsRequestedForThisVideo =
             perVideoKeywordsUsed.length > 0 || perVideoKeywordSource !== 'none';
           if (
-            (trimRequested && (videoEffectiveStartMs !== undefined || videoEffectiveEndMs !== undefined)) ||
+            (trimRequestedForThisVideo && (videoEffectiveStartMs !== undefined || videoEffectiveEndMs !== undefined)) ||
             keywordsRequestedForThisVideo
           ) {
             videoOptions = {
-              startMs: trimRequested ? videoEffectiveStartMs : undefined,
-              endMs: trimRequested ? videoEffectiveEndMs : undefined,
+              startMs: trimRequestedForThisVideo ? videoEffectiveStartMs : undefined,
+              endMs: trimRequestedForThisVideo ? videoEffectiveEndMs : undefined,
               keywords: perVideoKeywordsUsed.length > 0 ? perVideoKeywordsUsed : undefined,
               keywordSource: perVideoKeywordSource !== 'none' ? perVideoKeywordSource : undefined,
             };
