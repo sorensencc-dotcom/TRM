@@ -1,6 +1,25 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { FrameAnalysis } from '../ingestion/videoExtract/analyzeFrames';
+import { TranscriptSegment } from '../ingestion/videoExtract/transcribe';
+
+export type KeywordSource = 'manual' | 'auto' | 'manual+auto' | 'none';
+
+export interface VideoOptionsFingerprintInput {
+  effectiveStartMs: number;
+  effectiveEndMs: number;
+  keywordsUsed: string[];
+  keywordSource: KeywordSource;
+}
+
+export function computeOptionsFingerprint(input: VideoOptionsFingerprintInput): string {
+  return JSON.stringify({
+    effectiveStartMs: input.effectiveStartMs,
+    effectiveEndMs: input.effectiveEndMs,
+    keywordsUsed: [...input.keywordsUsed].sort(),
+    keywordSource: input.keywordSource,
+  });
+}
 
 // Content-hash-keyed sidecar recording whichever of the two concurrent video
 // branches (transcript, frame analysis) already succeeded on a prior run of
@@ -11,7 +30,9 @@ import { FrameAnalysis } from '../ingestion/videoExtract/analyzeFrames';
 // transcription) every time. Keyed by content hash, not file path, so a
 // changed source file (different hash) never reuses stale progress.
 export interface VideoPartialProgress {
+  optionsFingerprint: string;
   transcript?: string;
+  transcriptSegments?: TranscriptSegment[];
   frameAnalyses?: FrameAnalysis[];
 }
 

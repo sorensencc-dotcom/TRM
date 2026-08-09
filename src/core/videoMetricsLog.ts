@@ -1,5 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { KeywordSource } from './videoPartialProgress';
+
+export type KeywordFilterOutcome = 'not-requested' | 'filtered' | 'fallback-no-match' | 'fallback-no-audio';
 
 export interface VideoMetricsEntry {
   schema_version: 1;
@@ -26,6 +29,13 @@ export interface VideoMetricsEntry {
   // collect-partial-results one.
   visionFailureCount?: number;
   error?: string;
+  trimStartMs?: number;
+  trimEndMs?: number;
+  keywordsUsed?: string[];
+  keywordSource?: KeywordSource;
+  keywordFilterOutcome?: KeywordFilterOutcome;
+  framesConsidered?: number;
+  framesAnalyzed?: number;
 }
 
 function videoMetricsPath(root: string): string {
