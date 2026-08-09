@@ -1361,6 +1361,143 @@ describe('runIngestDir', () => {
 
       restoreVideoPipelineMocks(spies);
     });
+
+    it('--start/--end trims what reaches extractFrames/extractAudio/transcribeAudio, and the cap check applies to the clip not the full file', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'trimmed.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      process.env.TRM_VIDEO_MAX_DURATION_MS = String(15 * 60 * 1000); // 15 min cap
+      const spies = mockVideoPipeline({
+        durationMs: 60 * 60 * 1000, // 60 min source -- would fail the cap untrimmed
+        hasAudioStream: true,
+        transcript: 'clip transcript',
+        framePaths: ['frame-000.jpg'],
+        frameAnalyses: [{ timestampMs: 0, labels: [] }],
+      });
+      const { runner } = makeRunSpyRunner();
+
+      try {
+        const summary = await runIngestDir(
+          root,
+          'topic1',
+          { actor: 'ACTOR-001', dir, stub: true, start: '15:00', end: '25:00' },
+          runner
+        );
+
+        expect(summary.successCount).toBe(1);
+        expect(spies.extractSpy).toHaveBeenCalledWith(
+          path.join(dir, 'trimmed.mp4'),
+          10 * 60 * 1000, // clipDurationMs
+          expect.any(String),
+          15 * 60 * 1000 // effectiveStartMs
+        );
+        expect(spies.extractAudioSpy).toHaveBeenCalledWith(
+          path.join(dir, 'trimmed.mp4'),
+          expect.any(String),
+          { startMs: 15 * 60 * 1000, clipDurationMs: 10 * 60 * 1000 }
+        );
+        expect(spies.transcribeSpy).toHaveBeenCalledWith(expect.any(String), 10 * 60 * 1000);
+      } finally {
+        delete process.env.TRM_VIDEO_MAX_DURATION_MS;
+        restoreVideoPipelineMocks(spies);
+      }
+    });
+
+    it('a trim window beyond the video duration fails the video (Phase 2) without touching extractFrames/extractAudio', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'short.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      const spies = mockVideoPipeline({ durationMs: 60000, hasAudioStream: false });
+      const { runner } = makeRunSpyRunner();
+
+      const summary = await runIngestDir(
+        root,
+        'topic1',
+        { actor: 'ACTOR-001', dir, stub: true, start: '05:00' },
+        runner
+      );
+
+      expect(summary.failureCount).toBe(1);
+      expect(spies.extractSpy).not.toHaveBeenCalled();
+      expect(spies.extractAudioSpy).not.toHaveBeenCalled();
+
+      const failed = failedStore.readFailed(root, 'topic1');
+      expect(failed[0].error).toMatch(/beyond the video/);
+      expect(failed[0].videoOptions).toEqual({ startMs: 5 * 60000 });
+
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('records trimStartMs/trimEndMs on the success metrics entry and videoProcessing on the envelope', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'trimmed2.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      const spies = mockVideoPipeline({
+        durationMs: 20 * 60000,
+        hasAudioStream: false,
+        framePaths: ['frame-000.jpg'],
+        frameAnalyses: [{ timestampMs: 0, labels: [] }],
+      });
+      const { runner } = makeRunSpyRunner();
+
+      await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true, start: '02:00', end: '05:00' }, runner);
+
+      const metrics = readVideoMetrics(root);
+      expect(metrics[0].trimStartMs).toBe(2 * 60000);
+      expect(metrics[0].trimEndMs).toBe(5 * 60000);
+
+      const envelope = readRawEnvelope(root, 'topic1', 'SRC-001');
+      expect(envelope?.videoProcessing?.effectiveStartMs).toBe(2 * 60000);
+      expect(envelope?.videoProcessing?.effectiveEndMs).toBe(5 * 60000);
+
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('a fresh partial-progress cache under different trim options is not reused across a --force retry', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      const filePath = path.join(dir, 'refingerprint.mp4');
+      fs.writeFileSync(filePath, 'fake mp4 bytes', 'utf-8');
+
+      const spies = mockVideoPipeline({
+        durationMs: 60 * 60000,
+        hasAudioStream: true,
+        transcript: 'first-run transcript',
+        frameAnalyses: [{ timestampMs: 0, labels: [] }],
+      });
+      spies.analyzeSpy.mockRejectedValueOnce(new Error('vision exploded'));
+      const { runner } = makeRunSpyRunner();
+
+      // First run (untrimmed) fails after transcript succeeded -- caches transcript
+      // under the untrimmed fingerprint.
+      await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+      expect(spies.transcribeSpy).toHaveBeenCalledTimes(1);
+
+      // Retry with --force and a DIFFERENT trim -- must not reuse the cached
+      // (differently-fingerprinted) transcript.
+      const retrySummary = await runIngestDir(
+        root,
+        'topic1',
+        { actor: 'ACTOR-001', dir, stub: true, force: true, start: '10:00', end: '20:00' },
+        runner
+      );
+
+      expect(retrySummary.successCount).toBe(1);
+      expect(spies.transcribeSpy).toHaveBeenCalledTimes(2); // rerun, not reused
+
+      restoreVideoPipelineMocks(spies);
+    });
   });
 
   it('--retry-failed reprocesses only failed items', async () => {
