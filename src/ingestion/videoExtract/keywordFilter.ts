@@ -23,7 +23,7 @@ export function computeKeywordWindows(
   let matched = false;
 
   for (const segment of segments) {
-    const words = segment.text.toLowerCase().split(/[^\w]+/).filter(Boolean);
+    const words = segment.text.toLowerCase().split(/[^\w']+/).filter(Boolean);
     if (words.some((w) => keywordSet.has(w))) {
       matched = true;
       windows.push([

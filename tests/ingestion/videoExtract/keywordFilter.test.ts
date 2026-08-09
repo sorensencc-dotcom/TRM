@@ -53,6 +53,16 @@ describe('computeKeywordWindows', () => {
     const { matched } = computeKeywordWindows(segments, ['car'], clipDurationMs);
     expect(matched).toBe(false);
   });
+
+  it('matches keywords containing apostrophes (contractions)', () => {
+    const segments: TranscriptSegment[] = [
+      { startMs: 30000, endMs: 32000, text: "I don't think that's right" },
+    ];
+    const { windows, matched } = computeKeywordWindows(segments, ["don't", "that's"], clipDurationMs);
+    expect(matched).toBe(true);
+    expect(windows).toHaveLength(1);
+    expect(windows[0]).toEqual([30000 - KEYWORD_MATCH_PADDING_MS, 32000 + KEYWORD_MATCH_PADDING_MS]);
+  });
 });
 
 describe('frameInWindows', () => {
