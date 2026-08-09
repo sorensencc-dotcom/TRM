@@ -14,7 +14,7 @@ import * as extractAudioModule from '../../src/ingestion/videoExtract/extractAud
 import * as transcribeModule from '../../src/ingestion/videoExtract/transcribe';
 import { readRawEnvelope } from '../../src/core/rawSource';
 import { readVideoMetrics } from '../../src/core/videoMetricsLog';
-import { readVideoPartialProgress } from '../../src/core/videoPartialProgress';
+import { readVideoPartialProgress, writeVideoPartialProgress, computeOptionsFingerprint } from '../../src/core/videoPartialProgress';
 import * as videoDepsVersionLogModule from '../../src/core/videoDepsVersionLog';
 import { readVideoDepsVersions } from '../../src/core/videoDepsVersionLog';
 import { ExtractionRunner } from '../../src/extraction/types';
@@ -1937,6 +1937,52 @@ describe('runIngestDir', () => {
       analyzeSpy.mockRestore();
     });
 
+    it('a PRE-probe failure during --retry-failed (e.g. a transient probeVideo error) still preserves the replayed trim window in failed.json', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'preprobe.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      const probeSpy = jest.spyOn(videoProbe, 'probeVideo').mockResolvedValue({ durationMs: 600000, hasAudioStream: true });
+      const whisperDepsSpy = jest.spyOn(videoDeps, 'checkWhisperDeps').mockResolvedValue();
+      const extractAudioSpy = jest
+        .spyOn(extractAudioModule, 'extractAudio')
+        .mockImplementation(async (_f: string, tempDir: string) => path.join(tempDir, 'audio.wav'));
+      const transcribeSpy = jest.spyOn(transcribeModule, 'transcribeAudio').mockResolvedValue('irrelevant');
+      const extractSpy = jest
+        .spyOn(extractFramesModule, 'extractFrames')
+        .mockRejectedValue(new Error('ffmpeg exploded'));
+      const analyzeSpy = jest.spyOn(analyzeFramesModule, 'analyzeFrames').mockResolvedValue([]);
+
+      const { runner } = makeRunSpyRunner();
+      // First run: trim requested, fails post-probe (extractFrames) -- gets
+      // a recorded trim window in failed.json.
+      await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true, start: '05:00' }, runner);
+
+      const failedAfterFirst = failedStore.readFailed(root, 'topic1');
+      expect(failedAfterFirst[0].videoOptions).toEqual({ startMs: 5 * 60000, endMs: 600000 });
+
+      // Retry: probeVideo itself now fails (transient) -- BEFORE the later
+      // seed-before-resolveTrimWindow step (which uses perVideoParsedTrim)
+      // is ever reached. Without the earlier hoisted seed (Finding A), the
+      // trim window would be wiped here even though it was successfully
+      // recorded above.
+      probeSpy.mockRejectedValue(new Error('ffprobe transient failure'));
+      await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, retryFailed: true, stub: true }, runner);
+
+      const failedAfterSecond = failedStore.readFailed(root, 'topic1');
+      expect(failedAfterSecond[0].error).toMatch(/ffprobe transient failure/);
+      expect(failedAfterSecond[0].videoOptions).toEqual({ startMs: 5 * 60000, endMs: 600000 });
+
+      probeSpy.mockRestore();
+      whisperDepsSpy.mockRestore();
+      extractAudioSpy.mockRestore();
+      transcribeSpy.mockRestore();
+      extractSpy.mockRestore();
+      analyzeSpy.mockRestore();
+    });
+
     it('staged pipeline: an analyzeFrames (Vision) failure still persists the already-succeeded transcript/segments for a later retry to reuse', async () => {
       const root = makeRoot();
       runCreate(root, 'topic1', { actor: 'ACTOR-001' });
@@ -2020,6 +2066,83 @@ describe('runIngestDir', () => {
       const metrics = readVideoMetrics(root);
       expect(metrics[0].keywordFilterOutcome).toBe('fallback-no-match');
       expect(metrics[0].framesConsidered).toBe(1);
+      expect(metrics[0].framesAnalyzed).toBe(1);
+
+      probeSpy.mockRestore();
+      whisperDepsSpy.mockRestore();
+      extractAudioSpy.mockRestore();
+      transcribeSegmentsSpy.mockRestore();
+      extractSpy.mockRestore();
+      analyzeSpy.mockRestore();
+    });
+
+    it('a cache-hit resume of a completed fallback-no-match staged result restores the REAL original outcome/count, not a hardcoded "filtered"', async () => {
+      // Finding 4's fix persists framesConsidered/keywordFilterOutcome
+      // alongside a completed staged Stage B result so a cache-hit resume
+      // can report what actually happened, instead of assuming 'filtered'.
+      // The organic path to reach a surviving cache (Stage B completes,
+      // THEN the overall ingest still fails) doesn't exist in the current
+      // architecture -- clearVideoPartialProgress runs unconditionally
+      // immediately after a successful Stage B, before any later failure
+      // point could leave the sidecar behind. So this test constructs the
+      // sidecar directly (as a prior run's completed-but-not-yet-cleared
+      // state), matching how VideoPartialProgress is already documented and
+      // used as a hash-keyed persistence boundary independent of how it got
+      // written, and asserts a run that hits it resumes with the correct,
+      // non-assumed values.
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      const filePath = path.join(dir, 'cachedfallback.mp4');
+      fs.writeFileSync(filePath, 'fake mp4 bytes', 'utf-8');
+      const hash = await hashFile(filePath);
+
+      const optionsFingerprint = computeOptionsFingerprint({
+        effectiveStartMs: 0,
+        effectiveEndMs: 60000,
+        keywordsUsed: ['whale'],
+        keywordSource: 'manual',
+      });
+      // framesConsidered (5) is deliberately different from the cached
+      // frameAnalyses' length (1) so the assertion below can only pass if
+      // the persisted field -- not frameAnalyses.length or a hardcoded
+      // 'filtered' -- is what gets restored.
+      writeVideoPartialProgress(root, hash, {
+        optionsFingerprint,
+        transcript: 'nothing about the keyword here',
+        transcriptSegments: [{ startMs: 0, endMs: 1000, text: 'nothing about the keyword here' }],
+        frameAnalyses: [{ timestampMs: 0, labels: [] }],
+        framesConsidered: 5,
+        keywordFilterOutcome: 'fallback-no-match',
+      });
+
+      const probeSpy = jest.spyOn(videoProbe, 'probeVideo').mockResolvedValue({ durationMs: 60000, hasAudioStream: true });
+      const whisperDepsSpy = jest.spyOn(videoDeps, 'checkWhisperDeps').mockResolvedValue();
+      const extractAudioSpy = jest.spyOn(extractAudioModule, 'extractAudio');
+      const transcribeSegmentsSpy = jest.spyOn(transcribeModule, 'transcribeAudioWithSegments');
+      const extractSpy = jest.spyOn(extractFramesModule, 'extractFrames');
+      const analyzeSpy = jest.spyOn(analyzeFramesModule, 'analyzeFrames');
+
+      const { runner } = makeRunSpyRunner();
+      const summary = await runIngestDir(
+        root,
+        'topic1',
+        { actor: 'ACTOR-001', dir, stub: true, keywords: ['whale'] },
+        runner
+      );
+
+      expect(summary.successCount).toBe(1);
+      // Both the transcript AND the frame analysis came from the cache --
+      // none of the underlying subprocess-backed steps should run at all.
+      expect(extractAudioSpy).not.toHaveBeenCalled();
+      expect(transcribeSegmentsSpy).not.toHaveBeenCalled();
+      expect(extractSpy).not.toHaveBeenCalled();
+      expect(analyzeSpy).not.toHaveBeenCalled();
+
+      const metrics = readVideoMetrics(root);
+      expect(metrics[0].keywordFilterOutcome).toBe('fallback-no-match');
+      expect(metrics[0].framesConsidered).toBe(5);
       expect(metrics[0].framesAnalyzed).toBe(1);
 
       probeSpy.mockRestore();

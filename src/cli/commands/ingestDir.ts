@@ -269,6 +269,19 @@ export async function runIngestDir(
       let videoHasAudioStream: boolean | undefined;
       let videoEffectiveStartMs: number | undefined;
       let videoEffectiveEndMs: number | undefined;
+      // Seed these from the replayed failure record BEFORE anything that
+      // could throw (fs.promises.stat's size check, probeVideo) even runs --
+      // otherwise a --retry-failed run whose failure happens THAT early
+      // (e.g. a transient probe error) would still have these undefined at
+      // catch time, wiping the replayed trim window from failed.json (same
+      // failure class as the trimRequestedForThisVideo fix below, just one
+      // stage earlier). The later seed-before-resolveTrimWindow step (using
+      // perVideoParsedTrim) overwrites these with the same values once it's
+      // reached -- this only fills the gap for failures before that point.
+      if (cliArgs.retryFailed) {
+        videoEffectiveStartMs = item.videoOptions?.startMs;
+        videoEffectiveEndMs = item.videoOptions?.endMs;
+      }
 
       // Available for every work item (not just videos), so this is safe to
       // compute here regardless of isVideo/hasAudioStream -- during
