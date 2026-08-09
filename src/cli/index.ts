@@ -59,7 +59,7 @@ program
   .option('--end <time>', 'trim end, HH:MM:SS or MM:SS')
   .option('--duration <time>', 'trim duration, HH:MM:SS or MM:SS')
   .option('--keywords <list>', 'comma-separated', (v) => v.split(','))
-  .option('--auto-keywords', 'derive keywords from the target topic\'s existing Fact.categories')
+  .option('--auto-keywords', 'derive keywords from the target topic\'s existing Fact.categories (a closed taxonomy -- rarely useful alone, combine with --keywords)')
   .action(async (path, opts) => {
     try {
       const summary = await runIngestDir(root, path, opts);

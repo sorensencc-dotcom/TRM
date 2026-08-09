@@ -53,4 +53,36 @@ describe('deriveAutoKeywords', () => {
     const root = makeRoot();
     expect(deriveAutoKeywords(root, 'topic1')).toEqual([]);
   });
+
+  it('filters out closed-taxonomy categories and warns when nothing usable remains', () => {
+    const root = makeRoot();
+    manifestStore.markDone(root, 'topic1', 'hash-e', '/e.mp4');
+    manifestStore.writeExtract(root, 'topic1', 'hash-e', {
+      facts: [
+        { id: 'FCT-5', text: 't', source_id: 'SRC-5', confidence: 0.9, categories: ['biography', 'history'] },
+      ],
+      summary: '',
+    });
+
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+    expect(deriveAutoKeywords(root, 'topic1')).toEqual([]);
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('closed-taxonomy'));
+    consoleSpy.mockRestore();
+  });
+
+  it('keeps non-taxonomy categories and drops only taxonomy ones from a mixed set, without warning', () => {
+    const root = makeRoot();
+    manifestStore.markDone(root, 'topic1', 'hash-f', '/f.mp4');
+    manifestStore.writeExtract(root, 'topic1', 'hash-f', {
+      facts: [
+        { id: 'FCT-6', text: 't', source_id: 'SRC-6', confidence: 0.9, categories: ['biography', 'car'] },
+      ],
+      summary: '',
+    });
+
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+    expect(deriveAutoKeywords(root, 'topic1')).toEqual(['car']);
+    expect(consoleSpy).not.toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
 });
