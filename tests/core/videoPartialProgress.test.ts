@@ -5,6 +5,7 @@ import {
   readVideoPartialProgress,
   writeVideoPartialProgress,
   clearVideoPartialProgress,
+  computeOptionsFingerprint,
 } from '../../src/core/videoPartialProgress';
 
 function makeRoot() {
@@ -20,6 +21,12 @@ describe('videoPartialProgress', () => {
   it('writes and reads back progress for a given hash', () => {
     const root = makeRoot();
     const progress = {
+      optionsFingerprint: computeOptionsFingerprint({
+        effectiveStartMs: 0,
+        effectiveEndMs: 60000,
+        keywordsUsed: [],
+        keywordSource: 'none' as const,
+      }),
       transcript: 'hello world',
       frameAnalyses: [{ timestampMs: 0, labels: [{ description: 'x', score: 0.5 }] }],
     };
@@ -30,16 +37,28 @@ describe('videoPartialProgress', () => {
 
   it('keys progress independently per hash', () => {
     const root = makeRoot();
-    writeVideoPartialProgress(root, 'hash-a', { transcript: 'a' });
-    writeVideoPartialProgress(root, 'hash-b', { transcript: 'b' });
+    const fingerprint = computeOptionsFingerprint({
+      effectiveStartMs: 0,
+      effectiveEndMs: 60000,
+      keywordsUsed: [],
+      keywordSource: 'none' as const,
+    });
+    writeVideoPartialProgress(root, 'hash-a', { optionsFingerprint: fingerprint, transcript: 'a' });
+    writeVideoPartialProgress(root, 'hash-b', { optionsFingerprint: fingerprint, transcript: 'b' });
 
-    expect(readVideoPartialProgress(root, 'hash-a')).toEqual({ transcript: 'a' });
-    expect(readVideoPartialProgress(root, 'hash-b')).toEqual({ transcript: 'b' });
+    expect(readVideoPartialProgress(root, 'hash-a')).toEqual({ optionsFingerprint: fingerprint, transcript: 'a' });
+    expect(readVideoPartialProgress(root, 'hash-b')).toEqual({ optionsFingerprint: fingerprint, transcript: 'b' });
   });
 
   it('returns null after clearing', () => {
     const root = makeRoot();
-    writeVideoPartialProgress(root, 'abc123', { transcript: 'hello' });
+    const fingerprint = computeOptionsFingerprint({
+      effectiveStartMs: 0,
+      effectiveEndMs: 60000,
+      keywordsUsed: [],
+      keywordSource: 'none' as const,
+    });
+    writeVideoPartialProgress(root, 'abc123', { optionsFingerprint: fingerprint, transcript: 'hello' });
     clearVideoPartialProgress(root, 'abc123');
 
     expect(readVideoPartialProgress(root, 'abc123')).toBeNull();
@@ -57,5 +76,38 @@ describe('videoPartialProgress', () => {
     fs.writeFileSync(path.join(opsDir, 'abc123.json'), 'not valid json{{{');
 
     expect(readVideoPartialProgress(root, 'abc123')).toBeNull();
+  });
+});
+
+describe('computeOptionsFingerprint', () => {
+  it('is stable regardless of keywordsUsed input ordering', () => {
+    const a = computeOptionsFingerprint({
+      effectiveStartMs: 0,
+      effectiveEndMs: 1000,
+      keywordsUsed: ['b', 'a'],
+      keywordSource: 'manual',
+    });
+    const b = computeOptionsFingerprint({
+      effectiveStartMs: 0,
+      effectiveEndMs: 1000,
+      keywordsUsed: ['a', 'b'],
+      keywordSource: 'manual',
+    });
+    expect(a).toBe(b);
+  });
+
+  it('differs when effectiveStartMs/effectiveEndMs differ', () => {
+    const a = computeOptionsFingerprint({ effectiveStartMs: 0, effectiveEndMs: 1000, keywordsUsed: [], keywordSource: 'none' });
+    const b = computeOptionsFingerprint({ effectiveStartMs: 500, effectiveEndMs: 1000, keywordsUsed: [], keywordSource: 'none' });
+    expect(a).not.toBe(b);
+  });
+
+  it('differs when keywordsUsed or keywordSource differ', () => {
+    const base = { effectiveStartMs: 0, effectiveEndMs: 1000 };
+    const a = computeOptionsFingerprint({ ...base, keywordsUsed: ['car'], keywordSource: 'manual' });
+    const b = computeOptionsFingerprint({ ...base, keywordsUsed: ['car', 'accident'], keywordSource: 'manual' });
+    const c = computeOptionsFingerprint({ ...base, keywordsUsed: ['car'], keywordSource: 'auto' });
+    expect(a).not.toBe(b);
+    expect(a).not.toBe(c);
   });
 });

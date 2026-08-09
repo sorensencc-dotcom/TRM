@@ -111,3 +111,103 @@ export async function transcribeAudio(
   // empty) stdout. Return '' rather than throwing.
   return text;
 }
+
+export interface TranscriptSegment {
+  startMs: number;
+  endMs: number;
+  text: string;
+}
+
+const SEGMENT_LINE_PATTERN =
+  /^\[(\d{2}):(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})\.(\d{3})\]\s*(.*)$/;
+
+function segmentTimestampToMs(h: string, m: string, s: string, ms: string): number {
+  return ((Number(h) * 60 + Number(m)) * 60 + Number(s)) * 1000 + Number(ms);
+}
+
+/**
+ * Parses whisper.cpp's default timestamped stdout format into segments.
+ * Defensive by design: skips any line that doesn't match the bracket
+ * pattern (banner/log lines whisper.cpp also writes to stdout) rather than
+ * throwing, and accumulates trailing non-bracket lines as continuation text
+ * for the most recently opened segment (whisper wraps long segments across
+ * multiple lines).
+ *
+ * Diagnostic line heuristic: lines that contain a colon followed eventually
+ * by whitespace and `=` (detected by the regex `/:.*\s+=/) are assumed to be
+ * whisper.cpp init/param banner output (e.g., `key: value = number` or
+ * `multi word key = value`) and are NOT accumulated as continuation text.
+ * This preserves real transcribed speech even if it contains an isolated `=`
+ * symbol (e.g., "X = Y" with no colon passes through). The pattern is robust
+ * to multi-word keys and multiple spaces around `=`.
+ *
+ * KNOWN LIMITATION (residual false positive): Dictated speech that happens
+ * to contain both a colon and a later `=` (e.g., "he said: the answer = 42")
+ * will be misclassified as diagnostic and dropped from the transcript. This
+ * tradeoff is accepted because real whisper.cpp diagnostic/banner output is
+ * emitted before any segment has begun parsing (protected by the `current &&`
+ * guard), making this an edge case rather than a common-path bug. Future
+ * improvements would require semantic analysis beyond regex, which is out of
+ * scope for this defensive parser.
+ */
+export function parseWhisperSegments(stdout: string): TranscriptSegment[] {
+  const diagnosticLinePattern = /:\s*.*\s+=/;
+  const segments: TranscriptSegment[] = [];
+  let current: TranscriptSegment | null = null;
+
+  for (const rawLine of stdout.split('\n')) {
+    const line = rawLine.replace(/\r$/, '');
+    const match = SEGMENT_LINE_PATTERN.exec(line);
+    if (match) {
+      const [, h1, m1, s1, ms1, h2, m2, s2, ms2, text] = match;
+      current = {
+        startMs: segmentTimestampToMs(h1, m1, s1, ms1),
+        endMs: segmentTimestampToMs(h2, m2, s2, ms2),
+        text: text.trim(),
+      };
+      segments.push(current);
+    } else if (current && line.trim().length > 0 && !diagnosticLinePattern.test(line)) {
+      current.text = `${current.text} ${line.trim()}`.trim();
+    }
+  }
+
+  return segments;
+}
+
+/**
+ * Segment-aware sibling of transcribeAudio(), additive not a replacement --
+ * only invoked when keyword filtering needs match windows. Omits whisper's
+ * -nt flag so it emits timestamped segments instead of a plain string.
+ */
+export async function transcribeAudioWithSegments(
+  filePath: string,
+  durationMs?: number
+): Promise<{ text: string; segments: TranscriptSegment[] }> {
+  const whisperBin = process.env.TRM_WHISPER_BIN || DEFAULT_WHISPER_BIN;
+  const modelPath = process.env.TRM_WHISPER_MODEL || getDefaultWhisperModelPath();
+  const timeoutMs = computeTimeoutMs(durationMs);
+
+  const args = ['-m', modelPath, '-f', filePath];
+
+  let stdout: string;
+  try {
+    const result = await whisperPool(() =>
+      execFileAsync(whisperBin, args, { timeout: timeoutMs })
+    );
+    stdout = result.stdout;
+  } catch (err) {
+    const detail = getErrorDetail(err);
+    if (isTimeoutError(err)) {
+      throw new Error(
+        `Whisper transcription timed out after ${timeoutMs}ms for file "${filePath}": ${detail}`
+      );
+    }
+    throw new Error(
+      `Whisper transcription process failed for file "${filePath}": ${detail}`
+    );
+  }
+
+  const segments = parseWhisperSegments(stdout);
+  const text = segments.map((s) => s.text).join(' ').trim();
+  return { text, segments };
+}

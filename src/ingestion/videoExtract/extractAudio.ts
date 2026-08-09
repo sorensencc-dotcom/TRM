@@ -51,23 +51,24 @@ function getFfmpegAudioTimeoutMs(): number {
  * @param filePath Path to the source video file
  * @param tempDir Per-video temp directory to write the WAV into (the caller
  *   owns its creation and `finally`-block cleanup)
+ * @param trim Optional bounds to extract a clip: `startMs` (seek offset) and
+ *   `clipDurationMs` (duration to extract)
  * @returns Promise resolving to the written WAV file path
  * @throws Error if ffmpeg fails or times out
  */
-export async function extractAudio(filePath: string, tempDir: string): Promise<string> {
+export async function extractAudio(
+  filePath: string,
+  tempDir: string,
+  trim?: { startMs: number; clipDurationMs: number }
+): Promise<string> {
   const ffmpegPath = process.env.TRM_FFMPEG_PATH || 'ffmpeg';
   const outputPath = path.join(tempDir, AUDIO_FILENAME);
 
-  const args = [
-    '-i', filePath,
-    '-map', '0:a:0',
-    '-vn',
-    '-ar', SAMPLE_RATE,
-    '-ac', CHANNELS,
-    '-f', 'wav',
-    '-y',
-    outputPath
-  ];
+  const args = ['-i', filePath, '-map', '0:a:0', '-vn', '-ar', SAMPLE_RATE, '-ac', CHANNELS, '-f', 'wav', '-y', outputPath];
+  if (trim) {
+    args.unshift('-ss', (trim.startMs / 1000).toFixed(3));
+    args.splice(args.indexOf('-y'), 0, '-t', (trim.clipDurationMs / 1000).toFixed(3));
+  }
 
   try {
     await ffmpegPool(() =>

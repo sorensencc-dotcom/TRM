@@ -61,3 +61,31 @@ describe('failedStore', () => {
     expect(readFailed(root, topicPath)).toEqual([]);
   });
 });
+
+describe('failedStore videoOptions', () => {
+  it('records videoOptions when provided', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'trm-failedstore-'));
+    appendFailure(root, 'topic1', 'hash-a', '/a.mp4', 'boom', {
+      startMs: 900000,
+      endMs: 1500000,
+      keywords: ['car', 'accident'],
+      keywordSource: 'manual',
+    });
+
+    const [entry] = readFailed(root, 'topic1');
+    expect(entry.videoOptions).toEqual({
+      startMs: 900000,
+      endMs: 1500000,
+      keywords: ['car', 'accident'],
+      keywordSource: 'manual',
+    });
+  });
+
+  it('omits videoOptions when not provided (non-video failures unaffected)', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'trm-failedstore-'));
+    appendFailure(root, 'topic1', 'hash-b', '/b.txt', 'boom');
+
+    const [entry] = readFailed(root, 'topic1');
+    expect(entry.videoOptions).toBeUndefined();
+  });
+});

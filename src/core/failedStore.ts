@@ -2,12 +2,21 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { nodeDir } from './paths';
 import { writeFileAtomic } from './atomicWrite';
+import { KeywordSource } from './videoPartialProgress';
+
+export interface VideoFailureOptions {
+  startMs?: number;
+  endMs?: number;
+  keywords?: string[];
+  keywordSource?: KeywordSource;
+}
 
 export interface FailedEntry {
   hash: string;
   sourcePath: string;
   error: string;
   timestamp: string;
+  videoOptions?: VideoFailureOptions;
 }
 
 interface FailedFile {
@@ -33,10 +42,17 @@ export function appendFailure(
   topicPath: string,
   hash: string,
   sourcePath: string,
-  error: string
+  error: string,
+  videoOptions?: VideoFailureOptions
 ): void {
   const failedFile = readFailedFile(root, topicPath);
-  failedFile.entries[hash] = { hash, sourcePath, error, timestamp: new Date().toISOString() };
+  failedFile.entries[hash] = {
+    hash,
+    sourcePath,
+    error,
+    timestamp: new Date().toISOString(),
+    ...(videoOptions ? { videoOptions } : {}),
+  };
   writeFileAtomic(failedPath(root, topicPath), JSON.stringify(failedFile, null, 2));
 }
 

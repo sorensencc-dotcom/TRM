@@ -55,9 +55,20 @@ program
   .option('--force')
   .option('--retry-failed')
   .option('--stub')
+  .option('--start <time>', 'trim start, HH:MM:SS or MM:SS')
+  .option('--end <time>', 'trim end, HH:MM:SS or MM:SS')
+  .option('--duration <time>', 'trim duration, HH:MM:SS or MM:SS')
+  .option('--keywords <list>', 'comma-separated', (v) => v.split(','))
+  .option('--auto-keywords', 'derive keywords from the target topic\'s existing Fact.categories (a closed taxonomy -- rarely useful alone, combine with --keywords)')
   .action(async (path, opts) => {
-    const summary = await runIngestDir(root, path, opts);
-    console.log(JSON.stringify(summary, null, 2));
+    try {
+      const summary = await runIngestDir(root, path, opts);
+      console.log(JSON.stringify(summary, null, 2));
+      if (summary.failureCount > 0) process.exitCode = 1;
+    } catch (err) {
+      console.error(`[ingest-dir] ${(err as Error).message}`);
+      process.exitCode = 1;
+    }
   });
 
 program

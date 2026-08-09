@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { transcribeAudio } from '../../../src/ingestion/videoExtract/transcribe';
+import { transcribeAudio, parseWhisperSegments, transcribeAudioWithSegments } from '../../../src/ingestion/videoExtract/transcribe';
 import { getDefaultWhisperModelPath } from '../../../src/core/videoDeps';
 
 jest.mock('node:child_process');
@@ -234,5 +234,137 @@ describe('transcribeAudio', () => {
 
     expect(mockExecFile).toHaveBeenCalledTimes(2);
     expect(results).toEqual(['text-0', 'text-1']);
+  });
+});
+
+describe('parseWhisperSegments', () => {
+  it('parses a single well-formed segment', () => {
+    const stdout = '[00:00:00.000 --> 00:00:02.500]   Hello world\n';
+    expect(parseWhisperSegments(stdout)).toEqual([
+      { startMs: 0, endMs: 2500, text: 'Hello world' },
+    ]);
+  });
+
+  it('parses multiple segments', () => {
+    const stdout =
+      '[00:00:00.000 --> 00:00:02.500]   Hello world\n' +
+      '[00:00:02.500 --> 00:00:05.000]   How are you\n';
+    expect(parseWhisperSegments(stdout)).toEqual([
+      { startMs: 0, endMs: 2500, text: 'Hello world' },
+      { startMs: 2500, endMs: 5000, text: 'How are you' },
+    ]);
+  });
+
+  it('parses an hours component correctly', () => {
+    const stdout = '[01:02:03.000 --> 01:02:05.000]   later on\n';
+    const [seg] = parseWhisperSegments(stdout);
+    expect(seg.startMs).toBe((1 * 3600 + 2 * 60 + 3) * 1000);
+    expect(seg.endMs).toBe((1 * 3600 + 2 * 60 + 5) * 1000);
+  });
+
+  it('handles decimal precision variants and irregular spacing', () => {
+    const stdout = '[00:00:01.010-->00:00:01.999]text with no leading space\n';
+    expect(parseWhisperSegments(stdout)).toEqual([
+      { startMs: 1010, endMs: 1999, text: 'text with no leading space' },
+    ]);
+  });
+
+  it('skips unparseable lines rather than throwing', () => {
+    const stdout =
+      'whisper.cpp v1.5.0 loading model...\n' +
+      '[00:00:00.000 --> 00:00:02.000]   real segment\n' +
+      'system_info: n_threads = 4\n';
+    expect(parseWhisperSegments(stdout)).toEqual([
+      { startMs: 0, endMs: 2000, text: 'real segment' },
+    ]);
+  });
+
+  it('accumulates continuation lines onto the most recently opened segment', () => {
+    const stdout =
+      '[00:00:00.000 --> 00:00:04.000]   a long segment that\n' +
+      'wrapped across multiple\n' +
+      'output lines\n';
+    expect(parseWhisperSegments(stdout)).toEqual([
+      { startMs: 0, endMs: 4000, text: 'a long segment that wrapped across multiple output lines' },
+    ]);
+  });
+
+  it('returns an empty array for empty or fully-unparseable input', () => {
+    expect(parseWhisperSegments('')).toEqual([]);
+    expect(parseWhisperSegments('no segments here at all\n')).toEqual([]);
+  });
+
+  it('accumulates continuation text containing an isolated equals sign', () => {
+    const stdout =
+      '[00:00:00.000 --> 00:00:04.000]   the formula is\n' +
+      'X = Y\n';
+    expect(parseWhisperSegments(stdout)).toEqual([
+      { startMs: 0, endMs: 4000, text: 'the formula is X = Y' },
+    ]);
+  });
+
+  it('still skips diagnostic lines even when continuation accumulation is active', () => {
+    const stdout =
+      '[00:00:00.000 --> 00:00:02.000]   real segment\n' +
+      'system_info: n_threads = 4\n';
+    expect(parseWhisperSegments(stdout)).toEqual([
+      { startMs: 0, endMs: 2000, text: 'real segment' },
+    ]);
+  });
+
+  it('skips multi-word diagnostic keys (e.g., whisper init params)', () => {
+    const stdout =
+      '[00:00:00.000 --> 00:00:02.000]   real segment\n' +
+      'whisper_init_with_params: flash attn = 0\n';
+    expect(parseWhisperSegments(stdout)).toEqual([
+      { startMs: 0, endMs: 2000, text: 'real segment' },
+    ]);
+  });
+
+  it('skips diagnostic lines with extra spaces around equals', () => {
+    const stdout =
+      '[00:00:00.000 --> 00:00:02.000]   real segment\n' +
+      'config_init: use gpu    = 1\n';
+    expect(parseWhisperSegments(stdout)).toEqual([
+      { startMs: 0, endMs: 2000, text: 'real segment' },
+    ]);
+  });
+
+  it('documents known limitation: drops speech containing both colon and equals (e.g., "he said: the answer = 42")', () => {
+    const stdout =
+      '[00:00:00.000 --> 00:00:05.000]   discussion point\n' +
+      'he said: the answer = 42\n';
+    // This is a known, accepted false positive: the line contains both ":" and " ="
+    // so it matches the diagnostic pattern and is NOT accumulated as continuation.
+    // The tradeoff is documented in parseWhisperSegments JSDoc.
+    expect(parseWhisperSegments(stdout)).toEqual([
+      { startMs: 0, endMs: 5000, text: 'discussion point' },
+    ]);
+  });
+});
+
+describe('transcribeAudioWithSegments', () => {
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('omits -nt and returns joined text + parsed segments', async () => {
+    mockExecFile.mockImplementation(
+      ((cmd: string, args: any, options: any, cb: Function) => {
+        cb(null, {
+          stdout:
+            '[00:00:00.000 --> 00:00:02.000]   Hello world\n' +
+            '[00:00:02.000 --> 00:00:04.000]   Goodbye\n',
+          stderr: '',
+        });
+      }) as any
+    );
+
+    const result = await transcribeAudioWithSegments('/path/to/audio.wav');
+
+    expect(result.text).toBe('Hello world Goodbye');
+    expect(result.segments).toHaveLength(2);
+    const callArgs = mockExecFile.mock.calls[0][1] as string[];
+    expect(callArgs).not.toContain('-nt');
   });
 });
