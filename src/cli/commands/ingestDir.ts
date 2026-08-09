@@ -37,6 +37,7 @@ import {
 import { analyzeFrames, FrameAnalysis } from '../../ingestion/videoExtract/analyzeFrames';
 import { extractAudio } from '../../ingestion/videoExtract/extractAudio';
 import { transcribeAudio } from '../../ingestion/videoExtract/transcribe';
+import { parseAndValidateTrimSyntax } from '../../core/videoTimeRange';
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv']);
@@ -80,6 +81,11 @@ export interface IngestDirOptions {
   force?: boolean;
   retryFailed?: boolean;
   stub?: boolean;
+  start?: string;
+  end?: string;
+  duration?: string;
+  keywords?: string[];
+  autoKeywords?: boolean;
 }
 
 export interface IngestDirSummary {
@@ -96,6 +102,25 @@ export async function runIngestDir(
   cliArgs: IngestDirOptions = {},
   runnerOverride?: ExtractionRunner
 ): Promise<IngestDirSummary> {
+  const hasNewVideoFlags =
+    cliArgs.start !== undefined ||
+    cliArgs.end !== undefined ||
+    cliArgs.duration !== undefined ||
+    cliArgs.keywords !== undefined ||
+    !!cliArgs.autoKeywords;
+
+  if (cliArgs.retryFailed && hasNewVideoFlags) {
+    throw new Error(
+      'trm ingest-dir: --retry-failed cannot be combined with --start/--end/--duration/--keywords/--auto-keywords (it always replays the options recorded at failure time)'
+    );
+  }
+
+  const parsedTrim = parseAndValidateTrimSyntax({
+    start: cliArgs.start,
+    end: cliArgs.end,
+    duration: cliArgs.duration,
+  });
+
   const actor = resolveActor(root, cliArgs.actor);
   const runner = runnerOverride ?? (cliArgs.stub ? stubRunner : claudeCodeRunner);
   const storeLock = pLimit(1);
