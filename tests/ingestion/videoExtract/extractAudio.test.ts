@@ -129,4 +129,21 @@ describe('extractAudio', () => {
       /Failed to extract audio from video file "\/videos\/reel\.mp4"/
     );
   });
+
+  it('with no trim arg, produces the same args as today (no -ss/-t)', async () => {
+    mockExecFile.mockImplementation(((cmd: string, args: any, options: any, cb: Function) => cb(null, { stdout: '', stderr: '' })) as any);
+    await extractAudio('/in.mp4', '/tmp');
+    const args = mockExecFile.mock.calls[0][1] as string[];
+    expect(args).not.toContain('-ss');
+    expect(args).not.toContain('-t');
+  });
+
+  it('with a trim arg, adds -ss before -i and -t bounding the clip', async () => {
+    mockExecFile.mockImplementation(((cmd: string, args: any, options: any, cb: Function) => cb(null, { stdout: '', stderr: '' })) as any);
+    await extractAudio('/in.mp4', '/tmp', { startMs: 900000, clipDurationMs: 600000 });
+    const args = mockExecFile.mock.calls[0][1] as string[];
+    expect(args[args.indexOf('-ss') + 1]).toBe('900.000');
+    expect(args[args.indexOf('-t') + 1]).toBe('600.000');
+    expect(args.indexOf('-ss')).toBeLessThan(args.indexOf('-i'));
+  });
 });
