@@ -132,8 +132,16 @@ function segmentTimestampToMs(h: string, m: string, s: string, ms: string): numb
  * throwing, and accumulates trailing non-bracket lines as continuation text
  * for the most recently opened segment (whisper wraps long segments across
  * multiple lines).
+ *
+ * Diagnostic line heuristic: lines that match the pattern `key: value = ...`
+ * (detected by the regex `:\s+\w+\s*=`) are assumed to be whisper.cpp debug
+ * output and are NOT accumulated as continuation text. This preserves real
+ * transcribed speech even if it contains an isolated `=` symbol (e.g. "A equals B").
+ * The pattern `: ` (colon-space) + `=` is sufficiently specific to diagnostic
+ * output that false negatives (dropping real transcribed text) are minimal.
  */
 export function parseWhisperSegments(stdout: string): TranscriptSegment[] {
+  const diagnosticLinePattern = /:\s+\w+\s*=/;
   const segments: TranscriptSegment[] = [];
   let current: TranscriptSegment | null = null;
 
@@ -148,7 +156,7 @@ export function parseWhisperSegments(stdout: string): TranscriptSegment[] {
         text: text.trim(),
       };
       segments.push(current);
-    } else if (current && line.trim().length > 0 && !line.includes('=')) {
+    } else if (current && line.trim().length > 0 && !diagnosticLinePattern.test(line)) {
       current.text = `${current.text} ${line.trim()}`.trim();
     }
   }

@@ -293,6 +293,24 @@ describe('parseWhisperSegments', () => {
     expect(parseWhisperSegments('')).toEqual([]);
     expect(parseWhisperSegments('no segments here at all\n')).toEqual([]);
   });
+
+  it('accumulates continuation text containing an isolated equals sign', () => {
+    const stdout =
+      '[00:00:00.000 --> 00:00:04.000]   the formula is\n' +
+      'X equals Y\n';
+    expect(parseWhisperSegments(stdout)).toEqual([
+      { startMs: 0, endMs: 4000, text: 'the formula is X equals Y' },
+    ]);
+  });
+
+  it('still skips diagnostic lines even when continuation accumulation is active', () => {
+    const stdout =
+      '[00:00:00.000 --> 00:00:02.000]   real segment\n' +
+      'system_info: n_threads = 4\n';
+    expect(parseWhisperSegments(stdout)).toEqual([
+      { startMs: 0, endMs: 2000, text: 'real segment' },
+    ]);
+  });
 });
 
 describe('transcribeAudioWithSegments', () => {
