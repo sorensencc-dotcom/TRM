@@ -63,6 +63,17 @@ describe('computeKeywordWindows', () => {
     expect(windows).toHaveLength(1);
     expect(windows[0]).toEqual([30000 - KEYWORD_MATCH_PADDING_MS, 32000 + KEYWORD_MATCH_PADDING_MS]);
   });
+
+  it('matches both contractions and quoted words in same pass', () => {
+    const segments: TranscriptSegment[] = [
+      { startMs: 15000, endMs: 18000, text: "he said 'quoted' and that's important" },
+    ];
+    // Keywords: "quoted" (will match "'quoted'" after stripping apostrophes) and "that's" (contraction preserved)
+    const { windows, matched } = computeKeywordWindows(segments, ['quoted', "that's"], clipDurationMs);
+    expect(matched).toBe(true);
+    expect(windows).toHaveLength(1);
+    expect(windows[0]).toEqual([15000 - KEYWORD_MATCH_PADDING_MS, 18000 + KEYWORD_MATCH_PADDING_MS]);
+  });
 });
 
 describe('frameInWindows', () => {
