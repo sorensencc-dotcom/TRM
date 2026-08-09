@@ -1785,6 +1785,55 @@ describe('runIngestDir', () => {
       analyzeSpy.mockRestore();
     });
 
+    it('--keywords alone (no trim flags): staged pipeline calls extractAudio/extractFrames WITHOUT trim args, not startMs: 0', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'untrimmed.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      const probeSpy = jest.spyOn(videoProbe, 'probeVideo').mockResolvedValue({ durationMs: 60000, hasAudioStream: true });
+      const whisperDepsSpy = jest.spyOn(videoDeps, 'checkWhisperDeps').mockResolvedValue();
+      const extractAudioSpy = jest
+        .spyOn(extractAudioModule, 'extractAudio')
+        .mockImplementation(async (_f: string, tempDir: string) => path.join(tempDir, 'audio.wav'));
+      const transcribeSegmentsSpy = jest
+        .spyOn(transcribeModule, 'transcribeAudioWithSegments')
+        .mockResolvedValue({ text: 'nothing relevant said here', segments: [] });
+      const extractSpy = jest.spyOn(extractFramesModule, 'extractFrames').mockResolvedValue(['a.jpg']);
+      const analyzeSpy = jest
+        .spyOn(analyzeFramesModule, 'analyzeFrames')
+        .mockImplementation(async (paths: string[], timestamps: number[]) =>
+          paths.map((_, i) => ({ timestampMs: timestamps[i], labels: [] }))
+        );
+
+      const { runner } = makeRunSpyRunner();
+      const summary = await runIngestDir(
+        root,
+        'topic1',
+        { actor: 'ACTOR-001', dir, stub: true, keywords: ['car'] },
+        runner
+      );
+
+      expect(summary.successCount).toBe(1);
+      // No --start/--end/--duration given -- extractAudio/extractFrames must
+      // be called WITHOUT a trim argument (mirroring the legacy path's
+      // isTrimmed guard). Passing startMs: 0 as a defined value would make
+      // extractAudio/buildFfmpegArgs treat this as "trimming is active" and
+      // add an unnecessary -t <duration> bound that can truncate the tail.
+      expect(extractAudioSpy).toHaveBeenCalledWith(expect.any(String), expect.any(String));
+      expect(extractAudioSpy.mock.calls[0].length).toBe(2);
+      expect(extractSpy).toHaveBeenCalledWith(expect.any(String), 60000, expect.any(String));
+      expect(extractSpy.mock.calls[0].length).toBe(3);
+
+      probeSpy.mockRestore();
+      whisperDepsSpy.mockRestore();
+      extractAudioSpy.mockRestore();
+      transcribeSegmentsSpy.mockRestore();
+      extractSpy.mockRestore();
+      analyzeSpy.mockRestore();
+    });
+
     it('--auto-keywords derives from the topic\'s existing Fact.categories and unions with --keywords', async () => {
       const root = makeRoot();
       runCreate(root, 'topic1', { actor: 'ACTOR-001' });
@@ -1981,6 +2030,37 @@ describe('runIngestDir', () => {
       transcribeSpy.mockRestore();
       extractSpy.mockRestore();
       analyzeSpy.mockRestore();
+    });
+
+    it('a PRE-probe failure on a FRESH (non-retry) run still records the requested trim window in failed.json', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'freshpreprobe.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      // probeVideo rejects -- this is BEFORE the isVideo block's later seed
+      // (perVideoParsedTrim -> resolveTrimWindow) is ever reached. Without
+      // the fresh-run branch of the hoisted seed (Finding C1), a fresh run's
+      // requested trim window would be silently discarded here, and a
+      // subsequent --retry-failed would re-ingest the full untrimmed video.
+      const probeSpy = jest
+        .spyOn(videoProbe, 'probeVideo')
+        .mockRejectedValue(new Error('ffprobe transient failure'));
+
+      const { runner } = makeRunSpyRunner();
+      const summary = await runIngestDir(
+        root,
+        'topic1',
+        { actor: 'ACTOR-001', dir, stub: true, start: '05:00', end: '10:00' },
+        runner
+      );
+
+      expect(summary.failureCount).toBe(1);
+      const failed = failedStore.readFailed(root, 'topic1');
+      expect(failed[0].videoOptions).toEqual({ startMs: 5 * 60000, endMs: 10 * 60000 });
+
+      probeSpy.mockRestore();
     });
 
     it('staged pipeline: an analyzeFrames (Vision) failure still persists the already-succeeded transcript/segments for a later retry to reuse', async () => {

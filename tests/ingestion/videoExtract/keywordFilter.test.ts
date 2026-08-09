@@ -10,6 +10,20 @@ describe('normalizeKeywords', () => {
   it('trims, lowercases, strips punctuation, drops empties, dedupes', () => {
     expect(normalizeKeywords([' Car ', 'CAR!', 'accident,', '', '   '])).toEqual(['car', 'accident']);
   });
+
+  it('splits multi-word and hyphenated entries into independently-matchable tokens', () => {
+    expect(normalizeKeywords(['World War II', 'car-accident'])).toEqual([
+      'world',
+      'war',
+      'ii',
+      'car',
+      'accident',
+    ]);
+  });
+
+  it('dedupes tokens produced by splitting against already-present single-word keywords', () => {
+    expect(normalizeKeywords(['car', 'car accident'])).toEqual(['car', 'accident']);
+  });
 });
 
 describe('computeKeywordWindows', () => {

@@ -39,7 +39,7 @@ import {
 import { analyzeFrames, FrameAnalysis } from '../../ingestion/videoExtract/analyzeFrames';
 import { extractAudio } from '../../ingestion/videoExtract/extractAudio';
 import { transcribeAudio, transcribeAudioWithSegments, TranscriptSegment } from '../../ingestion/videoExtract/transcribe';
-import { parseAndValidateTrimSyntax, resolveTrimWindow } from '../../core/videoTimeRange';
+import { parseAndValidateTrimSyntax, resolveTrimWindow, ParsedTrimOptions } from '../../core/videoTimeRange';
 import { VideoFailureOptions } from '../../core/failedStore';
 import { normalizeKeywords, computeKeywordWindows, frameInWindows } from '../../ingestion/videoExtract/keywordFilter';
 import { deriveAutoKeywords } from '../../ingestion/videoExtract/autoKeywords';
@@ -67,6 +67,20 @@ function computeFrameTimestamps(durationMs: number, frameCount: number): number[
   const stepMs =
     durationMs < FPS_THRESHOLD_MS ? 10000 : durationMs / MAX_SELECT_FRAMES;
   return Array.from({ length: frameCount }, (_, i) => i * stepMs);
+}
+
+// Shared by the fresh-run pre-probe seed and the per-video pre-resolveTrimWindow
+// seed below: given a raw (pre-clamp) requested trim, derives the effective
+// requested end -- explicit --end if given, otherwise --start + --duration if
+// both given, otherwise bare --duration. Extracted so both call sites can never
+// silently drift into two different encodings of the same normalization rule.
+function normalizeRequestedEnd(parsed: ParsedTrimOptions): number | undefined {
+  return (
+    parsed.endMs ??
+    (parsed.startMs !== undefined && parsed.durationMs !== undefined
+      ? parsed.startMs + parsed.durationMs
+      : parsed.durationMs)
+  );
 }
 
 function formatTimestamp(ms: number): string {
@@ -269,18 +283,26 @@ export async function runIngestDir(
       let videoHasAudioStream: boolean | undefined;
       let videoEffectiveStartMs: number | undefined;
       let videoEffectiveEndMs: number | undefined;
-      // Seed these from the replayed failure record BEFORE anything that
-      // could throw (fs.promises.stat's size check, probeVideo) even runs --
-      // otherwise a --retry-failed run whose failure happens THAT early
-      // (e.g. a transient probe error) would still have these undefined at
-      // catch time, wiping the replayed trim window from failed.json (same
-      // failure class as the trimRequestedForThisVideo fix below, just one
-      // stage earlier). The later seed-before-resolveTrimWindow step (using
+      // Seed these BEFORE anything that could throw (fs.promises.stat's size
+      // check, probeVideo) even runs -- otherwise a run whose failure happens
+      // THAT early (e.g. a transient probe error, or an oversized file) would
+      // still have these undefined at catch time, wiping the requested trim
+      // window from failed.json (same failure class as the
+      // trimRequestedForThisVideo fix below, just one stage earlier). Covers
+      // BOTH the --retry-failed case (replay whatever was recorded at
+      // failure time) and the fresh-run case (seed from the raw requested,
+      // pre-clamp CLI trim) -- a fresh run's pre-probe failure previously left
+      // these undefined until the isVideo block reseeded them (after the
+      // size-check/probeVideo steps that can throw), silently discarding the
+      // requested trim. The later seed-before-resolveTrimWindow step (using
       // perVideoParsedTrim) overwrites these with the same values once it's
       // reached -- this only fills the gap for failures before that point.
       if (cliArgs.retryFailed) {
         videoEffectiveStartMs = item.videoOptions?.startMs;
         videoEffectiveEndMs = item.videoOptions?.endMs;
+      } else {
+        videoEffectiveStartMs = parsedTrim.startMs;
+        videoEffectiveEndMs = normalizeRequestedEnd(parsedTrim);
       }
 
       // Available for every work item (not just videos), so this is safe to
@@ -339,11 +361,7 @@ export async function runIngestDir(
           // a --start/--duration combo (no explicit --end) still records the
           // intended end, not just the bare start.
           videoEffectiveStartMs = perVideoParsedTrim.startMs;
-          videoEffectiveEndMs =
-            perVideoParsedTrim.endMs ??
-            (perVideoParsedTrim.startMs !== undefined && perVideoParsedTrim.durationMs !== undefined
-              ? perVideoParsedTrim.startMs + perVideoParsedTrim.durationMs
-              : perVideoParsedTrim.durationMs);
+          videoEffectiveEndMs = normalizeRequestedEnd(perVideoParsedTrim);
           const trim = resolveTrimWindow(perVideoParsedTrim, probedDurationMs, getVideoMaxDurationMs());
           videoEffectiveStartMs = trim.effectiveStartMs;
           videoEffectiveEndMs = trim.effectiveEndMs;
@@ -463,10 +481,12 @@ export async function runIngestDir(
                   ? Promise.resolve({ text: cachedProgress.transcript, segments: cachedProgress.transcriptSegments })
                   : (async () => {
                       await checkWhisperDeps();
-                      const audioPath = await extractAudio(filePath, tempDir, {
-                        startMs: trim.effectiveStartMs,
-                        clipDurationMs: durationMs,
-                      });
+                      const audioPath = isTrimmed
+                        ? await extractAudio(filePath, tempDir, {
+                            startMs: trim.effectiveStartMs,
+                            clipDurationMs: durationMs,
+                          })
+                        : await extractAudio(filePath, tempDir);
                       return transcribeAudioWithSegments(audioPath, durationMs);
                     })(),
                 cachedProgress?.frameAnalyses !== undefined
@@ -482,7 +502,9 @@ export async function runIngestDir(
                       cachedKeywordFilterOutcome: cachedProgress.keywordFilterOutcome,
                     })
                   : (async () => {
-                      const framePaths = await extractFrames(filePath, durationMs, tempDir, trim.effectiveStartMs);
+                      const framePaths = isTrimmed
+                        ? await extractFrames(filePath, durationMs, tempDir, trim.effectiveStartMs)
+                        : await extractFrames(filePath, durationMs, tempDir);
                       return {
                         framePaths,
                         cached: null as FrameAnalysis[] | null,
