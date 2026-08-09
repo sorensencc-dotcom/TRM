@@ -71,6 +71,34 @@ describe('extractFrames', () => {
         expect(vf).toContain('scale=1024:1024:force_original_aspect_ratio=decrease');
       }
     });
+
+    it('startMs undefined: byte-identical to the untrimmed baseline for all three strategies', () => {
+      for (const durationMs of [8000, 299000, 300000]) {
+        const trimmed = buildFfmpegArgs('/in.mp4', durationMs, '/tmp/frame-%03d.jpg', undefined);
+        const baseline = buildFfmpegArgs('/in.mp4', durationMs, '/tmp/frame-%03d.jpg');
+        expect(trimmed).toEqual(baseline);
+      }
+    });
+
+    it('midpoint strategy with startMs folds startMs into the single -ss (startMs + durationMs/2)', () => {
+      const args = buildFfmpegArgs('/in.mp4', 8000, '/tmp/frame-%03d.jpg', 900000);
+      const ssValues = args.filter((_, i) => args[i - 1] === '-ss');
+      expect(args.filter((a) => a === '-ss')).toHaveLength(1);
+      expect(args[args.indexOf('-ss') + 1]).toBe('904.000'); // 900 + 4
+    });
+
+    it('fps strategy with startMs=0 (e.g. --end-only trim) adds an explicit -ss 0.000 and a -t bound', () => {
+      const args = buildFfmpegArgs('/in.mp4', 200000, '/tmp/frame-%03d.jpg', 0);
+      expect(args[args.indexOf('-ss') + 1]).toBe('0.000');
+      expect(args).toContain('-t');
+      expect(args[args.indexOf('-t') + 1]).toBe('200.000');
+    });
+
+    it('select strategy with a positive startMs adds -ss startMs and a -t bound', () => {
+      const args = buildFfmpegArgs('/in.mp4', 600000, '/tmp/frame-%03d.jpg', 900000);
+      expect(args[args.indexOf('-ss') + 1]).toBe('900.000');
+      expect(args[args.indexOf('-t') + 1]).toBe('600.000');
+    });
   });
 
   describe('extractFrames (spawn count + fixtures)', () => {

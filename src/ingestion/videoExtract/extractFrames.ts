@@ -64,17 +64,19 @@ function getFfmpegTimeoutMs(): number {
  * @param filePath Path to the source video file
  * @param durationMs Video duration in milliseconds (from probeVideo)
  * @param tempDir Directory to write extracted frame image files into
+ * @param startMs Optional trim offset in milliseconds; when defined (including 0), applies trimming
  * @returns Promise resolving to the written frame file paths, in order
  * @throws Error if ffmpeg fails, times out, or writes no frames
  */
 export async function extractFrames(
   filePath: string,
   durationMs: number,
-  tempDir: string
+  tempDir: string,
+  startMs?: number
 ): Promise<string[]> {
   const ffmpegPath = process.env.TRM_FFMPEG_PATH || 'ffmpeg';
   const outputPattern = path.join(tempDir, FRAME_FILENAME_PATTERN);
-  const args = buildFfmpegArgs(filePath, durationMs, outputPattern);
+  const args = buildFfmpegArgs(filePath, durationMs, outputPattern, startMs);
 
   try {
     await ffmpegPool(() =>
@@ -93,12 +95,6 @@ export async function extractFrames(
     .sort()
     .map((name) => path.join(tempDir, name));
 
-  // ffmpeg can exit 0 while writing nothing (unusual codec, a select
-  // expression that matched no frames). Frame sampling is unconditional for
-  // every video (CONTEXT.md #6), so an empty result is a real extraction
-  // failure, not a valid low-signal outcome -- throw so it routes through the
-  // caller's failedStore path and is revisitable via --retry-failed, rather
-  // than being recorded as a successful video with zero frames.
   if (framePaths.length === 0) {
     throw new Error(`ffmpeg produced no frames for video file "${filePath}"`);
   }
@@ -109,16 +105,21 @@ export async function extractFrames(
 /**
  * Build the single ffmpeg argument list for the given duration's strategy.
  * Exported for direct unit testing of strategy-selection logic.
+ * @param startMs Optional trim offset in milliseconds; when defined (including 0), enables trimming
  */
 export function buildFfmpegArgs(
   filePath: string,
   durationMs: number,
-  outputPattern: string
+  outputPattern: string,
+  startMs?: number
 ): string[] {
+  const isTrimmed = startMs !== undefined;
+  const baseStartMs = startMs ?? 0;
+
   if (durationMs < MIDPOINT_THRESHOLD_MS) {
-    const midpointSeconds = (durationMs / 2 / 1000).toFixed(3);
+    const ssSeconds = ((baseStartMs + durationMs / 2) / 1000).toFixed(3);
     return [
-      '-ss', midpointSeconds,
+      '-ss', ssSeconds,
       '-i', filePath,
       '-vframes', '1',
       '-vf', SCALE_FILTER,
@@ -128,27 +129,27 @@ export function buildFfmpegArgs(
   }
 
   if (durationMs < FPS_THRESHOLD_MS) {
-    return [
-      '-i', filePath,
-      '-vf', `fps=1/10,${SCALE_FILTER}`,
-      '-vsync', 'vfr',
-      '-y',
-      outputPattern
-    ];
+    const args = ['-i', filePath, '-vf', `fps=1/10,${SCALE_FILTER}`, '-vsync', 'vfr'];
+    if (isTrimmed) {
+      args.unshift('-ss', (baseStartMs / 1000).toFixed(3));
+      args.push('-t', (durationMs / 1000).toFixed(3));
+    }
+    args.push('-y', outputPattern);
+    return args;
   }
 
-  // >= 300s: evenly-spaced frames via `select`, spread across the full
-  // duration and capped at MAX_SELECT_FRAMES via -frames:v as a hard backstop
-  // (the select expression's step already targets ~MAX_SELECT_FRAMES frames,
-  // but -frames:v guarantees the cap regardless of rounding).
   const durationSeconds = durationMs / 1000;
   const stepSeconds = (durationSeconds / MAX_SELECT_FRAMES).toFixed(3);
-  return [
+  const args = [
     '-i', filePath,
     '-vf', `select='isnan(prev_selected_t)+gte(t-prev_selected_t\\,${stepSeconds})',${SCALE_FILTER}`,
     '-vsync', 'vfr',
     '-frames:v', String(MAX_SELECT_FRAMES),
-    '-y',
-    outputPattern
   ];
+  if (isTrimmed) {
+    args.unshift('-ss', (baseStartMs / 1000).toFixed(3));
+    args.push('-t', durationSeconds.toFixed(3));
+  }
+  args.push('-y', outputPattern);
+  return args;
 }
