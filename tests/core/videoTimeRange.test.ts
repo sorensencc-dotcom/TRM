@@ -1,4 +1,4 @@
-import { parseTimeString, parseAndValidateTrimSyntax } from '../../src/core/videoTimeRange';
+import { parseTimeString, parseAndValidateTrimSyntax, resolveTrimWindow } from '../../src/core/videoTimeRange';
 
 describe('parseTimeString', () => {
   it('parses MM:SS', () => {
@@ -75,5 +75,69 @@ describe('parseAndValidateTrimSyntax', () => {
 
   it('propagates a malformed timestamp from any of the three flags', () => {
     expect(() => parseAndValidateTrimSyntax({ start: 'bogus' })).toThrow(/Invalid time format/);
+  });
+});
+
+describe('resolveTrimWindow', () => {
+  const HOUR = 60 * 60 * 1000;
+
+  it('start+end normalizes to (start, end)', () => {
+    const r = resolveTrimWindow({ startMs: 5 * 60000, endMs: 10 * 60000 }, HOUR, HOUR);
+    expect(r).toEqual({ effectiveStartMs: 5 * 60000, effectiveEndMs: 10 * 60000, clipDurationMs: 5 * 60000 });
+  });
+
+  it('start+duration normalizes to (start, start+duration)', () => {
+    const r = resolveTrimWindow({ startMs: 5 * 60000, durationMs: 3 * 60000 }, HOUR, HOUR);
+    expect(r).toEqual({ effectiveStartMs: 5 * 60000, effectiveEndMs: 8 * 60000, clipDurationMs: 3 * 60000 });
+  });
+
+  it('start-only normalizes to (start, probedDurationMs)', () => {
+    const r = resolveTrimWindow({ startMs: 5 * 60000 }, 10 * 60000, HOUR);
+    expect(r).toEqual({ effectiveStartMs: 5 * 60000, effectiveEndMs: 10 * 60000, clipDurationMs: 5 * 60000 });
+  });
+
+  it('end-only normalizes to (0, end)', () => {
+    const r = resolveTrimWindow({ endMs: 5 * 60000 }, HOUR, HOUR);
+    expect(r).toEqual({ effectiveStartMs: 0, effectiveEndMs: 5 * 60000, clipDurationMs: 5 * 60000 });
+  });
+
+  it('duration-only normalizes to (0, duration)', () => {
+    const r = resolveTrimWindow({ durationMs: 5 * 60000 }, HOUR, HOUR);
+    expect(r).toEqual({ effectiveStartMs: 0, effectiveEndMs: 5 * 60000, clipDurationMs: 5 * 60000 });
+  });
+
+  it('none normalizes to (0, probedDurationMs) -- unchanged default behavior', () => {
+    const r = resolveTrimWindow({}, 42 * 60000, HOUR);
+    expect(r).toEqual({ effectiveStartMs: 0, effectiveEndMs: 42 * 60000, clipDurationMs: 42 * 60000 });
+  });
+
+  it('rejects start beyond probed duration', () => {
+    expect(() => resolveTrimWindow({ startMs: 65 * 60000 }, 60 * 60000, HOUR)).toThrow(/beyond the video/);
+  });
+
+  it('clamps end beyond probed duration and returns a warning', () => {
+    const r = resolveTrimWindow({ endMs: 70 * 60000 }, 60 * 60000, HOUR);
+    expect(r.effectiveEndMs).toBe(60 * 60000);
+    expect(r.warning).toMatch(/clamped/);
+  });
+
+  it('rejects a zero-length clip produced only after clamping (start==end after normalization)', () => {
+    expect(() => resolveTrimWindow({ startMs: 10 * 60000, endMs: 10 * 60000 }, HOUR, HOUR)).toThrow();
+  });
+
+  it('a short explicit --duration on a shorter-than-duration video clamps to a positive, non-zero clip (independent guard, not redundant)', () => {
+    const r = resolveTrimWindow({ durationMs: 5 * 60000 }, 3 * 60000, HOUR);
+    expect(r.effectiveEndMs).toBe(3 * 60000);
+    expect(r.clipDurationMs).toBe(3 * 60000);
+  });
+
+  it('rejects clip duration exceeding the max clip duration cap', () => {
+    expect(() => resolveTrimWindow({ durationMs: 20 * 60000 }, HOUR, 10 * 60000)).toThrow(
+      /exceeds max duration/
+    );
+  });
+
+  it('uncapped-by-trim: with no trim, cap is checked against the full probed duration, unchanged from today', () => {
+    expect(() => resolveTrimWindow({}, 20 * 60000, 10 * 60000)).toThrow(/exceeds max duration/);
   });
 });
