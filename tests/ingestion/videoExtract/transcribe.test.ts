@@ -311,6 +311,24 @@ describe('parseWhisperSegments', () => {
       { startMs: 0, endMs: 2000, text: 'real segment' },
     ]);
   });
+
+  it('skips multi-word diagnostic keys (e.g., whisper init params)', () => {
+    const stdout =
+      '[00:00:00.000 --> 00:00:02.000]   real segment\n' +
+      'whisper_init_with_params: flash attn = 0\n';
+    expect(parseWhisperSegments(stdout)).toEqual([
+      { startMs: 0, endMs: 2000, text: 'real segment' },
+    ]);
+  });
+
+  it('skips diagnostic lines with extra spaces around equals', () => {
+    const stdout =
+      '[00:00:00.000 --> 00:00:02.000]   real segment\n' +
+      'config_init: use gpu    = 1\n';
+    expect(parseWhisperSegments(stdout)).toEqual([
+      { startMs: 0, endMs: 2000, text: 'real segment' },
+    ]);
+  });
 });
 
 describe('transcribeAudioWithSegments', () => {
