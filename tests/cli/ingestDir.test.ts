@@ -1600,6 +1600,270 @@ describe('runIngestDir', () => {
 
       restoreVideoPipelineMocks(spies);
     });
+
+    it('no keyword flags: legacy concurrent path, keywordFilterOutcome not-requested, framesConsidered === framesAnalyzed', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'plain.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      const spies = mockVideoPipeline({
+        durationMs: 60000,
+        hasAudioStream: true,
+        transcript: 'plain transcript',
+        framePaths: ['frame-000.jpg'],
+        frameAnalyses: [{ timestampMs: 0, labels: [] }],
+      });
+      const { runner } = makeRunSpyRunner();
+
+      await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+
+      expect(spies.transcribeSpy).toHaveBeenCalledTimes(1); // transcribeAudio, not transcribeAudioWithSegments
+      const metrics = readVideoMetrics(root);
+      expect(metrics[0].keywordFilterOutcome).toBe('not-requested');
+      expect(metrics[0].framesConsidered).toBe(metrics[0].framesAnalyzed);
+
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('--keywords normalizing to empty list: legacy concurrent path (no segments), fallback-no-match', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'emptykw.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      const spies = mockVideoPipeline({
+        durationMs: 60000,
+        hasAudioStream: true,
+        transcript: 'irrelevant',
+        framePaths: ['frame-000.jpg'],
+        frameAnalyses: [{ timestampMs: 0, labels: [] }],
+      });
+      const { runner } = makeRunSpyRunner();
+
+      await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true, keywords: ['', '   '] }, runner);
+
+      expect(spies.transcribeSpy).toHaveBeenCalledTimes(1); // legacy transcribeAudio used, not segments
+      const metrics = readVideoMetrics(root);
+      expect(metrics[0].keywordFilterOutcome).toBe('fallback-no-match');
+      expect(metrics[0].framesConsidered).toBe(metrics[0].framesAnalyzed);
+
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('--keywords on a no-audio video: legacy concurrent path, fallback-no-audio', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'silentkw.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      const spies = mockVideoPipeline({
+        durationMs: 60000,
+        hasAudioStream: false,
+        framePaths: ['frame-000.jpg'],
+        frameAnalyses: [{ timestampMs: 0, labels: [] }],
+      });
+      const { runner } = makeRunSpyRunner();
+
+      await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true, keywords: ['car'] }, runner);
+
+      expect(spies.transcribeSpy).not.toHaveBeenCalled();
+      const metrics = readVideoMetrics(root);
+      expect(metrics[0].keywordFilterOutcome).toBe('fallback-no-audio');
+      expect(metrics[0].framesConsidered).toBe(metrics[0].framesAnalyzed);
+
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('--keywords with real segments and a match: staged pipeline, only matching frames reach analyzeFrames', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'matched.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      const probeSpy = jest.spyOn(videoProbe, 'probeVideo').mockResolvedValue({ durationMs: 100000, hasAudioStream: true });
+      const whisperDepsSpy = jest.spyOn(videoDeps, 'checkWhisperDeps').mockResolvedValue();
+      const extractAudioSpy = jest
+        .spyOn(extractAudioModule, 'extractAudio')
+        .mockImplementation(async (_f: string, tempDir: string) => path.join(tempDir, 'audio.wav'));
+      const transcribeSegmentsSpy = jest
+        .spyOn(transcribeModule, 'transcribeAudioWithSegments')
+        .mockResolvedValue({
+          text: 'a car passed by',
+          segments: [{ startMs: 40000, endMs: 41000, text: 'a car passed by' }],
+        });
+      const extractSpy = jest
+        .spyOn(extractFramesModule, 'extractFrames')
+        .mockResolvedValue(['frame-far.jpg', 'frame-near.jpg']);
+      const analyzeSpy = jest
+        .spyOn(analyzeFramesModule, 'analyzeFrames')
+        .mockImplementation(async (paths: string[], timestamps: number[]) =>
+          paths.map((_, i) => ({ timestampMs: timestamps[i], labels: [] }))
+        );
+
+      const { runner } = makeRunSpyRunner();
+      const summary = await runIngestDir(
+        root,
+        'topic1',
+        { actor: 'ACTOR-001', dir, stub: true, keywords: ['car'] },
+        runner
+      );
+
+      expect(summary.successCount).toBe(1);
+      // analyzeFrames only receives frames the ingestDir code decided are inside
+      // the match window -- assert it was called with a strict subset of the
+      // full 2-frame extraction, not both.
+      const analyzeCallArgs = analyzeSpy.mock.calls[0];
+      expect((analyzeCallArgs[0] as string[]).length).toBeLessThan(2);
+
+      const metrics = readVideoMetrics(root);
+      expect(metrics[0].keywordFilterOutcome).toBe('filtered');
+      expect(metrics[0].framesConsidered).toBe(2);
+      expect(metrics[0].framesAnalyzed).toBeLessThan(2);
+      expect(metrics[0].keywordsUsed).toEqual(['car']);
+      expect(metrics[0].keywordSource).toBe('manual');
+
+      probeSpy.mockRestore();
+      whisperDepsSpy.mockRestore();
+      extractAudioSpy.mockRestore();
+      transcribeSegmentsSpy.mockRestore();
+      extractSpy.mockRestore();
+      analyzeSpy.mockRestore();
+    });
+
+    it('--keywords with real segments and zero matches: staged transcript ran, but fallback-no-match analyzes everything', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'nomatch.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      const probeSpy = jest.spyOn(videoProbe, 'probeVideo').mockResolvedValue({ durationMs: 60000, hasAudioStream: true });
+      const whisperDepsSpy = jest.spyOn(videoDeps, 'checkWhisperDeps').mockResolvedValue();
+      const extractAudioSpy = jest
+        .spyOn(extractAudioModule, 'extractAudio')
+        .mockImplementation(async (_f: string, tempDir: string) => path.join(tempDir, 'audio.wav'));
+      const transcribeSegmentsSpy = jest
+        .spyOn(transcribeModule, 'transcribeAudioWithSegments')
+        .mockResolvedValue({ text: 'nothing relevant said here', segments: [{ startMs: 0, endMs: 5000, text: 'nothing relevant said here' }] });
+      const extractSpy = jest.spyOn(extractFramesModule, 'extractFrames').mockResolvedValue(['a.jpg', 'b.jpg']);
+      const analyzeSpy = jest
+        .spyOn(analyzeFramesModule, 'analyzeFrames')
+        .mockImplementation(async (paths: string[], timestamps: number[]) =>
+          paths.map((_, i) => ({ timestampMs: timestamps[i], labels: [] }))
+        );
+
+      const { runner } = makeRunSpyRunner();
+      await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true, keywords: ['spaceship'] }, runner);
+
+      expect((analyzeSpy.mock.calls[0][0] as string[]).length).toBe(2); // all frames, not filtered
+      const metrics = readVideoMetrics(root);
+      expect(metrics[0].keywordFilterOutcome).toBe('fallback-no-match');
+      expect(metrics[0].framesConsidered).toBe(2);
+      expect(metrics[0].framesAnalyzed).toBe(2);
+
+      probeSpy.mockRestore();
+      whisperDepsSpy.mockRestore();
+      extractAudioSpy.mockRestore();
+      transcribeSegmentsSpy.mockRestore();
+      extractSpy.mockRestore();
+      analyzeSpy.mockRestore();
+    });
+
+    it('--auto-keywords derives from the topic\'s existing Fact.categories and unions with --keywords', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+      manifestStore.markDone(root, 'topic1', 'preexisting-hash', '/pre.txt');
+      manifestStore.writeExtract(root, 'topic1', 'preexisting-hash', {
+        facts: [{ id: 'FCT-1', text: 't', source_id: 'SRC-1', confidence: 0.9, categories: ['accident'] }],
+        summary: '',
+      });
+
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'auto.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      const probeSpy = jest.spyOn(videoProbe, 'probeVideo').mockResolvedValue({ durationMs: 60000, hasAudioStream: true });
+      const whisperDepsSpy = jest.spyOn(videoDeps, 'checkWhisperDeps').mockResolvedValue();
+      const extractAudioSpy = jest
+        .spyOn(extractAudioModule, 'extractAudio')
+        .mockImplementation(async (_f: string, tempDir: string) => path.join(tempDir, 'audio.wav'));
+      const transcribeSegmentsSpy = jest
+        .spyOn(transcribeModule, 'transcribeAudioWithSegments')
+        .mockResolvedValue({ text: 'an accident happened', segments: [{ startMs: 0, endMs: 1000, text: 'an accident happened' }] });
+      const extractSpy = jest.spyOn(extractFramesModule, 'extractFrames').mockResolvedValue(['a.jpg']);
+      const analyzeSpy = jest.spyOn(analyzeFramesModule, 'analyzeFrames').mockResolvedValue([{ timestampMs: 0, labels: [] }]);
+
+      const { runner } = makeRunSpyRunner();
+      await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true, keywords: ['car'], autoKeywords: true }, runner);
+
+      const metrics = readVideoMetrics(root);
+      expect(metrics[0].keywordSource).toBe('manual+auto');
+      expect(new Set(metrics[0].keywordsUsed)).toEqual(new Set(['car', 'accident']));
+
+      probeSpy.mockRestore();
+      whisperDepsSpy.mockRestore();
+      extractAudioSpy.mockRestore();
+      transcribeSegmentsSpy.mockRestore();
+      extractSpy.mockRestore();
+      analyzeSpy.mockRestore();
+    });
+
+    it('--retry-failed replays the recorded keywords/keywordSource from the failed attempt', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      const filePath = path.join(dir, 'retrykw.mp4');
+      fs.writeFileSync(filePath, 'fake mp4 bytes', 'utf-8');
+
+      const probeSpy = jest.spyOn(videoProbe, 'probeVideo').mockResolvedValue({ durationMs: 60000, hasAudioStream: true });
+      const whisperDepsSpy = jest.spyOn(videoDeps, 'checkWhisperDeps').mockResolvedValue();
+      const extractAudioSpy = jest
+        .spyOn(extractAudioModule, 'extractAudio')
+        .mockImplementation(async (_f: string, tempDir: string) => path.join(tempDir, 'audio.wav'));
+      const transcribeSegmentsSpy = jest
+        .spyOn(transcribeModule, 'transcribeAudioWithSegments')
+        .mockResolvedValue({ text: 'a car passed', segments: [{ startMs: 0, endMs: 1000, text: 'a car passed' }] });
+      const extractSpy = jest.spyOn(extractFramesModule, 'extractFrames').mockRejectedValueOnce(new Error('ffmpeg exploded')); // first call fails
+      extractSpy.mockResolvedValueOnce(['a.jpg']);
+      const analyzeSpy = jest.spyOn(analyzeFramesModule, 'analyzeFrames').mockResolvedValue([{ timestampMs: 0, labels: [] }]);
+
+      const { runner } = makeRunSpyRunner();
+      await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true, keywords: ['car'] }, runner);
+
+      const failed = failedStore.readFailed(root, 'topic1');
+      expect(failed[0].videoOptions?.keywords).toEqual(['car']);
+      expect(failed[0].videoOptions?.keywordSource).toBe('manual');
+
+      extractSpy.mockResolvedValue(['a.jpg']); // fix the underlying problem
+      const retrySummary = await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, retryFailed: true, stub: true }, runner);
+
+      expect(retrySummary.successCount).toBe(1);
+      // The replayed keywords/keywordSource give the retry attempt the SAME
+      // optionsFingerprint as the original failed attempt (trim didn't
+      // change either), so the transcript -- which already succeeded on the
+      // first attempt -- is reused from the partial-progress cache rather
+      // than re-transcribed, exactly like the pre-existing (non-keyword)
+      // partial-progress-resume tests above. What proves the STAGED
+      // (segment-aware) path was actually used again on retry, not the
+      // legacy path, is that extractFrames -- which genuinely failed and so
+      // was never cached -- runs a second time and its (filtered) output
+      // still reaches a successful outcome.
+      expect(transcribeSegmentsSpy).toHaveBeenCalledTimes(1);
+      expect(extractSpy).toHaveBeenCalledTimes(2);
+
+      probeSpy.mockRestore();
+      whisperDepsSpy.mockRestore();
+      extractAudioSpy.mockRestore();
+      transcribeSegmentsSpy.mockRestore();
+      extractSpy.mockRestore();
+      analyzeSpy.mockRestore();
+    });
   });
 
   it('--retry-failed reprocesses only failed items', async () => {

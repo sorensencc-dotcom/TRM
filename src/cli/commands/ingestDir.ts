@@ -38,9 +38,12 @@ import {
 } from '../../ingestion/videoExtract/extractFrames';
 import { analyzeFrames, FrameAnalysis } from '../../ingestion/videoExtract/analyzeFrames';
 import { extractAudio } from '../../ingestion/videoExtract/extractAudio';
-import { transcribeAudio } from '../../ingestion/videoExtract/transcribe';
+import { transcribeAudio, transcribeAudioWithSegments, TranscriptSegment } from '../../ingestion/videoExtract/transcribe';
 import { parseAndValidateTrimSyntax, resolveTrimWindow } from '../../core/videoTimeRange';
 import { VideoFailureOptions } from '../../core/failedStore';
+import { normalizeKeywords, computeKeywordWindows, frameInWindows } from '../../ingestion/videoExtract/keywordFilter';
+import { deriveAutoKeywords } from '../../ingestion/videoExtract/autoKeywords';
+import { KeywordFilterOutcome } from '../../core/videoMetricsLog';
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv']);
@@ -71,6 +74,10 @@ function formatTimestamp(ms: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function keywordsFlagGivenForThisVideo(source: KeywordSource): boolean {
+  return source !== 'none';
 }
 
 export interface IngestDirOptions {
@@ -145,6 +152,7 @@ export async function runIngestDir(
   interface FileWorkItem {
     filePath: string;
     expectedHash?: string;
+    videoOptions?: VideoFailureOptions;
   }
 
   let workItems: FileWorkItem[] = [];
@@ -154,6 +162,7 @@ export async function runIngestDir(
     workItems = failedEntries.map((e) => ({
       filePath: e.sourcePath,
       expectedHash: e.hash,
+      videoOptions: e.videoOptions,
     }));
   } else {
     if (!fs.existsSync(dirToWalk) || !fs.statSync(dirToWalk).isDirectory()) {
@@ -204,17 +213,18 @@ export async function runIngestDir(
   // fan-out, those bound the external-service call rate.
   const ioLimit = pLimit(Number(process.env.TRM_IO_CONCURRENCY) || 8);
 
+  const manualKeywords = cliArgs.keywords ?? [];
   const keywordsFlagGiven = cliArgs.keywords !== undefined;
   const autoKeywordsFlagGiven = !!cliArgs.autoKeywords;
   let batchKeywordSource: KeywordSource = 'none';
   if (keywordsFlagGiven && autoKeywordsFlagGiven) batchKeywordSource = 'manual+auto';
   else if (autoKeywordsFlagGiven) batchKeywordSource = 'auto';
   else if (keywordsFlagGiven) batchKeywordSource = 'manual';
-  // Auto-keyword derivation and normalizeKeywords() are wired in Task 11 --
-  // this task only needs keywordsUsed to exist as an empty array so the
-  // fingerprint/videoOptions plumbing below has a real (always-empty-for-now)
-  // value to record.
-  const batchKeywordsUsed: string[] = [];
+
+  const batchKeywordsUsed = normalizeKeywords([
+    ...manualKeywords,
+    ...(autoKeywordsFlagGiven ? deriveAutoKeywords(root, targetTopicPath) : []),
+  ]);
   // Whether the operator actually asked for a trim at all -- used to gate
   // whether a failure's recorded videoOptions carries trim info. Deliberately
   // based on the raw parsedTrim shape, not on the post-resolveTrimWindow
@@ -260,6 +270,17 @@ export async function runIngestDir(
       let videoEffectiveStartMs: number | undefined;
       let videoEffectiveEndMs: number | undefined;
 
+      // Available for every work item (not just videos), so this is safe to
+      // compute here regardless of isVideo/hasAudioStream -- during
+      // --retry-failed, replay whatever keywords/source were recorded at
+      // failure time; otherwise use the batch-level values computed above.
+      const perVideoKeywordsUsed = cliArgs.retryFailed
+        ? item.videoOptions?.keywords ?? []
+        : batchKeywordsUsed;
+      const perVideoKeywordSource: KeywordSource = cliArgs.retryFailed
+        ? item.videoOptions?.keywordSource ?? 'none'
+        : batchKeywordSource;
+
       try {
         if (isVideo) {
           const stat = await fs.promises.stat(filePath);
@@ -274,6 +295,19 @@ export async function runIngestDir(
           videoDurationMs = probedDurationMs;
           videoHasAudioStream = hasAudioStream;
 
+          // Per-video trim replay (extends Task 10's use of the batch-level
+          // parsedTrim): when retrying, use the item's recorded effective
+          // start/end directly as a start+end pair fed through
+          // resolveTrimWindow (re-validating against the current probe in
+          // case the file changed), instead of the batch-level parsedTrim
+          // (which is always {} during --retry-failed, per Task 9's
+          // mutual-exclusion check).
+          const perVideoParsedTrim = cliArgs.retryFailed
+            ? item.videoOptions?.startMs !== undefined || item.videoOptions?.endMs !== undefined
+              ? { startMs: item.videoOptions?.startMs ?? 0, endMs: item.videoOptions?.endMs }
+              : {}
+            : parsedTrim;
+
           // Seed from the raw requested (pre-clamp) values before
           // resolveTrimWindow runs -- if it throws (e.g. --start beyond the
           // video's duration), the outer catch below still has whatever was
@@ -281,13 +315,13 @@ export async function runIngestDir(
           // resolveTrimWindow's own normalization for the pre-throw case so
           // a --start/--duration combo (no explicit --end) still records the
           // intended end, not just the bare start.
-          videoEffectiveStartMs = parsedTrim.startMs;
+          videoEffectiveStartMs = perVideoParsedTrim.startMs;
           videoEffectiveEndMs =
-            parsedTrim.endMs ??
-            (parsedTrim.startMs !== undefined && parsedTrim.durationMs !== undefined
-              ? parsedTrim.startMs + parsedTrim.durationMs
-              : parsedTrim.durationMs);
-          const trim = resolveTrimWindow(parsedTrim, probedDurationMs, getVideoMaxDurationMs());
+            perVideoParsedTrim.endMs ??
+            (perVideoParsedTrim.startMs !== undefined && perVideoParsedTrim.durationMs !== undefined
+              ? perVideoParsedTrim.startMs + perVideoParsedTrim.durationMs
+              : perVideoParsedTrim.durationMs);
+          const trim = resolveTrimWindow(perVideoParsedTrim, probedDurationMs, getVideoMaxDurationMs());
           videoEffectiveStartMs = trim.effectiveStartMs;
           videoEffectiveEndMs = trim.effectiveEndMs;
           if (trim.warning) {
@@ -299,14 +333,24 @@ export async function runIngestDir(
           const optionsFingerprint = computeOptionsFingerprint({
             effectiveStartMs: trim.effectiveStartMs,
             effectiveEndMs: trim.effectiveEndMs,
-            keywordsUsed: batchKeywordsUsed,
-            keywordSource: batchKeywordSource,
+            keywordsUsed: perVideoKeywordsUsed,
+            keywordSource: perVideoKeywordSource,
           });
+
+          // Only the staged (segment-aware) pipeline can change which frames
+          // reach Vision -- it's the one case where transcribeAudioWithSegments
+          // (not the plain transcribeAudio) is needed, so it's skipped
+          // entirely (legacy fully-concurrent path used instead) whenever
+          // there's nothing to filter by, or no audio to derive match windows
+          // from in the first place.
+          const useStagedPipeline = perVideoKeywordsUsed.length > 0 && hasAudioStream;
 
           // One temp dir per video, shared by both concurrent branches (the
           // extracted WAV and the sampled frame files), removed once both
           // resolve. Deliberately a single dir, not one per branch.
           const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'trm-video-'));
+          let keywordFilterOutcome: KeywordFilterOutcome;
+          let framesConsidered = 0;
           let transcript: string;
           let frameAnalyses: FrameAnalysis[];
           // A prior run of this exact file (same content hash) may have
@@ -327,57 +371,147 @@ export async function runIngestDir(
             // is swallowed below. Settling first removes the race; which
             // error wins when BOTH branches fail is now fixed (transcript
             // branch preferred) rather than whichever settled first.
-            const [transcriptResult, frameResult] = await Promise.allSettled([
-              cachedProgress?.transcript !== undefined
-                ? Promise.resolve(cachedProgress.transcript)
-                : hasAudioStream
-                ? (async () => {
-                    await checkWhisperDeps();
-                    // whisper.cpp cannot read an .mp4/.mov container -- extract
-                    // audio stream 0 to a 16kHz mono WAV first (CONTEXT.md #5).
-                    // Part of preparing the transcript, so it lives inside this
-                    // branch and stays concurrent with frame sampling.
-                    const audioPath = isTrimmed
-                      ? await extractAudio(filePath, tempDir, {
-                          startMs: trim.effectiveStartMs,
-                          clipDurationMs: durationMs,
-                        })
-                      : await extractAudio(filePath, tempDir);
-                    return transcribeAudio(audioPath, durationMs);
-                  })()
-                : Promise.resolve(''),
-              cachedProgress?.frameAnalyses !== undefined
-                ? Promise.resolve(cachedProgress.frameAnalyses)
-                : (async () => {
-                    const framePaths = isTrimmed
-                      ? await extractFrames(filePath, durationMs, tempDir, trim.effectiveStartMs)
-                      : await extractFrames(filePath, durationMs, tempDir);
-                    const timestampsMs = computeFrameTimestamps(durationMs, framePaths.length);
-                    const analyzed = await analyzeFrames(framePaths, timestampsMs, analyzer);
-                    // Stored timestamps are original-video-relative -- offset
-                    // exactly once here, right after Vision analysis produces
-                    // clip-relative timestamps, before anything downstream
-                    // (cache, envelope) sees them.
-                    return trim.effectiveStartMs === 0
-                      ? analyzed
-                      : analyzed.map((f) => ({ ...f, timestampMs: f.timestampMs + trim.effectiveStartMs }));
-                  })(),
-            ]);
-            if (transcriptResult.status === 'rejected' || frameResult.status === 'rejected') {
-              // Persist whichever branch actually succeeded this run (fresh
-              // or reused from cache) so a future retry of this same file
-              // doesn't redo it again.
-              const progress: VideoPartialProgress = { optionsFingerprint };
-              if (transcriptResult.status === 'fulfilled') progress.transcript = transcriptResult.value;
-              if (frameResult.status === 'fulfilled') progress.frameAnalyses = frameResult.value;
-              if (progress.transcript !== undefined || progress.frameAnalyses !== undefined) {
+            if (!useStagedPipeline) {
+              // Legacy fully-concurrent path -- covers "not requested" and both
+              // fallback rows (empty normalized list; no audio) decided up front.
+              keywordFilterOutcome = !keywordsFlagGivenForThisVideo(perVideoKeywordSource)
+                ? 'not-requested'
+                : perVideoKeywordsUsed.length === 0
+                ? 'fallback-no-match'
+                : 'fallback-no-audio';
+
+              const [transcriptResult, frameResult] = await Promise.allSettled([
+                cachedProgress?.transcript !== undefined
+                  ? Promise.resolve(cachedProgress.transcript)
+                  : hasAudioStream
+                  ? (async () => {
+                      await checkWhisperDeps();
+                      // whisper.cpp cannot read an .mp4/.mov container -- extract
+                      // audio stream 0 to a 16kHz mono WAV first (CONTEXT.md #5).
+                      // Part of preparing the transcript, so it lives inside this
+                      // branch and stays concurrent with frame sampling.
+                      const audioPath = isTrimmed
+                        ? await extractAudio(filePath, tempDir, {
+                            startMs: trim.effectiveStartMs,
+                            clipDurationMs: durationMs,
+                          })
+                        : await extractAudio(filePath, tempDir);
+                      return transcribeAudio(audioPath, durationMs);
+                    })()
+                  : Promise.resolve(''),
+                cachedProgress?.frameAnalyses !== undefined
+                  ? Promise.resolve(cachedProgress.frameAnalyses)
+                  : (async () => {
+                      const framePaths = isTrimmed
+                        ? await extractFrames(filePath, durationMs, tempDir, trim.effectiveStartMs)
+                        : await extractFrames(filePath, durationMs, tempDir);
+                      const timestampsMs = computeFrameTimestamps(durationMs, framePaths.length);
+                      const analyzed = await analyzeFrames(framePaths, timestampsMs, analyzer);
+                      // Stored timestamps are original-video-relative -- offset
+                      // exactly once here, right after Vision analysis produces
+                      // clip-relative timestamps, before anything downstream
+                      // (cache, envelope) sees them.
+                      return trim.effectiveStartMs === 0
+                        ? analyzed
+                        : analyzed.map((f) => ({ ...f, timestampMs: f.timestampMs + trim.effectiveStartMs }));
+                    })(),
+              ]);
+              if (transcriptResult.status === 'rejected' || frameResult.status === 'rejected') {
+                // Persist whichever branch actually succeeded this run (fresh
+                // or reused from cache) so a future retry of this same file
+                // doesn't redo it again.
+                const progress: VideoPartialProgress = { optionsFingerprint };
+                if (transcriptResult.status === 'fulfilled') progress.transcript = transcriptResult.value;
+                if (frameResult.status === 'fulfilled') progress.frameAnalyses = frameResult.value;
+                if (progress.transcript !== undefined || progress.frameAnalyses !== undefined) {
+                  writeVideoPartialProgress(root, hash!, progress);
+                }
+                if (transcriptResult.status === 'rejected') throw transcriptResult.reason;
+                throw (frameResult as PromiseRejectedResult).reason;
+              }
+              transcript = transcriptResult.value;
+              frameAnalyses = frameResult.value;
+              framesConsidered = frameAnalyses.length;
+            } else {
+              // Staged pipeline -- the only case where a match window can
+              // change which frames reach Vision.
+              const [transcriptResult, frameResult] = await Promise.allSettled([
+                cachedProgress?.transcript !== undefined && cachedProgress?.transcriptSegments !== undefined
+                  ? Promise.resolve({ text: cachedProgress.transcript, segments: cachedProgress.transcriptSegments })
+                  : (async () => {
+                      await checkWhisperDeps();
+                      const audioPath = await extractAudio(filePath, tempDir, {
+                        startMs: trim.effectiveStartMs,
+                        clipDurationMs: durationMs,
+                      });
+                      return transcribeAudioWithSegments(audioPath, durationMs);
+                    })(),
+                cachedProgress?.frameAnalyses !== undefined
+                  ? Promise.resolve({ framePaths: null, cached: cachedProgress.frameAnalyses })
+                  : (async () => {
+                      const framePaths = await extractFrames(filePath, durationMs, tempDir, trim.effectiveStartMs);
+                      return { framePaths, cached: null as FrameAnalysis[] | null };
+                    })(),
+              ]);
+
+              if (transcriptResult.status === 'rejected' || frameResult.status === 'rejected') {
+                const progress: VideoPartialProgress = { optionsFingerprint };
+                if (transcriptResult.status === 'fulfilled') {
+                  progress.transcript = transcriptResult.value.text;
+                  progress.transcriptSegments = transcriptResult.value.segments;
+                }
+                if (frameResult.status === 'fulfilled' && frameResult.value.cached) {
+                  progress.frameAnalyses = frameResult.value.cached;
+                }
+                if (progress.transcript !== undefined || progress.frameAnalyses !== undefined) {
+                  writeVideoPartialProgress(root, hash!, progress);
+                }
+                if (transcriptResult.status === 'rejected') throw transcriptResult.reason;
+                throw (frameResult as PromiseRejectedResult).reason;
+              }
+
+              transcript = transcriptResult.value.text;
+              const segments: TranscriptSegment[] = transcriptResult.value.segments;
+
+              // Stage B: sequential, only reached once both Stage A branches fulfilled.
+              if (frameResult.value.cached) {
+                frameAnalyses = frameResult.value.cached;
+                framesConsidered = frameAnalyses.length; // a cached full analysis was already fingerprint-matched
+                keywordFilterOutcome = 'filtered'; // cache only ever holds a completed Stage B result under this fingerprint
+              } else {
+                const framePaths = frameResult.value.framePaths!;
+                framesConsidered = framePaths.length;
+                const allTimestampsMs = computeFrameTimestamps(durationMs, framePaths.length);
+                const { windows, matched } = computeKeywordWindows(segments, perVideoKeywordsUsed, durationMs);
+
+                let filteredPaths = framePaths;
+                let filteredTimestamps = allTimestampsMs;
+                if (matched) {
+                  const kept = allTimestampsMs
+                    .map((ts, i) => ({ ts, i }))
+                    .filter(({ ts }) => frameInWindows(ts, windows));
+                  filteredPaths = kept.map(({ i }) => framePaths[i]);
+                  filteredTimestamps = kept.map(({ ts }) => ts);
+                  keywordFilterOutcome = 'filtered';
+                } else {
+                  keywordFilterOutcome = 'fallback-no-match';
+                }
+
+                const analyzed = await analyzeFrames(filteredPaths, filteredTimestamps, analyzer);
+                frameAnalyses =
+                  trim.effectiveStartMs === 0
+                    ? analyzed
+                    : analyzed.map((f) => ({ ...f, timestampMs: f.timestampMs + trim.effectiveStartMs }));
+
+                const progress: VideoPartialProgress = {
+                  optionsFingerprint,
+                  transcript,
+                  transcriptSegments: segments,
+                  frameAnalyses,
+                };
                 writeVideoPartialProgress(root, hash!, progress);
               }
-              if (transcriptResult.status === 'rejected') throw transcriptResult.reason;
-              throw (frameResult as PromiseRejectedResult).reason;
             }
-            transcript = transcriptResult.value;
-            frameAnalyses = frameResult.value;
             // Full success -- clear any partial-progress sidecar from an
             // earlier failed attempt at this same file.
             clearVideoPartialProgress(root, hash!);
@@ -410,10 +544,10 @@ export async function runIngestDir(
             visionFailureCount: 0,
             trimStartMs: trim.effectiveStartMs,
             trimEndMs: trim.effectiveEndMs,
-            keywordsUsed: batchKeywordsUsed,
-            keywordSource: batchKeywordSource,
-            keywordFilterOutcome: 'not-requested',
-            framesConsidered: frameAnalyses.length,
+            keywordsUsed: perVideoKeywordsUsed,
+            keywordSource: perVideoKeywordSource,
+            keywordFilterOutcome,
+            framesConsidered,
             framesAnalyzed: frameAnalyses.length,
           });
 
@@ -463,9 +597,9 @@ export async function runIngestDir(
               videoProcessing: {
                 effectiveStartMs: trim.effectiveStartMs,
                 effectiveEndMs: trim.effectiveEndMs,
-                keywordsUsed: batchKeywordsUsed,
-                keywordSource: batchKeywordSource,
-                keywordFilterOutcome: 'not-requested',
+                keywordsUsed: perVideoKeywordsUsed,
+                keywordSource: perVideoKeywordSource,
+                keywordFilterOutcome,
               },
             };
 
@@ -650,9 +784,22 @@ export async function runIngestDir(
           // trim -- otherwise resolveTrimWindow's untrimmed defaults
           // (effectiveStartMs: 0, effectiveEndMs: probedDurationMs) would
           // get written into failed.json for every post-probe failure, even
-          // when no --start/--end/--duration flag was ever given.
-          if (trimRequested && (videoEffectiveStartMs !== undefined || videoEffectiveEndMs !== undefined)) {
-            videoOptions = { startMs: videoEffectiveStartMs, endMs: videoEffectiveEndMs };
+          // when no --start/--end/--duration flag was ever given. Same
+          // reasoning applies to keywords: only record them when they were
+          // actually requested for this video, not whenever this video
+          // happens to fail.
+          const keywordsRequestedForThisVideo =
+            perVideoKeywordsUsed.length > 0 || perVideoKeywordSource !== 'none';
+          if (
+            (trimRequested && (videoEffectiveStartMs !== undefined || videoEffectiveEndMs !== undefined)) ||
+            keywordsRequestedForThisVideo
+          ) {
+            videoOptions = {
+              startMs: trimRequested ? videoEffectiveStartMs : undefined,
+              endMs: trimRequested ? videoEffectiveEndMs : undefined,
+              keywords: perVideoKeywordsUsed.length > 0 ? perVideoKeywordsUsed : undefined,
+              keywordSource: perVideoKeywordSource !== 'none' ? perVideoKeywordSource : undefined,
+            };
           }
         }
 
