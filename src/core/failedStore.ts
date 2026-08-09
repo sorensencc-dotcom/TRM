@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { nodeDir } from './paths';
+import { writeFileAtomic } from './atomicWrite';
 
 export interface FailedEntry {
   hash: string;
@@ -25,17 +26,6 @@ function readFailedFile(root: string, topicPath: string): FailedFile {
   const file = failedPath(root, topicPath);
   if (!fs.existsSync(file)) return { entries: {} };
   return JSON.parse(fs.readFileSync(file, 'utf-8'));
-}
-
-/**
- * Atomic write: temp file in the same directory, then rename. Mirrors
- * manifestStore.ts's approach so a kill mid-write never corrupts failed.json.
- */
-function writeFileAtomic(file: string, contents: string): void {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
-  fs.writeFileSync(tmp, contents);
-  fs.renameSync(tmp, file);
 }
 
 export function appendFailure(
