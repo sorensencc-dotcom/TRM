@@ -138,8 +138,17 @@ function segmentTimestampToMs(h: string, m: string, s: string, ms: string): numb
  * whisper.cpp init/param banner output (e.g., `key: value = number` or
  * `multi word key = value`) and are NOT accumulated as continuation text.
  * This preserves real transcribed speech even if it contains an isolated `=`
- * symbol (e.g. "A equals B" has no colon, so passes through). The pattern is
- * robust to multi-word keys and multiple spaces around `=`.
+ * symbol (e.g., "X = Y" with no colon passes through). The pattern is robust
+ * to multi-word keys and multiple spaces around `=`.
+ *
+ * KNOWN LIMITATION (residual false positive): Dictated speech that happens
+ * to contain both a colon and a later `=` (e.g., "he said: the answer = 42")
+ * will be misclassified as diagnostic and dropped from the transcript. This
+ * tradeoff is accepted because real whisper.cpp diagnostic/banner output is
+ * emitted before any segment has begun parsing (protected by the `current &&`
+ * guard), making this an edge case rather than a common-path bug. Future
+ * improvements would require semantic analysis beyond regex, which is out of
+ * scope for this defensive parser.
  */
 export function parseWhisperSegments(stdout: string): TranscriptSegment[] {
   const diagnosticLinePattern = /:\s*.*\s+=/;

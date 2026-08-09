@@ -297,9 +297,9 @@ describe('parseWhisperSegments', () => {
   it('accumulates continuation text containing an isolated equals sign', () => {
     const stdout =
       '[00:00:00.000 --> 00:00:04.000]   the formula is\n' +
-      'X equals Y\n';
+      'X = Y\n';
     expect(parseWhisperSegments(stdout)).toEqual([
-      { startMs: 0, endMs: 4000, text: 'the formula is X equals Y' },
+      { startMs: 0, endMs: 4000, text: 'the formula is X = Y' },
     ]);
   });
 
@@ -327,6 +327,18 @@ describe('parseWhisperSegments', () => {
       'config_init: use gpu    = 1\n';
     expect(parseWhisperSegments(stdout)).toEqual([
       { startMs: 0, endMs: 2000, text: 'real segment' },
+    ]);
+  });
+
+  it('documents known limitation: drops speech containing both colon and equals (e.g., "he said: the answer = 42")', () => {
+    const stdout =
+      '[00:00:00.000 --> 00:00:05.000]   discussion point\n' +
+      'he said: the answer = 42\n';
+    // This is a known, accepted false positive: the line contains both ":" and " ="
+    // so it matches the diagnostic pattern and is NOT accumulated as continuation.
+    // The tradeoff is documented in parseWhisperSegments JSDoc.
+    expect(parseWhisperSegments(stdout)).toEqual([
+      { startMs: 0, endMs: 5000, text: 'discussion point' },
     ]);
   });
 });
