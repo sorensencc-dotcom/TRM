@@ -215,6 +215,14 @@ export async function runIngestDir(
   // fingerprint/videoOptions plumbing below has a real (always-empty-for-now)
   // value to record.
   const batchKeywordsUsed: string[] = [];
+  // Whether the operator actually asked for a trim at all -- used to gate
+  // whether a failure's recorded videoOptions carries trim info. Deliberately
+  // based on the raw parsedTrim shape, not on the post-resolveTrimWindow
+  // isTrimmed flag (which is undefined/not-yet-computed when
+  // resolveTrimWindow itself throws), so this is correct for both the
+  // throw-before-resolve and succeed-after-resolve failure cases.
+  const trimRequested =
+    parsedTrim.startMs !== undefined || parsedTrim.endMs !== undefined || parsedTrim.durationMs !== undefined;
 
   await Promise.all(
     workItems.map((item) => ioLimit(async () => {
@@ -269,9 +277,16 @@ export async function runIngestDir(
           // Seed from the raw requested (pre-clamp) values before
           // resolveTrimWindow runs -- if it throws (e.g. --start beyond the
           // video's duration), the outer catch below still has whatever was
-          // actually requested to record, instead of undefined.
+          // actually requested to record, instead of undefined. Mirrors
+          // resolveTrimWindow's own normalization for the pre-throw case so
+          // a --start/--duration combo (no explicit --end) still records the
+          // intended end, not just the bare start.
           videoEffectiveStartMs = parsedTrim.startMs;
-          videoEffectiveEndMs = parsedTrim.endMs;
+          videoEffectiveEndMs =
+            parsedTrim.endMs ??
+            (parsedTrim.startMs !== undefined && parsedTrim.durationMs !== undefined
+              ? parsedTrim.startMs + parsedTrim.durationMs
+              : parsedTrim.durationMs);
           const trim = resolveTrimWindow(parsedTrim, probedDurationMs, getVideoMaxDurationMs());
           videoEffectiveStartMs = trim.effectiveStartMs;
           videoEffectiveEndMs = trim.effectiveEndMs;
@@ -631,7 +646,12 @@ export async function runIngestDir(
             trimStartMs: videoEffectiveStartMs,
             trimEndMs: videoEffectiveEndMs,
           });
-          if (videoEffectiveStartMs !== undefined || videoEffectiveEndMs !== undefined) {
+          // Only record trim info when the operator actually asked for a
+          // trim -- otherwise resolveTrimWindow's untrimmed defaults
+          // (effectiveStartMs: 0, effectiveEndMs: probedDurationMs) would
+          // get written into failed.json for every post-probe failure, even
+          // when no --start/--end/--duration flag was ever given.
+          if (trimRequested && (videoEffectiveStartMs !== undefined || videoEffectiveEndMs !== undefined)) {
             videoOptions = { startMs: videoEffectiveStartMs, endMs: videoEffectiveEndMs };
           }
         }

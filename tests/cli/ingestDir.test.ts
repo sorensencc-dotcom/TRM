@@ -1498,6 +1498,108 @@ describe('runIngestDir', () => {
 
       restoreVideoPipelineMocks(spies);
     });
+
+    it('a --start/--duration combo that resolveTrimWindow rejects still records both the intended start AND end in videoOptions', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'tooshort.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      // 3-minute source; --start 05:00 is already beyond the video's duration,
+      // so resolveTrimWindow throws before ever normalizing effectiveEndMs --
+      // the seed step must derive the intended end (start + duration) itself.
+      const spies = mockVideoPipeline({ durationMs: 3 * 60000, hasAudioStream: false });
+      const { runner } = makeRunSpyRunner();
+
+      const summary = await runIngestDir(
+        root,
+        'topic1',
+        { actor: 'ACTOR-001', dir, stub: true, start: '05:00', duration: '10:00' },
+        runner
+      );
+
+      expect(summary.failureCount).toBe(1);
+
+      const failed = failedStore.readFailed(root, 'topic1');
+      expect(failed[0].error).toMatch(/beyond the video/);
+      // Intended start=5min, end=start+duration=15min -- not just the bare start.
+      expect(failed[0].videoOptions).toEqual({ startMs: 5 * 60000, endMs: 15 * 60000 });
+
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('a post-probe failure with NO trim flags given records no videoOptions at all (not a fake untrimmed window)', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'untrimmed-failure.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      const spies = mockVideoPipeline({ durationMs: 60000, hasAudioStream: false });
+      spies.extractSpy.mockRejectedValue(new Error('ffmpeg exploded'));
+      const { runner } = makeRunSpyRunner();
+
+      const summary = await runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
+
+      expect(summary.failureCount).toBe(1);
+
+      const failed = failedStore.readFailed(root, 'topic1');
+      // No --start/--end/--duration was given -- videoOptions must be
+      // undefined, not { startMs: 0, endMs: <probedDuration> } (which would
+      // wrongly imply an explicit full-length trim was requested).
+      expect(failed[0].videoOptions).toBeUndefined();
+
+      restoreVideoPipelineMocks(spies);
+    });
+
+    it('offsets a trimmed video frame timestamp to be original-video-relative, and a cache-hit retry does not double-offset it', async () => {
+      const root = makeRoot();
+      runCreate(root, 'topic1', { actor: 'ACTOR-001' });
+      const dir = path.join(root, 'input-dir');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'offset.mp4'), 'fake mp4 bytes', 'utf-8');
+
+      const spies = mockVideoPipeline({
+        durationMs: 30 * 60000, // 30-minute source
+        hasAudioStream: true,
+        transcript: 'first-run transcript',
+        framePaths: ['frame-000.jpg'],
+        // Clip-relative timestamp, as analyzeFrames actually returns it.
+        frameAnalyses: [{ timestampMs: 0, labels: [] }],
+      });
+      // Transcript branch fails on the first run so the video fails overall,
+      // but the frame branch (which already applied the offset) succeeds and
+      // gets cached via writeVideoPartialProgress.
+      spies.transcribeSpy.mockRejectedValueOnce(new Error('whisper timed out'));
+      const { runner } = makeRunSpyRunner();
+
+      const firstRun = await runIngestDir(
+        root,
+        'topic1',
+        { actor: 'ACTOR-001', dir, stub: true, start: '15:00' },
+        runner
+      );
+      expect(firstRun.failureCount).toBe(1);
+
+      // Retry with the SAME trim (so the fingerprint matches and the cached,
+      // already-offset frame analysis is reused rather than redone).
+      const retrySummary = await runIngestDir(
+        root,
+        'topic1',
+        { actor: 'ACTOR-001', dir, stub: true, force: true, start: '15:00' },
+        runner
+      );
+      expect(retrySummary.successCount).toBe(1);
+
+      const envelope = readRawEnvelope(root, 'topic1', 'SRC-001');
+      // 15:00 = 900000ms -- proves the offset was applied exactly once, not
+      // zero times (still clip-relative 0) and not twice (1800000, from
+      // re-offsetting the already-offset cached value on the retry).
+      expect(envelope?.frames?.[0]?.timestampMs).toBe(15 * 60000);
+
+      restoreVideoPipelineMocks(spies);
+    });
   });
 
   it('--retry-failed reprocesses only failed items', async () => {
