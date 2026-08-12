@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { pullAndStage } from './ingestNotebooklm';
 import * as nlmCli from '../../notebooklm/nlmCli';
 import { registryPath } from '../../notebooklm/registry';
+import { findMostRecentRunReport } from '../../notebooklm/runReport';
 
 jest.mock('../../notebooklm/nlmCli');
 
@@ -194,5 +195,86 @@ describe('runIngestNotebooklm', () => {
       runIngestNotebooklm(root, 'nb-1', { narrativeRoot: 'C:\\dev\\charlie-deep-research', spawn: fakeSpawn as any })
     ).not.toThrow();
     expect(ingestCallCount).toBe(2);
+  });
+
+  it('does not route a genuinely unsorted item to the single touched topic via fallback', () => {
+    (nlmCli.listSources as jest.Mock).mockReturnValue({
+      ok: true,
+      data: [
+        { id: 'src-1', title: 'Willow Run Plant', type: 'web_page', url: 'https://example.com/a' },
+        { id: 'src-2', title: 'Unrelated Item', type: 'web_page', url: 'https://example.com/b' },
+      ],
+    });
+    (nlmCli.getSourceContent as jest.Mock).mockReturnValue({ ok: true, data: 'Some staged content.' });
+    (nlmCli.listNotes as jest.Mock).mockReturnValue({ ok: true, data: [] });
+
+    const willowRunRelPath = 'intake/notebooklm/cic-kb/src-1--willow-run-plant.md';
+    const unrelatedRelPath = 'intake/notebooklm/cic-kb/src-2--unrelated-item.md';
+
+    const ingestArgs: string[][] = [];
+    const fakeSpawn = jest.fn((_cmd: string, args: string[]) => {
+      if (args[0] === 'route-intake') {
+        // Simulate route-intake's real per-item report: src-1 cleanly matched a
+        // topic and was staged; src-2 legitimately matched no keyword and was
+        // marked 'unsorted'. Both entries are present in the report -- the
+        // single-topic fallback must not override src-2's genuine classification.
+        fs.writeFileSync(
+          path.join(root, 'intake-routing-report.json'),
+          JSON.stringify({
+            reportVersion: 1,
+            generatedAt: new Date().toISOString(),
+            applied: true,
+            runStatus: 'completed',
+            runId: 'route-run-1',
+            totalConsidered: 2,
+            byTopic: { willow_run: 1, unsorted: 1 },
+            ambiguousCount: 0,
+            entries: [
+              {
+                sourcePath: willowRunRelPath,
+                hash: 'h1',
+                topic: 'willow_run',
+                matchedKeyword: 'willow run',
+                ambiguous: false,
+                status: 'staged',
+                stagedPath: path.join(root, 'topics/charlie/willow_run/_staging-intake-route-run-1/src-1--willow-run-plant.md'),
+              },
+              {
+                sourcePath: unrelatedRelPath,
+                hash: 'h2',
+                topic: null,
+                matchedKeyword: null,
+                ambiguous: false,
+                status: 'unsorted',
+              },
+            ],
+          })
+        );
+        return {
+          status: 0,
+          stdout: JSON.stringify({ totalConsidered: 2, byTopic: { willow_run: 1, unsorted: 1 }, ambiguousCount: 0, runStatus: 'completed' }),
+          stderr: '',
+        };
+      }
+      if (args[0] === 'ingest') {
+        ingestArgs.push(args);
+      }
+      return { status: 0, stdout: '{}', stderr: '' };
+    });
+
+    runIngestNotebooklm(root, 'nb-1', { narrativeRoot: 'C:\\dev\\charlie-deep-research', spawn: fakeSpawn as any });
+
+    // Only src-1 should have been ingested; src-2 must not be silently routed
+    // to willow_run just because it's the only topic touched this run.
+    expect(ingestArgs).toHaveLength(1);
+    expect(ingestArgs[0]).toEqual(expect.arrayContaining(['Willow Run Plant']));
+
+    const runReport = findMostRecentRunReport(root)!;
+    // The item's first record is 'staged' (from pullAndStage); its outcome record
+    // (from the routing lookup below) is the last one logged for this key.
+    const src2Items = runReport.items.filter((i) => i.key === 'source:src-2');
+    const src2Item = src2Items[src2Items.length - 1];
+    expect(src2Item?.status).toBe('failed');
+    expect(src2Item?.detail).toMatch(/unsorted/i);
   });
 });

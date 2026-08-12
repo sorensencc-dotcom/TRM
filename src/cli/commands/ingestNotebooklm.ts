@@ -161,12 +161,23 @@ export function runIngestNotebooklm(root: string, notebookId: string, opts: RunI
   const notebookSlugDir = path.dirname(staged[0].relativePath); // intake/notebooklm/<slug>
   runTrm(root, spawn, ['triage-intake', '--dir', notebookSlugDir]);
   const routeResult = runTrm(root, spawn, ['route-intake', '--apply']);
-  const routeSummary = JSON.parse(routeResult.stdout || '{}') as { byTopic?: Record<string, number> };
-  const touchedTopics = Object.keys(routeSummary.byTopic ?? {}).filter((t) => t !== 'unsorted');
+
+  let routeSummary: { byTopic?: Record<string, number>; runStatus?: string } | null = null;
+  try {
+    routeSummary = routeResult.stdout ? (JSON.parse(routeResult.stdout) as { byTopic?: Record<string, number>; runStatus?: string }) : null;
+  } catch {
+    routeSummary = null;
+  }
+  const routeSucceeded = routeSummary !== null && routeSummary.runStatus === 'completed';
+  const touchedTopics = routeSucceeded ? Object.keys(routeSummary!.byTopic ?? {}).filter((t) => t !== 'unsorted') : [];
 
   const reportPath = path.join(root, 'intake-routing-report.json');
+  // Only trust the on-disk report for per-item lookups when route-intake's own
+  // subprocess output tells us this run actually completed -- otherwise the file
+  // may be stale (a prior unrelated run) or absent, and reading it would risk
+  // silently misrouting items based on data this run never produced.
   let report: { entries: RouteReportEntry[] } | null = null;
-  if (fs.existsSync(reportPath)) {
+  if (routeSucceeded && fs.existsSync(reportPath)) {
     report = JSON.parse(fs.readFileSync(reportPath, 'utf-8')) as { entries: RouteReportEntry[] };
   }
 
@@ -174,13 +185,31 @@ export function runIngestNotebooklm(root: string, notebookId: string, opts: RunI
     let topic: string | null = null;
     let stagedPath: string | null = null;
 
-    const routed = report?.entries.find((e) => e.sourcePath === item.relativePath && e.status === 'staged');
+    if (!routeSucceeded) {
+      recordItem(root, runId, { key: item.key, status: 'failed', detail: 'route-intake did not complete successfully this run' });
+      continue;
+    }
+
+    // Look up ANY report entry for this item, regardless of status -- an entry
+    // that exists but is 'unsorted' (no topic keyword matched) is a genuine
+    // classification from route-intake and must not be overridden by the
+    // single-topic fallback below.
+    const routed = report?.entries.find((e) => e.sourcePath === item.relativePath);
     if (routed) {
-      topic = routed.topic;
-      stagedPath = routed.stagedPath ?? null;
+      if (routed.topic && routed.stagedPath) {
+        topic = routed.topic;
+        stagedPath = routed.stagedPath;
+      } else {
+        // Present in the report but genuinely unsorted/unstaged -- respect that
+        // classification instead of guessing via the single-topic fallback.
+        recordItem(root, runId, { key: item.key, status: 'failed', detail: 'unsorted or not staged by route-intake' });
+        continue;
+      }
     } else if (touchedTopics.length === 1) {
-      // route-intake's aggregate byTopic makes this the only topic touched --
-      // safe to assume this item landed there even without a per-item report entry.
+      // route-intake gave us no per-item information about this item at all
+      // (absent from the report / report file missing) -- and its aggregate
+      // byTopic makes this the only topic touched, so it's safe to assume this
+      // item landed there.
       topic = touchedTopics[0];
     }
 
@@ -197,7 +226,7 @@ export function runIngestNotebooklm(root: string, notebookId: string, opts: RunI
         '--file',
         stagedPath ?? path.join(root, item.relativePath),
         '--type',
-        item.origin === 'notebooklm-derived' ? 'notebooklm-source' : item.key.startsWith('note:') ? 'notebooklm-note' : 'notebooklm-source',
+        item.key.startsWith('note:') ? 'notebooklm-note' : 'notebooklm-source',
         '--title',
         item.title,
         '--origin',
