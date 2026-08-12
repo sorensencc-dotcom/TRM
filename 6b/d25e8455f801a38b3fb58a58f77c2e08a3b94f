@@ -1,0 +1,39 @@
+src/notebooklm/registry.ts
+  s_acaa711e7c3399::t_da8fa600adcdc1 112-118
+tsconfig.json
+  s_acaa711e7c3399::t_dda7973f8fe8e3 16-17
+src/cli/commands/ingestNotebooklm.test.ts
+  s_acaa711e7c3399::t_effe51b69fc3c7 6
+  s_acaa711e7c3399::t_2732574dead06a 189,191-196,199,208-209,212-219
+  s_acaa711e7c3399::t_0d3425932690bd 121,139-151
+  s_acaa711e7c3399::t_2a5c214003dad5 280
+  s_acaa711e7c3399::t_c73f8c03cee726 323
+  s_acaa711e7c3399::t_11a46d2b9d4a21 90-97,103-120
+  s_acaa711e7c3399::t_51b42c8e17a4de 235,238,250-261
+  s_acaa711e7c3399::t_86d0c9f7c74df0 122
+src/notebooklm/runReport.ts
+  s_acaa711e7c3399::t_1d651392952688 44-49
+src/cli/index.ts
+  s_acaa711e7c3399::t_a0eff66a76ff17 214-221
+src/cli/commands/mineNotebooklm.ts
+  s_acaa711e7c3399::t_e22a725893d822 68,71,76,87-94
+  s_acaa711e7c3399::t_64b5a2c38a9974 5,7
+src/cli/commands/ingestNotebooklm.ts
+  s_acaa711e7c3399::t_296ca413140cf9 7-8,16,38,42-45,47,71-77,80-86,95,100-103,105,119-125,135,159-160,170-179,181-187,195-212,214-215,221-223,225-246,248,262-266,268-276,278-301,306-331,333,335,337-339,341,345,348-354
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "6bd25e8455f801a38b3fb58a58f77c2e08a3b94f",
+  "prompts": {},
+  "sessions": {
+    "s_acaa711e7c3399": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e8e68d7-e38d-48b1-be86-3a7570d8ddcd",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
