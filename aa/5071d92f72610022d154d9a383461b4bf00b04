@@ -1,0 +1,23 @@
+src/notebooklm/nlmCli.ts
+  s_acaa711e7c3399::t_a1682baf5040a2 1-74
+src/notebooklm/nlmCli.test.ts
+  s_acaa711e7c3399::t_95f89516452aaf 1-95
+jest.config.cjs
+  s_acaa711e7c3399::t_0e910473060f9a 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "aa5071d92f72610022d154d9a383461b4bf00b04",
+  "prompts": {},
+  "sessions": {
+    "s_acaa711e7c3399": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e8e68d7-e38d-48b1-be86-3a7570d8ddcd",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
