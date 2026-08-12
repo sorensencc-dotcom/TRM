@@ -2,7 +2,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { listSources, getSourceContent, listNotes } from '../../notebooklm/nlmCli';
-import { readRegistry, findNotebook, sourceKey, noteKey, checkItem, flushPulledHash, flushQuarantine } from '../../notebooklm/registry';
+import { spawnSync as realSpawnSync } from 'node:child_process';
+import { readRegistry, findNotebook, sourceKey, noteKey, checkItem, flushPulledHash, flushQuarantine, flushIngestedAt } from '../../notebooklm/registry';
 import { stagingRelativePath } from '../../notebooklm/stagingName';
 import { createRunReport, recordItem } from '../../notebooklm/runReport';
 
@@ -115,4 +116,106 @@ export function pullAndStage(root: string, notebookId: string, runId: string): S
   }
 
   return staged;
+}
+
+interface SpawnResult {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+type SpawnFn = (cmd: string, args: string[], opts?: object) => SpawnResult;
+
+export interface RunIngestOptions {
+  narrativeRoot: string;
+  spawn?: SpawnFn;
+}
+
+export interface RunIngestResult {
+  staged: number;
+  topicsExtracted: string[];
+  syncTreatmentReportPath: string | null;
+}
+
+interface RouteReportEntry {
+  sourcePath: string;
+  topic: string | null;
+  stagedPath?: string;
+  status: string;
+}
+
+function runTrm(root: string, spawn: SpawnFn, args: string[]): SpawnResult {
+  return spawn('trm', args, { cwd: root, encoding: 'utf-8' });
+}
+
+export function runIngestNotebooklm(root: string, notebookId: string, opts: RunIngestOptions): RunIngestResult {
+  const spawn = opts.spawn ?? ((cmd, args, o) => realSpawnSync(cmd, args, { ...o, encoding: 'utf-8' }) as unknown as SpawnResult);
+  const runId = `${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${crypto.randomUUID().slice(0, 8)}`;
+
+  const staged = pullAndStage(root, notebookId, runId);
+  if (staged.length === 0) {
+    runTrm(root, spawn, ['sync-treatment', '--narrative-root', opts.narrativeRoot]);
+    return { staged: 0, topicsExtracted: [], syncTreatmentReportPath: null };
+  }
+
+  const notebookSlugDir = path.dirname(staged[0].relativePath); // intake/notebooklm/<slug>
+  runTrm(root, spawn, ['triage-intake', '--dir', notebookSlugDir]);
+  const routeResult = runTrm(root, spawn, ['route-intake', '--apply']);
+  const routeSummary = JSON.parse(routeResult.stdout || '{}') as { byTopic?: Record<string, number> };
+  const touchedTopics = Object.keys(routeSummary.byTopic ?? {}).filter((t) => t !== 'unsorted');
+
+  const reportPath = path.join(root, 'intake-routing-report.json');
+  let report: { entries: RouteReportEntry[] } | null = null;
+  if (fs.existsSync(reportPath)) {
+    report = JSON.parse(fs.readFileSync(reportPath, 'utf-8')) as { entries: RouteReportEntry[] };
+  }
+
+  for (const item of staged) {
+    let topic: string | null = null;
+    let stagedPath: string | null = null;
+
+    const routed = report?.entries.find((e) => e.sourcePath === item.relativePath && e.status === 'staged');
+    if (routed) {
+      topic = routed.topic;
+      stagedPath = routed.stagedPath ?? null;
+    } else if (touchedTopics.length === 1) {
+      // route-intake's aggregate byTopic makes this the only topic touched --
+      // safe to assume this item landed there even without a per-item report entry.
+      topic = touchedTopics[0];
+    }
+
+    if (!topic) {
+      recordItem(root, runId, { key: item.key, status: 'failed', detail: 'unsorted or not staged by route-intake' });
+      continue;
+    }
+
+    try {
+      runTrm(root, spawn, [
+        'ingest',
+        `topics/charlie/${topic}`,
+        item.sourceUrl ?? `local:${item.title}`,
+        '--file',
+        stagedPath ?? path.join(root, item.relativePath),
+        '--type',
+        item.origin === 'notebooklm-derived' ? 'notebooklm-source' : item.key.startsWith('note:') ? 'notebooklm-note' : 'notebooklm-source',
+        '--title',
+        item.title,
+        '--origin',
+        item.origin,
+      ]);
+      recordItem(root, runId, { key: item.key, status: 'ingested' });
+    } catch (err) {
+      recordItem(root, runId, { key: item.key, status: 'failed', detail: (err as Error).message });
+      continue;
+    }
+  }
+
+  for (const topic of touchedTopics) {
+    runTrm(root, spawn, ['extract', `topics/charlie/${topic}`]);
+  }
+
+  runTrm(root, spawn, ['sync-treatment', '--narrative-root', opts.narrativeRoot]);
+  flushIngestedAt(root, notebookId, new Date().toISOString());
+
+  return { staged: staged.length, topicsExtracted: touchedTopics, syncTreatmentReportPath: null };
 }

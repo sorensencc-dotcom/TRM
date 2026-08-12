@@ -120,3 +120,79 @@ describe('pullAndStage', () => {
     expect(pullAndStage(root, 'nb-1', 'run-1')).toHaveLength(0);
   });
 });
+
+import { runIngestNotebooklm } from './ingestNotebooklm';
+
+describe('runIngestNotebooklm', () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'trm-nlmingest-run-'));
+    seedRegistry(root);
+    jest.resetAllMocks();
+  });
+
+  afterEach(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it('runs triage-intake, route-intake, ingest per staged file, extract per touched topic, then sync-treatment unscoped', () => {
+    (nlmCli.listSources as jest.Mock).mockReturnValue({
+      ok: true,
+      data: [{ id: 'src-1', title: 'Willow Run Plant', type: 'web_page', url: 'https://example.com/a' }],
+    });
+    (nlmCli.getSourceContent as jest.Mock).mockReturnValue({ ok: true, data: 'Willow Run bomber plant content.' });
+    (nlmCli.listNotes as jest.Mock).mockReturnValue({ ok: true, data: [] });
+
+    const calls: string[][] = [];
+    const fakeSpawn = jest.fn((_cmd: string, args: string[]) => {
+      calls.push(args);
+      if (args[0] === 'route-intake') {
+        return { status: 0, stdout: JSON.stringify({ totalConsidered: 1, byTopic: { willow_run: 1 }, ambiguousCount: 0, runStatus: 'completed' }), stderr: '' };
+      }
+      if (args[0] === 'triage-intake') {
+        return { status: 0, stdout: JSON.stringify({ totalFiles: 1, processedCount: 1, skippedCount: 0, dupCount: 0, failedCount: 0, walkErrorCount: 0, visionFallbackCount: 0, byType: { text: 1 } }), stderr: '' };
+      }
+      return { status: 0, stdout: '{}', stderr: '' };
+    });
+
+    const result = runIngestNotebooklm(root, 'nb-1', { narrativeRoot: 'C:\\dev\\charlie-deep-research', spawn: fakeSpawn as any });
+
+    expect(result.staged).toBe(1);
+    const commands = calls.map((c) => c[0]);
+    expect(commands).toEqual(expect.arrayContaining(['triage-intake', 'route-intake', 'sync-treatment']));
+
+    const syncCall = calls.find((c) => c[0] === 'sync-treatment')!;
+    expect(syncCall).toEqual(['sync-treatment', '--narrative-root', 'C:\\dev\\charlie-deep-research']);
+  });
+
+  it('continues to the next staged file when one ingest call throws', () => {
+    (nlmCli.listSources as jest.Mock).mockReturnValue({
+      ok: true,
+      data: [
+        { id: 'src-1', title: 'Good Source', type: 'web_page', url: 'https://example.com/a' },
+        { id: 'src-2', title: 'Also Good', type: 'web_page', url: 'https://example.com/b' },
+      ],
+    });
+    (nlmCli.getSourceContent as jest.Mock).mockReturnValue({ ok: true, data: 'Content here.' });
+    (nlmCli.listNotes as jest.Mock).mockReturnValue({ ok: true, data: [] });
+
+    let ingestCallCount = 0;
+    const fakeSpawn = jest.fn((_cmd: string, args: string[]) => {
+      if (args[0] === 'route-intake') {
+        return { status: 0, stdout: JSON.stringify({ totalConsidered: 2, byTopic: { willow_run: 2 }, ambiguousCount: 0, runStatus: 'completed' }), stderr: '' };
+      }
+      if (args[0] === 'ingest') {
+        ingestCallCount++;
+        if (ingestCallCount === 1) throw new Error('simulated ingest crash');
+        return { status: 0, stdout: '{}', stderr: '' };
+      }
+      return { status: 0, stdout: '{}', stderr: '' };
+    });
+
+    expect(() =>
+      runIngestNotebooklm(root, 'nb-1', { narrativeRoot: 'C:\\dev\\charlie-deep-research', spawn: fakeSpawn as any })
+    ).not.toThrow();
+    expect(ingestCallCount).toBe(2);
+  });
+});

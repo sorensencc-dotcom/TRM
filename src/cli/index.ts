@@ -13,6 +13,7 @@ import { runReport } from './commands/report';
 import { runSyncTreatment } from './commands/syncTreatment';
 import { runTriageIntake } from './commands/triageIntake';
 import { runRouteIntake } from './commands/routeIntake';
+import { runIngestNotebooklm } from './commands/ingestNotebooklm';
 import { assertSafeRoot } from '../core/rootSafety';
 import { LockConflictError, LockUnrecoverableError } from '../sync/lock';
 
@@ -203,6 +204,14 @@ program
         throw err;
       }
     }
+  });
+
+program
+  .command('ingest-notebooklm <notebook-id>')
+  .requiredOption('--narrative-root <path>', 'path to the charlie-deep-research narrative repo')
+  .action((notebookId, opts) => {
+    const result = runIngestNotebooklm(root, notebookId, { narrativeRoot: opts.narrativeRoot });
+    console.log(JSON.stringify(result, null, 2));
   });
 
 program.parse();
