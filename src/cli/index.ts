@@ -211,8 +211,14 @@ program
   .command('ingest-notebooklm <notebook-id>')
   .requiredOption('--narrative-root <path>', 'path to the charlie-deep-research narrative repo')
   .action((notebookId, opts) => {
-    const result = runIngestNotebooklm(root, notebookId, { narrativeRoot: opts.narrativeRoot });
-    console.log(JSON.stringify(result, null, 2));
+    try {
+      const result = runIngestNotebooklm(root, notebookId, { narrativeRoot: opts.narrativeRoot });
+      console.log(JSON.stringify(result, null, 2));
+      if (!result.ok) process.exitCode = 1;
+    } catch (err) {
+      console.error((err as Error).message);
+      process.exitCode = 1;
+    }
   });
 
 program

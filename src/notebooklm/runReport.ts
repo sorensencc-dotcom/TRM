@@ -41,6 +41,12 @@ export function recordItem(root: string, runId: string, item: RunReportItem): vo
   writeFileAtomic(runReportPath(root, runId), JSON.stringify(report, null, 2));
 }
 
+export function setSyncTreatmentStatus(root: string, runId: string, status: RunReport['syncTreatmentStatus']): void {
+  const report = readRunReport(root, runId);
+  report.syncTreatmentStatus = status;
+  writeFileAtomic(runReportPath(root, runId), JSON.stringify(report, null, 2));
+}
+
 export function findMostRecentRunReport(root: string): RunReport | null {
   const dir = reportsDir(root);
   if (!fs.existsSync(dir)) return null;

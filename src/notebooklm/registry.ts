@@ -109,3 +109,10 @@ export function flushIngestedAt(root: string, notebookId: string, timestamp: str
     entry.last_ingested_at = timestamp;
   });
 }
+
+export function flushMinedState(root: string, notebookId: string, keys: string[], timestamp: string): void {
+  mutateNotebook(root, notebookId, (entry) => {
+    entry.last_mined_answer_keys = keys;
+    entry.last_mined_at = timestamp;
+  });
+}

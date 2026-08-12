@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { pullAndStage } from './ingestNotebooklm';
 import * as nlmCli from '../../notebooklm/nlmCli';
-import { registryPath } from '../../notebooklm/registry';
+import { readRegistry, registryPath, flushPulledHash } from '../../notebooklm/registry';
 import { findMostRecentRunReport } from '../../notebooklm/runReport';
 
 jest.mock('../../notebooklm/nlmCli');
@@ -87,10 +87,37 @@ describe('pullAndStage', () => {
     (nlmCli.getSourceContent as jest.Mock).mockReturnValue({ ok: true, data: 'Unchanged content.' });
     (nlmCli.listNotes as jest.Mock).mockReturnValue({ ok: true, data: [] });
 
-    pullAndStage(root, 'nb-1', 'run-1');
+    // pullAndStage alone no longer flushes the pulled hash into the
+    // registry (see C3 in the final-review fix report) -- that only
+    // happens once runIngestNotebooklm confirms the item's `trm ingest`
+    // step succeeded. Simulate that confirmed-ingested state directly so
+    // this test still exercises checkItem()'s dedup behavior on a genuinely
+    // unchanged item.
+    const firstRun = pullAndStage(root, 'nb-1', 'run-1');
+    flushPulledHash(root, 'nb-1', firstRun[0].key, firstRun[0].hash);
     const secondRun = pullAndStage(root, 'nb-1', 'run-2');
 
     expect(secondRun).toHaveLength(0);
+  });
+
+  it('re-stages the same content on a second pullAndStage call when the prior run never confirmed ingest (C3)', () => {
+    (nlmCli.listSources as jest.Mock).mockReturnValue({
+      ok: true,
+      data: [{ id: 'src-1', title: 'Willow Run Plant', type: 'web_page', url: 'https://example.com/a' }],
+    });
+    (nlmCli.getSourceContent as jest.Mock).mockReturnValue({ ok: true, data: 'Content that never got ingested.' });
+    (nlmCli.listNotes as jest.Mock).mockReturnValue({ ok: true, data: [] });
+
+    const firstRun = pullAndStage(root, 'nb-1', 'run-1');
+    expect(firstRun).toHaveLength(1);
+
+    // No flushPulledHash call happened -- simulating a run where staging
+    // succeeded but the downstream `trm ingest` step never confirmed
+    // success. The item must be retried, not silently skipped as
+    // "unchanged", on the next pull.
+    const secondRun = pullAndStage(root, 'nb-1', 'run-2');
+    expect(secondRun).toHaveLength(1);
+    expect(secondRun[0].key).toBe('source:src-1');
   });
 
   it('quarantines empty content instead of staging it, and does not re-log unchanged empty content', () => {
@@ -107,6 +134,19 @@ describe('pullAndStage', () => {
     expect(first).toHaveLength(0);
     expect(second).toHaveLength(0);
     expect(fs.existsSync(path.join(root, 'intake', 'notebooklm'))).toBe(false);
+  });
+
+  it('records an enumeration failure in the run report instead of silently treating it as empty, without throwing', () => {
+    (nlmCli.listSources as jest.Mock).mockReturnValue({ ok: false, error: 'nlm CLI not found on PATH' });
+    (nlmCli.listNotes as jest.Mock).mockReturnValue({ ok: true, data: [] });
+
+    const staged = pullAndStage(root, 'nb-1', 'run-1');
+
+    expect(staged).toHaveLength(0);
+    const report = findMostRecentRunReport(root)!;
+    const enumItem = report.items.find((i) => i.key === 'enumeration:sources');
+    expect(enumItem?.status).toBe('failed');
+    expect(enumItem?.detail).toMatch(/nlm CLI not found on PATH/);
   });
 
   it('quarantines a source when getSourceContent returns an MCP-style error, without throwing', () => {
@@ -146,12 +186,17 @@ describe('runIngestNotebooklm', () => {
     (nlmCli.listNotes as jest.Mock).mockReturnValue({ ok: true, data: [] });
 
     const calls: string[][] = [];
-    const fakeSpawn = jest.fn((_cmd: string, args: string[]) => {
+    const fakeSpawn = jest.fn((cmd: string, args: string[]) => {
       calls.push(args);
-      if (args[0] === 'route-intake') {
+      expect(cmd).toBe(process.execPath);
+      // args[0] is now the resolved trm CLI entrypoint path; args[1] is the
+      // trm subcommand, since runTrm re-invokes trm's own compiled
+      // entrypoint via process.execPath instead of spawning the string
+      // 'trm' (which cannot resolve on this machine).
+      if (args[1] === 'route-intake') {
         return { status: 0, stdout: JSON.stringify({ totalConsidered: 1, byTopic: { willow_run: 1 }, ambiguousCount: 0, runStatus: 'completed' }), stderr: '' };
       }
-      if (args[0] === 'triage-intake') {
+      if (args[1] === 'triage-intake') {
         return { status: 0, stdout: JSON.stringify({ totalFiles: 1, processedCount: 1, skippedCount: 0, dupCount: 0, failedCount: 0, walkErrorCount: 0, visionFallbackCount: 0, byType: { text: 1 } }), stderr: '' };
       }
       return { status: 0, stdout: '{}', stderr: '' };
@@ -160,11 +205,18 @@ describe('runIngestNotebooklm', () => {
     const result = runIngestNotebooklm(root, 'nb-1', { narrativeRoot: 'C:\\dev\\charlie-deep-research', spawn: fakeSpawn as any });
 
     expect(result.staged).toBe(1);
-    const commands = calls.map((c) => c[0]);
+    expect(result.ok).toBe(true);
+    const commands = calls.map((c) => c[1]);
     expect(commands).toEqual(expect.arrayContaining(['triage-intake', 'route-intake', 'sync-treatment']));
 
-    const syncCall = calls.find((c) => c[0] === 'sync-treatment')!;
-    expect(syncCall).toEqual(['sync-treatment', '--narrative-root', 'C:\\dev\\charlie-deep-research']);
+    const syncCall = calls.find((c) => c[1] === 'sync-treatment')!;
+    expect(syncCall.slice(1)).toEqual(['sync-treatment', '--narrative-root', 'C:\\dev\\charlie-deep-research']);
+
+    // The staged item's hash should now be flushed into the registry, since
+    // its ingest step succeeded.
+    const registry = readRegistry(root);
+    const entry = registry.notebooks.find((n) => n.notebook_id === 'nb-1')!;
+    expect(entry.last_pulled_hashes['source:src-1']).toBeDefined();
   });
 
   it('continues to the next staged file when one ingest call throws', () => {
@@ -180,10 +232,10 @@ describe('runIngestNotebooklm', () => {
 
     let ingestCallCount = 0;
     const fakeSpawn = jest.fn((_cmd: string, args: string[]) => {
-      if (args[0] === 'route-intake') {
+      if (args[1] === 'route-intake') {
         return { status: 0, stdout: JSON.stringify({ totalConsidered: 2, byTopic: { willow_run: 2 }, ambiguousCount: 0, runStatus: 'completed' }), stderr: '' };
       }
-      if (args[0] === 'ingest') {
+      if (args[1] === 'ingest') {
         ingestCallCount++;
         if (ingestCallCount === 1) throw new Error('simulated ingest crash');
         return { status: 0, stdout: '{}', stderr: '' };
@@ -195,6 +247,18 @@ describe('runIngestNotebooklm', () => {
       runIngestNotebooklm(root, 'nb-1', { narrativeRoot: 'C:\\dev\\charlie-deep-research', spawn: fakeSpawn as any })
     ).not.toThrow();
     expect(ingestCallCount).toBe(2);
+
+    // C3: the first item's ingest call failed -- its content hash must NOT
+    // have been flushed into the registry, so it is retried (not
+    // permanently marked "unchanged") on the next pullAndStage call with
+    // the same content. The second item succeeded, so its hash IS flushed.
+    const registry = readRegistry(root);
+    const entry = registry.notebooks.find((n) => n.notebook_id === 'nb-1')!;
+    expect(entry.last_pulled_hashes['source:src-1']).toBeUndefined();
+    expect(entry.last_pulled_hashes['source:src-2']).toBeDefined();
+
+    const retryStaged = pullAndStage(root, 'nb-1', 'retry-run');
+    expect(retryStaged.map((s) => s.key)).toEqual(['source:src-1']);
   });
 
   it('does not route a genuinely unsorted item to the single touched topic via fallback', () => {
@@ -213,7 +277,7 @@ describe('runIngestNotebooklm', () => {
 
     const ingestArgs: string[][] = [];
     const fakeSpawn = jest.fn((_cmd: string, args: string[]) => {
-      if (args[0] === 'route-intake') {
+      if (args[1] === 'route-intake') {
         // Simulate route-intake's real per-item report: src-1 cleanly matched a
         // topic and was staged; src-2 legitimately matched no keyword and was
         // marked 'unsorted'. Both entries are present in the report -- the
@@ -256,7 +320,7 @@ describe('runIngestNotebooklm', () => {
           stderr: '',
         };
       }
-      if (args[0] === 'ingest') {
+      if (args[1] === 'ingest') {
         ingestArgs.push(args);
       }
       return { status: 0, stdout: '{}', stderr: '' };

@@ -2,8 +2,9 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { queryNotebook } from '../../notebooklm/nlmCli';
-import { readRegistry, findNotebook, registryPath } from '../../notebooklm/registry';
+import { readRegistry, findNotebook, flushMinedState } from '../../notebooklm/registry';
 import { writeFileAtomic } from '../../core/atomicWrite';
+import { slugifyTitle } from '../../notebooklm/stagingName';
 
 export interface MiningQuestion {
   id: string;
@@ -25,13 +26,6 @@ export function answerKey(notebookId: string, questionId: string, answer: string
 
 function docPathFor(root: string, notebookSlug: string): string {
   return path.join('trm', 'research-gaps', `${notebookSlug}.md`);
-}
-
-function notebookSlug(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
 }
 
 function appendDocRow(root: string, relativeDocPath: string, question: MiningQuestion, answer: string, notebookTitle: string, key: string): void {
@@ -71,13 +65,15 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
   }
 
   const questions = loadMiningQuestions();
-  const relativeDocPath = docPathFor(root, notebookSlug(entry.title));
+  const relativeDocPath = docPathFor(root, slugifyTitle(entry.title));
   const seenKeys = new Set(entry.last_mined_answer_keys);
   let newEntries = 0;
+  let anySuccess = false;
 
   for (const question of questions) {
     const result = queryNotebook(notebookId, question.text);
     if (!result.ok) continue;
+    anySuccess = true;
 
     const key = answerKey(notebookId, question.id, result.data);
     if (seenKeys.has(key)) continue;
@@ -88,9 +84,14 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
     newEntries++;
   }
 
-  entry.last_mined_answer_keys = Array.from(seenKeys);
-  entry.last_mined_at = new Date().toISOString();
-  writeFileAtomic(registryPath(root), JSON.stringify(registry, null, 2));
+  // Only persist registry state (and bump last_mined_at) when we actually
+  // talked to the notebook successfully at least once this run. If every
+  // queryNotebook call failed, leave the registry untouched so this
+  // notebook is retried fully -- not silently marked as freshly mined --
+  // next run.
+  if (anySuccess) {
+    flushMinedState(root, notebookId, Array.from(seenKeys), new Date().toISOString());
+  }
 
   return { newEntries, docPath: relativeDocPath };
 }
