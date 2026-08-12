@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "questions": [
+    { "id": "open-contradictions", "text": "What open questions or unresolved contradictions exist across these sources?" },
+    { "id": "under-sourced", "text": "What claims are asserted but single-sourced or under-corroborated?" },
+    { "id": "adjacent-topics", "text": "What adjacent topics do these sources point to that aren't covered yet?" },
+    { "id": "follow-up", "text": "What follow-up research would most strengthen current findings?" }
+  ]
+}
