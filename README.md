@@ -67,6 +67,8 @@ topics/charlie/cuba/
 | --- | --- |
 | `trm create <path> [--actor] [--description] [--tags a,b,c]` | Create a topic node (and any missing ancestor containers). |
 | `trm ingest <path> <url> --type <t> --title <t> --origin <o> [--actor] [--dry-run]` | Ingest a source into a topic. |
+| `trm ingest-notebooklm <notebook-id> --narrative-root <path>` | Pull new/changed sources+notes from a registered NotebookLM notebook, route/ingest/extract them, then run sync-treatment. |
+| `trm mine-notebooklm <notebook-id>` | Run the fixed research-gap question set against a registered NotebookLM notebook; appends new answers to `trm/research-gaps/<slug>.md` and urgent ones to `TODOS.md`. |
 | `trm extract <path> [--actor] [--dry-run] [--stub]` | Extract facts from ingested sources. |
 | `trm score <path> [--actor] [--dry-run] [--rollup]` | Score a topic (optionally rolling scores up to ancestors). |
 | `trm crosslink <path> [--actor] --related-topic <p> [--relationship] [--treatment-sections] [--promotion-reason]` | Record a relationship to another topic. |

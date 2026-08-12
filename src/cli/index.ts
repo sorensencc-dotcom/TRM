@@ -14,6 +14,7 @@ import { runSyncTreatment } from './commands/syncTreatment';
 import { runTriageIntake } from './commands/triageIntake';
 import { runRouteIntake } from './commands/routeIntake';
 import { runIngestNotebooklm } from './commands/ingestNotebooklm';
+import { runMineNotebooklm } from './commands/mineNotebooklm';
 import { assertSafeRoot } from '../core/rootSafety';
 import { LockConflictError, LockUnrecoverableError } from '../sync/lock';
 
@@ -211,6 +212,13 @@ program
   .requiredOption('--narrative-root <path>', 'path to the charlie-deep-research narrative repo')
   .action((notebookId, opts) => {
     const result = runIngestNotebooklm(root, notebookId, { narrativeRoot: opts.narrativeRoot });
+    console.log(JSON.stringify(result, null, 2));
+  });
+
+program
+  .command('mine-notebooklm <notebook-id>')
+  .action((notebookId) => {
+    const result = runMineNotebooklm(root, notebookId, {});
     console.log(JSON.stringify(result, null, 2));
   });
 
