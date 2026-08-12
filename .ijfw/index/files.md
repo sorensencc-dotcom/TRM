@@ -1,0 +1,190 @@
+<!-- ijfw schema:1 codebase-index -->
+# Codebase index
+
+Generated: 2026-08-09T22:31:47Z
+Root: .
+
+Files: 174
+
+## By file
+
+- `./.planning/scale-ingest/benson-ford-prep/CONTEXT.md` (129 lines, .md) -- Right-size TRM's file-based ingest pipeline (dedup, bounded concurrency, OCR-enabled
+- `./.planning/scale-ingest/benson-ford-prep/PLAN.md` (211 lines, .md) -- Traces to SPEC.md acceptance criteria (AC1-AC12) and CONTEXT.md decisions (D-01..D-06).
+- `./.planning/scale-ingest/benson-ford-prep/SPEC.md` (52 lines, .md) -- TRM can ingest a directory of thousands of doc-photo-heavy sources (Benson Ford scale) in one resumable batch command, w
+- `./.planning/scale-ingest/video-ingest/CONTEXT.md` (195 lines, .md) -- 1. **Audio content mix.** Archive has both silent reels and footage with
+- `./.planning/scale-ingest/video-ingest/PLAN.md` (229 lines, .md) -- - **Deliverable:** `src/core/videoDeps.ts` exporting `checkFfmpegDeps(): Promise<void>`
+- `./.planning/scale-ingest/video-ingest/SPEC.md` (138 lines, .md) -- `trm ingest-dir` accepts video files (home movies, interviews, narrated
+- `./CLAUDE.md` (25 lines, .md) -- Stack: Node.js / TypeScript
+- `./README.md` (117 lines, .md) -- CLI for building hierarchical, lineage-tracked research topic trees on the local filesystem. Ingest sources, extract fac
+- `./deploy/DEPLOY.md` (258 lines, .md) -- ```bash
+- `./deploy/PHASE4-STAGE1-CHECKLIST.md` (214 lines, .md) -- - [ ] Phase 1 unit tests pass (5/5): `npm test -- imageAnalysis.test.ts`
+- `./deploy/phase4-stage1-deploy.sh` (147 lines, .sh) -- set -e
+- `./docs/superpowers/plans/2026-07-25-raw-source-json-envelope.md` (677 lines, .md) -- > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:
+- `./docs/superpowers/plans/2026-08-02-intake-triage-manifest.md` (951 lines, .md) -- > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:
+- `./docs/superpowers/plans/2026-08-05-route-intake-topic-classification.md` (1169 lines, .md) -- > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:
+- `./docs/superpowers/plans/2026-08-05-triage-intake-pdf-docx-epub.md` (293 lines, .md) -- > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:
+- `./docs/superpowers/plans/2026-08-07-pdf-ocr-fallback.md` (1125 lines, .md) -- > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:
+- `./docs/superpowers/plans/2026-08-08-video-time-range-keyword-filter.md` (2581 lines, .md) -- > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:
+- `./docs/superpowers/specs/2026-07-25-trm-raw-source-json-envelope-design.md` (62 lines, .md) -- `ingest.ts` writes text sources as plain `sources/raw/{id}.txt` and image sources as
+- `./docs/superpowers/specs/2026-08-02-intake-triage-manifest-design.md` (166 lines, .md) -- Date: 2026-08-02
+- `./docs/superpowers/specs/2026-08-05-route-intake-topic-classification-design.md` (437 lines, .md) -- `trm triage-intake` classifies each intake file by *type* (`text` /
+- `./docs/superpowers/specs/2026-08-05-triage-intake-pdf-docx-epub-design.md` (131 lines, .md) -- `trm triage-intake` classifies files by extension only. `.txt/.md/.json` are
+- `./docs/superpowers/specs/2026-08-07-pdf-ocr-fallback-design.md` (250 lines, .md) -- `src/ingestion/fileConvert.ts` extracts PDF text via `pdf-parse`. That works
+- `./docs/superpowers/specs/2026-08-08-video-time-range-keyword-filter-design.md` (495 lines, .md) -- `trm ingest-dir`'s video pipeline (shipped 2026-08-08, hardened same day —
+- `./scripts/generate-scanned-pdf-fixture.ts` (37 lines, .ts) -- import * as fs from 'node:fs';
+- `./scripts/git-hooks/install.sh` (7 lines, .sh) -- set -e
+- `./scripts/migrate-raw-to-json.ts` (70 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/cli/commands/create.ts` (12 lines, .ts) -- import { TopicMeta } from '../../core/types';
+- `./src/cli/commands/crosslink.ts` (52 lines, .ts) -- import { readTopicMeta } from '../../core/topicNode';
+- `./src/cli/commands/extract.ts` (70 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/cli/commands/feedbackStats.ts` (149 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/cli/commands/ingest.ts` (57 lines, .ts) -- import * as path from 'node:path';
+- `./src/cli/commands/ingestDir.ts` (926 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/cli/commands/report.ts` (35 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/cli/commands/routeIntake.ts` (238 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/cli/commands/score.ts` (89 lines, .ts) -- import * as crypto from 'node:crypto';
+- `./src/cli/commands/syncTreatment.ts` (226 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/cli/commands/triageIntake.ts` (335 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/cli/commands/validate.ts` (93 lines, .ts) -- import * as crypto from 'node:crypto';
+- `./src/cli/commands/versionBump.ts` (23 lines, .ts) -- import { readTopicMeta, writeTopicMeta } from '../../core/topicNode';
+- `./src/cli/index.ts` (208 lines, .ts) -- import { Command } from 'commander';
+- `./src/core/atomicWrite.ts` (52 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/core/concurrency.ts` (35 lines, .ts) -- import pLimit from 'p-limit';
+- `./src/core/config.ts` (24 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/core/contentHash.ts` (23 lines, .ts) -- import * as crypto from 'node:crypto';
+- `./src/core/failedStore.ts` (68 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/core/intakeManifest.ts` (104 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/core/manifestStore.ts` (87 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/core/ocrTimingLog.ts` (33 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/core/paths.ts` (38 lines, .ts) -- import * as path from 'node:path';
+- `./src/core/rawSource.ts` (55 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/core/regenerateExtractJson.ts` (43 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/core/rootSafety.ts` (38 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/core/sourceIngest.ts` (45 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/core/topicNode.ts` (82 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/core/topicRouting.ts` (100 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/core/types.ts` (24 lines, .ts) -- export type NodeStatus = 'container' | 'active';
+- `./src/core/videoDeps.ts` (150 lines, .ts) -- import { execFile } from 'node:child_process';
+- `./src/core/videoDepsVersionLog.ts` (116 lines, .ts) -- import { execFile } from 'node:child_process';
+- `./src/core/videoMetricsLog.ts` (59 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/core/videoPartialProgress.ts` (74 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/core/videoProbe.ts` (111 lines, .ts) -- import { execFile } from 'node:child_process';
+- `./src/core/videoTimeRange.ts` (133 lines, .ts) -- const TIME_PART_PATTERN = /^\d+$/;
+- `./src/crosslinks/relatedTopics.ts` (24 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/crosslinks/treatmentLink.ts` (13 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/extraction/claudeCodeRunner.ts` (111 lines, .ts) -- import { spawnSync } from 'node:child_process';
+- `./src/extraction/prompts/extractFacts.ts` (20 lines, .ts) -- export const CATEGORY_VOCAB = ['history', 'genealogy', 'industry', 'geopolitics', 'biography'] as const;
+- `./src/extraction/stubRunner.ts` (15 lines, .ts) -- import { ExtractionRunner } from './types';
+- `./src/extraction/types.ts` (6 lines, .ts) -- import { Fact } from '../scoring/types';
+- `./src/ingestion/epubExtract.ts` (35 lines, .ts) -- import { EPub } from 'epub2';
+- `./src/ingestion/fileConvert.ts` (267 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/ingestion/imageExtract/IExtractor.ts` (10 lines, .ts) -- export class IExtractor {
+- `./src/ingestion/imageExtract/ReverseImageSearchExtractor.ts` (207 lines, .ts) -- import { IExtractor } from \"./IExtractor\";
+- `./src/ingestion/imageExtract/classify.ts` (201 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/ingestion/imageExtract/fixtures/README.md` (80 lines, .md) -- Test fixtures used in imageAnalyzer integration tests and load tests.
+- `./src/ingestion/imageExtract/fixtures/generate-fixtures.sh` (88 lines, .sh) -- set -e
+- `./src/ingestion/imageExtract/imageAnalyzer.load-test.ts` (133 lines, .ts) -- import { ImageAnalyzer, AnalysisResult } from './imageAnalyzer';
+- `./src/ingestion/imageExtract/imageAnalyzer.test.ts` (273 lines, .ts) -- import { ImageAnalyzer, AnalysisResult } from './imageAnalyzer';
+- `./src/ingestion/imageExtract/imageAnalyzer.ts` (348 lines, .ts) -- import { IExtractor } from \"./IExtractor\";
+- `./src/ingestion/imageExtract/index.ts` (100 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/ingestion/videoExtract/analyzeFrames.ts` (76 lines, .ts) -- import fs from 'node:fs';
+- `./src/ingestion/videoExtract/autoKeywords.ts` (45 lines, .ts) -- import * as manifestStore from '../../core/manifestStore';
+- `./src/ingestion/videoExtract/extractAudio.ts` (85 lines, .ts) -- import { execFile } from 'node:child_process';
+- `./src/ingestion/videoExtract/extractFrames.ts` (155 lines, .ts) -- import { execFile } from 'node:child_process';
+- `./src/ingestion/videoExtract/keywordFilter.ts` (63 lines, .ts) -- import { TranscriptSegment } from './transcribe';
+- `./src/ingestion/videoExtract/transcribe.ts` (213 lines, .ts) -- import { execFile } from 'node:child_process';
+- `./src/lineage/hasher.ts` (74 lines, .ts) -- import * as crypto from 'node:crypto';
+- `./src/registry/actorRegistry.ts` (44 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/reporting/exportBundle.ts` (65 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/reporting/renderHtml.ts` (140 lines, .ts) -- import { ReportBundle, ReportBundleFact, ReportBundleSource } from './types';
+- `./src/reporting/types.ts` (31 lines, .ts) -- export interface ReportBundleFact {
+- `./src/schemas/validator.ts` (29 lines, .ts) -- import Ajv, { ErrorObject } from 'ajv';
+- `./src/scoring/adapters/stub.ts` (31 lines, .ts) -- import { Fact, ScoreResult, ScoringAdapter } from '../types';
+- `./src/scoring/types.ts` (25 lines, .ts) -- import { TopicMeta, TrmConfig } from '../core/types';
+- `./src/sync/cursorStore.ts` (84 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/sync/dependencyMap.ts` (77 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/sync/factIdentity.ts` (32 lines, .ts) -- import * as crypto from 'node:crypto';
+- `./src/sync/lock.ts` (91 lines, .ts) -- import * as fs from 'node:fs';
+- `./src/sync/matching.ts` (53 lines, .ts) -- import { Fact } from '../scoring/types';
+- `./src/sync/reportWriter.ts` (158 lines, .ts) -- import * as path from 'node:path';
+- `./tests/cli/commands/routeIntake.test.ts` (367 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/cli/commands/triageIntake.test.ts` (463 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/cli/create.test.ts` (14 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/cli/crosslink.test.ts` (57 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/cli/extract.test.ts` (141 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/cli/extractWiring.test.ts` (69 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/cli/feedbackStats.test.ts` (114 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/cli/ingest.pdfOcr.test.ts` (79 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/cli/ingest.test.ts` (181 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/cli/ingestDir.test.ts` (2292 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/cli/ingestDirCli.test.ts` (69 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/cli/integration.test.ts` (55 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/cli/report.test.ts` (87 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/cli/score.test.ts` (68 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/cli/syncTreatment.test.ts` (204 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/cli/syncTreatmentCli.test.ts` (79 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/cli/validate.test.ts` (116 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/cli/versionBump.test.ts` (21 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/core/__mocks__/fs.js` (26 lines, .js) -- const actualFs = jest.requireActual('fs');
+- `./tests/core/atomicWrite.test.ts` (125 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/core/concurrency.test.ts` (167 lines, .ts) -- describe('concurrency', () => {
+- `./tests/core/config.test.ts` (41 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/core/contentHash.test.ts` (82 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/core/failedStore.test.ts` (91 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/core/intakeManifest.test.ts` (93 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/core/manifestStore.test.ts` (79 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/core/ocrTimingLog.test.ts` (26 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/core/paths.test.ts` (37 lines, .ts) -- import * as path from 'node:path';
+- `./tests/core/rawSource.test.ts` (59 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/core/regenerateExtractJson.test.ts` (87 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/core/rootSafety.test.ts` (79 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/core/sourceIngest.test.ts` (25 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/core/topicNode.test.ts` (51 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/core/topicRouting.test.ts` (124 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/core/videoDeps.test.ts` (439 lines, .ts) -- import { execFile } from 'node:child_process';
+- `./tests/core/videoDepsVersionLog.test.ts` (118 lines, .ts) -- import { execFile } from 'node:child_process';
+- `./tests/core/videoMetricsLog.test.ts` (45 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/core/videoPartialProgress.test.ts` (113 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/core/videoProbe.test.ts` (399 lines, .ts) -- import { execFile } from 'node:child_process';
+- `./tests/core/videoTimeRange.test.ts` (143 lines, .ts) -- import { parseTimeString, parseAndValidateTrimSyntax, resolveTrimWindow } from '../../src/core/videoTimeRange';
+- `./tests/crosslinks/relatedTopics.test.ts` (16 lines, .ts) -- import { computeTagOverlapStrength } from '../../src/crosslinks/relatedTopics';
+- `./tests/extraction/claudeCodeRunner.test.ts` (120 lines, .ts) -- import { createClaudeCodeRunner, ClaudeCliExec } from '../../src/extraction/claudeCodeRunner';
+- `./tests/extraction/extractFacts.test.ts` (29 lines, .ts) -- import { buildExtractPrompt, CATEGORY_VOCAB } from '../../src/extraction/prompts/extractFacts';
+- `./tests/extraction/stubRunner.test.ts` (12 lines, .ts) -- import { stubRunner } from '../../src/extraction/stubRunner';
+- `./tests/ingestion/epubExtract.test.ts` (127 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/ingestion/fileConvert.defaults.test.ts` (113 lines, .ts) -- import { defaultGetPdfPageCount, defaultRenderPdfPage, defaultOcrPage } from '../../src/ingestion/fileConvert';
+- `./tests/ingestion/fileConvert.pdfOcrFallback.fixture.test.ts` (44 lines, .ts) -- import * as path from 'node:path';
+- `./tests/ingestion/fileConvert.pdfOcrFallback.test.ts` (336 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/ingestion/fileConvert.test.ts` (80 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/ingestion/imageExtract/classify.test.ts` (296 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/ingestion/imageExtract/imageAnalyzer.extract.test.ts` (48 lines, .ts) -- import { ImageAnalyzer, AnalysisResult } from '../../../src/ingestion/imageExtract/imageAnalyzer';
+- `./tests/ingestion/imageExtract/imageAnalyzer.ocr.test.ts` (98 lines, .ts) -- import { ImageAnalyzer, OcrResult } from '../../../src/ingestion/imageExtract/imageAnalyzer';
+- `./tests/ingestion/imageExtract/index.test.ts` (94 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/ingestion/videoExtract/analyzeFrames.test.ts` (189 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/ingestion/videoExtract/autoKeywords.test.ts` (88 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/ingestion/videoExtract/extractAudio.test.ts` (149 lines, .ts) -- import { execFile } from 'node:child_process';
+- `./tests/ingestion/videoExtract/extractFrames.test.ts` (276 lines, .ts) -- import { execFile } from 'node:child_process';
+- `./tests/ingestion/videoExtract/keywordFilter.test.ts` (98 lines, .ts) -- import {
+- `./tests/ingestion/videoExtract/transcribe.test.ts` (370 lines, .ts) -- import { execFile } from 'node:child_process';
+- `./tests/lineage/hasher.test.ts` (56 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/registry/actorRegistry.test.ts` (48 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/reporting/exportBundle.test.ts` (70 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/reporting/renderHtml.test.ts` (94 lines, .ts) -- import { renderHtml } from '../../src/reporting/renderHtml';
+- `./tests/schemas/validator.test.ts` (160 lines, .ts) -- import { validateAgainstSchema } from '../../src/schemas/validator';
+- `./tests/scoring/stub.test.ts` (37 lines, .ts) -- import { stubAdapter } from '../../src/scoring/adapters/stub';
+- `./tests/scripts/migrate-raw-to-json.test.ts` (65 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/smoke.test.ts` (5 lines, .ts) -- describe('project scaffold', () => {
+- `./tests/smoke/videoPipeline.smoke.test.ts` (131 lines, .ts) -- import { execFileSync } from 'node:child_process';
+- `./tests/smoke/videoSubprocessKill.smoke.test.ts` (169 lines, .ts) -- import { execFileSync } from 'node:child_process';
+- `./tests/sync/cursorStore.test.ts` (110 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/sync/dependencyMap.test.ts` (78 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/sync/factIdentity.test.ts` (67 lines, .ts) -- import { normalize, tokenize, factKey } from '../../src/sync/factIdentity';
+- `./tests/sync/lock.test.ts` (97 lines, .ts) -- import * as fs from 'node:fs';
+- `./tests/sync/matching.test.ts` (109 lines, .ts) -- import { matchFact, MATCH_CONFIG_VERSION } from '../../src/sync/matching';
+- `./tests/sync/reportWriter.test.ts` (224 lines, .ts) -- import * as fs from 'node:fs';
+
+## By language
+- .ts: 147
+- .md: 23
+- .sh: 3
+- .js: 1

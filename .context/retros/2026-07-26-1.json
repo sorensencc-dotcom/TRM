@@ -1,0 +1,28 @@
+{
+  "date": "2026-07-26",
+  "window": "7d",
+  "metrics": {
+    "commits": 26,
+    "contributors": 1,
+    "prs_merged": 0,
+    "insertions": 5598,
+    "deletions": 189,
+    "net_loc": 5409,
+    "test_loc": 1385,
+    "test_ratio": 0.247,
+    "active_days": 3,
+    "sessions": 11,
+    "deep_sessions": 0,
+    "avg_session_minutes": 18,
+    "loc_per_session_hour": 850,
+    "feat_pct": 0.42,
+    "fix_pct": 0.15,
+    "peak_hour": 13,
+    "ai_assisted_commits": 12
+  },
+  "authors": {
+    "Chris Sorensen": { "commits": 26, "insertions": 5598, "deletions": 189, "test_ratio": 0.247, "top_area": "src/ingestion" }
+  },
+  "streak_days": 2,
+  "tweetable": "Jul 19-26: 26 commits, 5.6k LOC, 25% tests, 3 active days | Shipped scale-ingest/benson-ford-prep -- dedup, concurrency pools, OCR, classifier, ingest-dir batch CLI, all 12 SPEC ACs closed"
+}

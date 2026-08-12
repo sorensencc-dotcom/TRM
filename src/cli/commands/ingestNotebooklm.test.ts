@@ -243,10 +243,17 @@ describe('runIngestNotebooklm', () => {
       return { status: 0, stdout: '{}', stderr: '' };
     });
 
-    expect(() =>
-      runIngestNotebooklm(root, 'nb-1', { narrativeRoot: 'C:\\dev\\charlie-deep-research', spawn: fakeSpawn as any })
-    ).not.toThrow();
+    let result: ReturnType<typeof runIngestNotebooklm>;
+    expect(() => {
+      result = runIngestNotebooklm(root, 'nb-1', { narrativeRoot: 'C:\\dev\\charlie-deep-research', spawn: fakeSpawn as any });
+    }).not.toThrow();
     expect(ingestCallCount).toBe(2);
+
+    // Gap fix: a per-item ingest failure must surface at the top level, not
+    // just in the run report -- otherwise `trm ingest-notebooklm` exits 0
+    // even when an item silently failed.
+    expect(result!.ok).toBe(false);
+    expect(result!.failed).toEqual(['source:src-1']);
 
     // C3: the first item's ingest call failed -- its content hash must NOT
     // have been flushed into the registry, so it is retried (not

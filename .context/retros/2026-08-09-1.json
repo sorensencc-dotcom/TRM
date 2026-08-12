@@ -1,0 +1,28 @@
+{
+  "date": "2026-08-09",
+  "window": "7d",
+  "metrics": {
+    "commits": 107,
+    "contributors": 1,
+    "prs_merged": 0,
+    "insertions": 21379,
+    "deletions": 1565,
+    "net_loc": 19814,
+    "test_loc": 9252,
+    "test_ratio": 0.433,
+    "active_days": 8,
+    "sessions": 20,
+    "deep_sessions": 7,
+    "avg_session_minutes": 57,
+    "loc_per_session_hour": 1100,
+    "feat_pct": 0.383,
+    "fix_pct": 0.271,
+    "peak_hour": 9,
+    "ai_assisted_commits": 28
+  },
+  "authors": {
+    "Chris Sorensen": { "commits": 107, "insertions": 21379, "deletions": 1565, "test_ratio": 0.433, "top_area": "src/cli/commands/ingestDir.ts" }
+  },
+  "streak_days": 16,
+  "tweetable": "Aug 2-9: 107 commits, 21.4k LOC, 43% tests, 8 active days | Shipped video ingest pipeline (ffmpeg/whisper/Vision), PDF OCR fallback, route-intake classifier, video time-range trim + keyword filter | Streak: 16d"
+}

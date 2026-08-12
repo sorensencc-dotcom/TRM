@@ -1,0 +1,27 @@
+{
+  "type": "software",
+  "primary_type": "software",
+  "secondary_types": [],
+  "confidence": 0.907,
+  "scan_incomplete": false,
+  "detected_at": "2026-08-09T22:24:56.123Z",
+  "signals": [
+    {
+      "kind": "manifest",
+      "weight": 0.9,
+      "manifests": [
+        "package.json"
+      ]
+    },
+    {
+      "kind": "file_extension_ratio",
+      "weight": 0.7,
+      "domain": "software",
+      "ratio": 1,
+      "count": 149
+    }
+  ],
+  "fallback_reason": null,
+  "file_tree_hash": "e2e918a41a94c3df",
+  "branch_hash": "f921bd05e68b0374"
+}

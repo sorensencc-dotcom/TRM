@@ -158,6 +158,7 @@ export interface RunIngestResult {
   syncTreatmentReportPath: string | null;
   ok: boolean;
   error: string | null;
+  failed: string[];
 }
 
 interface RouteReportEntry {
@@ -212,11 +213,12 @@ export function runIngestNotebooklm(root: string, notebookId: string, opts: RunI
 
   if (staged.length === 0) {
     const syncTreatmentReportPath = runSyncTreatment();
-    return { staged: 0, topicsExtracted: [], syncTreatmentReportPath, ok: true, error: null };
+    return { staged: 0, topicsExtracted: [], syncTreatmentReportPath, ok: true, error: null, failed: [] };
   }
 
   const notebookSlugDir = path.dirname(staged[0].relativePath); // intake/notebooklm/<slug>
 
+  const failed: string[] = [];
   let routeSummary: { byTopic?: Record<string, number>; runStatus?: string } | null = null;
   let preRouteError: string | null = null;
   let routeResult: SpawnResult | null = null;
@@ -243,6 +245,7 @@ export function runIngestNotebooklm(root: string, notebookId: string, opts: RunI
     preRouteError = (err as Error).message;
     for (const item of staged) {
       recordItem(root, runId, { key: item.key, status: 'failed', detail: `pre-route failure: ${preRouteError}` });
+      failed.push(item.key);
     }
   }
 
@@ -272,6 +275,7 @@ export function runIngestNotebooklm(root: string, notebookId: string, opts: RunI
 
       if (!routeSucceeded) {
         recordItem(root, runId, { key: item.key, status: 'failed', detail: 'route-intake did not complete successfully this run' });
+        failed.push(item.key);
         continue;
       }
 
@@ -288,6 +292,7 @@ export function runIngestNotebooklm(root: string, notebookId: string, opts: RunI
           // Present in the report but genuinely unsorted/unstaged -- respect that
           // classification instead of guessing via the single-topic fallback.
           recordItem(root, runId, { key: item.key, status: 'failed', detail: 'unsorted or not staged by route-intake' });
+          failed.push(item.key);
           continue;
         }
       } else if (touchedTopics.length === 1) {
@@ -300,6 +305,7 @@ export function runIngestNotebooklm(root: string, notebookId: string, opts: RunI
 
       if (!topic) {
         recordItem(root, runId, { key: item.key, status: 'failed', detail: 'unsorted or not staged by route-intake' });
+        failed.push(item.key);
         continue;
       }
 
@@ -327,6 +333,7 @@ export function runIngestNotebooklm(root: string, notebookId: string, opts: RunI
         extractTopics.add(topic);
       } catch (err) {
         recordItem(root, runId, { key: item.key, status: 'failed', detail: (err as Error).message });
+        failed.push(item.key);
         continue;
       }
     }
@@ -339,6 +346,7 @@ export function runIngestNotebooklm(root: string, notebookId: string, opts: RunI
       recordItem(root, runId, { key: `topic:${topic}`, status: 'extracted' });
     } catch (err) {
       recordItem(root, runId, { key: `topic:${topic}`, status: 'failed', detail: (err as Error).message });
+      failed.push(`topic:${topic}`);
     }
   }
 
@@ -349,7 +357,8 @@ export function runIngestNotebooklm(root: string, notebookId: string, opts: RunI
     staged: staged.length,
     topicsExtracted: Array.from(extractTopics),
     syncTreatmentReportPath,
-    ok: preRouteError === null,
+    ok: preRouteError === null && failed.length === 0,
     error: preRouteError,
+    failed,
   };
 }

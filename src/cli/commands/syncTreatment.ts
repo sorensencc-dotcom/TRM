@@ -25,12 +25,17 @@ export interface SyncTreatmentResult {
   stderr: string[];
 }
 
+// Vault-internal scaffolding dirs under topics/charlie that are not topics
+// themselves (no extracts/extract.json, never will have one). Without this
+// filter every run reports them as "skipped: missing extract.json" forever.
+const VAULT_INFRA_DIRS = new Set(['crosslinks', 'extracts', 'lineage', 'sources']);
+
 function discoverTopics(vaultRoot: string): string[] {
   const topicsDir = path.join(vaultRoot, 'topics', 'charlie');
   if (!fs.existsSync(topicsDir)) return [];
   return fs
     .readdirSync(topicsDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.') && !VAULT_INFRA_DIRS.has(entry.name))
     .map((entry) => entry.name);
 }
 
