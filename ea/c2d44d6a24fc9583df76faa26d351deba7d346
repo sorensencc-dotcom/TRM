@@ -1,0 +1,20 @@
+schedule-task-wrapper-TRM-Notebooklm-Mine.ps1
+  s_acaa711e7c3399::t_9120d2209ecd17 6
+  s_acaa711e7c3399::t_58d2722efb58b2 32-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "eac2d44d6a24fc9583df76faa26d351deba7d346",
+  "prompts": {},
+  "sessions": {
+    "s_acaa711e7c3399": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e8e68d7-e38d-48b1-be86-3a7570d8ddcd",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
