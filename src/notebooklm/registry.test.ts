@@ -92,7 +92,7 @@ describe('registry', () => {
       ],
     });
 
-    flushPulledHash(root, 'nb-1', 'source:s2', 'new-hash', '2026-08-12T00:00:00.000Z');
+    flushPulledHash(root, 'nb-1', 'source:s2', 'new-hash');
 
     const registry = readRegistry(root);
     const entry = findNotebook(registry, 'nb-1')!;

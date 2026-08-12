@@ -80,7 +80,7 @@ function mutateNotebook(
   writeRegistry(root, registry);
 }
 
-export function flushPulledHash(root: string, notebookId: string, key: string, hash: string, timestamp: string): void {
+export function flushPulledHash(root: string, notebookId: string, key: string, hash: string): void {
   mutateNotebook(root, notebookId, (entry) => {
     entry.last_pulled_hashes[key] = hash;
     delete entry.quarantined[key];
