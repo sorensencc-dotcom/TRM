@@ -1,7 +1,7 @@
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  roots: ['<rootDir>/tests'],
+  roots: ['<rootDir>/tests', '<rootDir>/src'],
   // Default (5000ms) is too tight for tests doing real async work (retry
   // loops with backoff, concurrency-pool draining, large batch writes) once
   // the machine is under load (e.g. full parallel suite + pre-push hook
