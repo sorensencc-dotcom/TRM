@@ -3,7 +3,7 @@
 # notebooklm-registry.json. Registered in Windows Task Scheduler, weekly
 # trigger -- see docs/superpowers/specs/2026-08-12-notebooklm-cic-ingest-mining-design.md §5.
 
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = "Continue"
 $VaultRoot = 'C:\Users\soren\trm-vault'
 $LogDir = Join-Path $VaultRoot 'logs'
 if (-not (Test-Path $LogDir)) {
@@ -29,7 +29,17 @@ if (-not (Test-Path $RegistryPath)) {
     exit 1
 }
 
-$Registry = Get-Content $RegistryPath -Raw | ConvertFrom-Json
+$Registry = $null
+try {
+    $Registry = Get-Content $RegistryPath -Raw | ConvertFrom-Json
+} catch {
+    "Failed to parse notebooklm-registry.json: $_" | Tee-Object -FilePath $LogFile -Append
+    $EndTime = Get-Date
+    $Duration = ($EndTime - $StartTime).TotalSeconds
+    "Completed: $EndTime (Duration: {0:F2}s, Exit Code: 1)" -f $Duration | Tee-Object -FilePath $LogFile -Append
+    exit 1
+}
+
 $ExitCode = 0
 
 foreach ($Notebook in $Registry.notebooks) {
