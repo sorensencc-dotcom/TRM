@@ -1,0 +1,25 @@
+src/notebooklm/registry.ts
+  s_acaa711e7c3399::t_97fd232a52c2e4 83
+src/notebooklm/registry.test.ts
+  s_acaa711e7c3399::t_a73bf9989287fc 95
+.ijfw/.session-edits.jsonl
+  s_acaa711e7c3399::t_05667543764d6f 37-42
+.ijfw/.session-signals.jsonl
+  s_acaa711e7c3399::t_9f6256a9c0c20f 6-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "e1e50dbfb0a0c97cfb0d3edc2206a56c8603983c",
+  "prompts": {},
+  "sessions": {
+    "s_acaa711e7c3399": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e8e68d7-e38d-48b1-be86-3a7570d8ddcd",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
