@@ -1,0 +1,27 @@
+src/cli/commands/ingestNotebooklm.test.ts
+  s_acaa711e7c3399::t_dbb0725b0e1a43 199-210,213-239,241-272,277-279
+  s_acaa711e7c3399::t_f17bbf674661ea 211-212
+  s_acaa711e7c3399::t_697f0e0cc9a2a5 273-276
+  s_acaa711e7c3399::t_9696a3d9be7560 7
+  s_acaa711e7c3399::t_92c4be64387416 240
+src/cli/commands/ingestNotebooklm.ts
+  s_acaa711e7c3399::t_120e82c8113c0e 165-172,175-178,180,188-197,199-207,209-212
+  s_acaa711e7c3399::t_0b3bbc2c4478ea 229
+  s_acaa711e7c3399::t_97a2c90084aeb0 164
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "221eae132bed08f8924de54d4cd3a5c8b697de0f",
+  "prompts": {},
+  "sessions": {
+    "s_acaa711e7c3399": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e8e68d7-e38d-48b1-be86-3a7570d8ddcd",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
