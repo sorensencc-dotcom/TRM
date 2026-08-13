@@ -1,10 +1,14 @@
 import * as path from 'node:path';
 
+const MAX_SLUG_LENGTH = 80;
+
 export function slugifyTitle(title: string): string {
   const slug = title
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+    .replace(/^-+|-+$/g, '')
+    .slice(0, MAX_SLUG_LENGTH)
+    .replace(/-+$/g, '');
   return slug.length > 0 ? slug : 'untitled';
 }
 

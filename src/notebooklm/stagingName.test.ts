@@ -10,6 +10,14 @@ describe('stagingName', () => {
     expect(slugifyTitle('   ')).toBe('untitled');
   });
 
+  it('slugifyTitle caps length so staged paths stay under Windows MAX_PATH', () => {
+    const longTitle =
+      'Banco Nacional de Cuba, Appellant, v. Peter L. F. Sabbatino, as Receiver, and F. Shelton Parr, William F. Prescott, Emet Whitlock, Lawrence H. Dixon, H. Bartow Farr, Elizabeth C. Prescott, Fabio Freyre, and Helen G. Downs, Co-Partners, Doing Business as Farr, Whitlock & Co., Appellees, 307 F.2d 845 (2d Cir. 1962) - Justia Law';
+    const slug = slugifyTitle(longTitle);
+    expect(slug.length).toBeLessThanOrEqual(80);
+    expect(slug.endsWith('-')).toBe(false);
+  });
+
   it('stagingRelativePath composes notebook slug, item id, and title slug', () => {
     expect(stagingRelativePath('cic-daily-research', 'src-abc-123', 'Willow Run Bomber Plant')).toBe(
       'intake/notebooklm/cic-daily-research/src-abc-123--willow-run-bomber-plant.md'
