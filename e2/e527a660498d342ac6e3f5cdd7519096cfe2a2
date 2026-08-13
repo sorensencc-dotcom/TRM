@@ -1,0 +1,22 @@
+src/cli/commands/extract.ts
+  s_acaa711e7c3399::t_d79fb0ddf3ec05 47-59,63
+  s_acaa711e7c3399::t_fab5f63d2a718d 13
+tests/cli/extract.test.ts
+  s_acaa711e7c3399::t_19eb040679517f 55-85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "e2e527a660498d342ac6e3f5cdd7519096cfe2a2",
+  "prompts": {},
+  "sessions": {
+    "s_acaa711e7c3399": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e8e68d7-e38d-48b1-be86-3a7570d8ddcd",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
