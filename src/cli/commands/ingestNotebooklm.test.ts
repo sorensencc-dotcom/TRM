@@ -212,6 +212,16 @@ describe('runIngestNotebooklm', () => {
     const syncCall = calls.find((c) => c[1] === 'sync-treatment')!;
     expect(syncCall.slice(1)).toEqual(['sync-treatment', '--narrative-root', 'C:\\dev\\charlie-deep-research']);
 
+    // Regression: trm's own topicPath convention (nodeDir) prepends 'topics/'
+    // itself -- passing 'topics/charlie/<topic>' here double-prefixes and
+    // fails with ENOENT reading 'topics/topics/charlie/<topic>/topic.json'.
+    // See tests/cli/ingest.test.ts and tests/reporting/exportBundle.test.ts,
+    // which both call runIngest with a bare 'charlie/<topic>' path.
+    const ingestCall = calls.find((c) => c[1] === 'ingest')!;
+    expect(ingestCall[2]).toBe('charlie/willow_run');
+    const extractCall = calls.find((c) => c[1] === 'extract')!;
+    expect(extractCall[2]).toBe('charlie/willow_run');
+
     // The staged item's hash should now be flushed into the registry, since
     // its ingest step succeeded.
     const registry = readRegistry(root);

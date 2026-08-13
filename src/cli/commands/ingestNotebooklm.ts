@@ -312,7 +312,7 @@ export function runIngestNotebooklm(root: string, notebookId: string, opts: RunI
       try {
         const ingestResult = runTrm(root, spawn, [
           'ingest',
-          `topics/charlie/${topic}`,
+          `charlie/${topic}`,
           item.sourceUrl ?? `local:${item.title}`,
           '--file',
           stagedPath ?? path.join(root, item.relativePath),
@@ -341,7 +341,7 @@ export function runIngestNotebooklm(root: string, notebookId: string, opts: RunI
 
   for (const topic of extractTopics) {
     try {
-      const extractResult = runTrm(root, spawn, ['extract', `topics/charlie/${topic}`]);
+      const extractResult = runTrm(root, spawn, ['extract', `charlie/${topic}`]);
       checkTrmResult(extractResult, 'extract');
       recordItem(root, runId, { key: `topic:${topic}`, status: 'extracted' });
     } catch (err) {
