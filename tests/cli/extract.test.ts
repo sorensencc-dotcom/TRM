@@ -52,6 +52,37 @@ describe('runExtract', () => {
     expect(result?.facts[2].source_id).toBe('SRC-002');
   });
 
+  it('drops exact (source_id, normalized text) duplicates within one extraction pass', () => {
+    const root = makeRoot();
+    runCreate(root, 'cuba', { actor: 'ACTOR-001' });
+    runIngest(root, 'cuba', { actor: 'ACTOR-001', type: 'text', title: 'x', origin: 'x', url: 'x' });
+    const rawDir = path.join(root, 'topics', 'cuba', 'sources', 'raw');
+    fs.mkdirSync(rawDir, { recursive: true });
+    fs.writeFileSync(path.join(rawDir, 'SRC-001.json'), JSON.stringify({
+      sourceId: 'SRC-001', kind: 'text', capturedAt: '2026-07-25T00:00:00.000Z', text: 'irrelevant, runner is mocked',
+    }));
+
+    // Simulates the real bug: a single extraction pass surfacing the same
+    // claim twice (e.g. once verbatim, once with different punctuation --
+    // "Willow Run" vs "Willow Run.") which normalize to the same factKey.
+    const duplicatingRunner = {
+      run: jest.fn(() => ({
+        facts: [
+          { id: 'FCT-001', text: 'The plant opened in 1941.', source_id: 'SRC-001', confidence: 0.9, categories: [] },
+          { id: 'FCT-002', text: 'The plant opened in 1941!', source_id: 'SRC-001', confidence: 0.9, categories: [] },
+          { id: 'FCT-003', text: 'A distinct second fact.', source_id: 'SRC-001', confidence: 0.9, categories: [] },
+        ],
+        summary: 'stub summary',
+      })),
+    };
+
+    const result = runExtract(root, 'cuba', { actor: 'ACTOR-001' }, duplicatingRunner);
+
+    expect(result?.facts).toHaveLength(2);
+    expect(result?.facts.map((f) => f.text)).toEqual(['The plant opened in 1941.', 'A distinct second fact.']);
+    expect(result?.facts.map((f) => f.id)).toEqual(['FCT-001', 'FCT-002']);
+  });
+
   it('dry-run writes nothing', () => {
     const root = makeRoot();
     runCreate(root, 'cuba', { actor: 'ACTOR-001' });

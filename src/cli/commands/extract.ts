@@ -10,6 +10,7 @@ import { claudeCodeRunner } from '../../extraction/claudeCodeRunner';
 import { resolveActor } from '../../registry/actorRegistry';
 import { appendOperation } from '../../lineage/hasher';
 import { readRawEnvelope } from '../../core/rawSource';
+import { factKey } from '../../sync/factIdentity';
 
 interface SourceMetadata {
   sources: { id: string }[];
@@ -43,10 +44,23 @@ export function runExtract(
     summaries.push(summary);
   }
 
+  // A single extraction pass can surface the same claim twice from one
+  // source's text (the runner has no visibility into its own prior output
+  // within a pass) -- drop exact (source_id, normalized text) repeats before
+  // numbering, keeping the first occurrence. Without this, sync-treatment's
+  // factKey collision check skips the whole topic on every future run.
+  const seenKeys = new Set<string>();
+  const dedupedFacts = collectedFacts.filter((fact) => {
+    const key = factKey(fact);
+    if (seenKeys.has(key)) return false;
+    seenKeys.add(key);
+    return true;
+  });
+
   // Each runner numbers facts FCT-001.. independently per source (it has no
   // visibility into other sources in this pass), so ids collide once concatenated
   // across sources. Renumber globally, sequentially, in source order.
-  const allFacts: Fact[] = collectedFacts.map((fact, i) => ({
+  const allFacts: Fact[] = dedupedFacts.map((fact, i) => ({
     ...fact,
     id: `FCT-${String(i + 1).padStart(3, '0')}`,
   }));
