@@ -733,10 +733,15 @@ describe('runIngestDir', () => {
       const { runner } = makeRunSpyRunner();
       const runPromise = runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
 
-      // Give the frame path's real async work (mkdtemp, extractFrames,
-      // analyzeFrames) a window to run while transcribeAudio's promise is
-      // still deliberately unresolved.
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // Poll for the frame path's real async work (mkdtemp, extractFrames,
+      // analyzeFrames) to run while transcribeAudio's promise is still
+      // deliberately unresolved. A single fixed-delay wait races real
+      // wall-clock time under CPU contention (parallel test workers), so
+      // poll for the condition instead of gambling on one sleep duration.
+      const deadline1 = Date.now() + 5000;
+      while (!extractFramesCalledWhileTranscribeStillPending && Date.now() < deadline1) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
       expect(extractFramesCalledWhileTranscribeStillPending).toBe(true);
 
       resolveTranscribe!('late transcript');
@@ -840,9 +845,15 @@ describe('runIngestDir', () => {
       const { runner } = makeRunSpyRunner();
       const runPromise = runIngestDir(root, 'topic1', { actor: 'ACTOR-001', dir, stub: true }, runner);
 
-      // Give the frame branch (which rejects synchronously-ish) a window to
-      // settle while the transcript branch is still deliberately pending.
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // Poll for the frame branch (which rejects synchronously-ish) to
+      // settle while the transcript branch is still deliberately pending. A
+      // single fixed-delay wait races real wall-clock time under CPU
+      // contention (parallel test workers), so poll for the condition
+      // instead of gambling on one sleep duration.
+      const deadline2 = Date.now() + 5000;
+      while (mkdtempSpy.mock.results.length < 1 && Date.now() < deadline2) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
       expect(mkdtempSpy.mock.results.length).toBe(1);
       const tempDir = await mkdtempSpy.mock.results[0].value;
       // The frame branch has already rejected by now, but cleanup must NOT

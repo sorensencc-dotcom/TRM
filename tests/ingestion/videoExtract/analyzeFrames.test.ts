@@ -101,8 +101,16 @@ describe('analyzeFrames', () => {
 
     // Poll disk state while the batch is still running: at no point should
     // all 30 files still be present once at least one extract() has resolved.
-    await new Promise((resolve) => setTimeout(resolve, 40));
-    const stillPresentMidRun = framePaths.filter((p) => fs.existsSync(p)).length;
+    // A single fixed-delay snapshot races real wall-clock time under CPU
+    // contention (parallel test workers), so poll for the condition instead
+    // of gambling on one sleep duration.
+    let stillPresentMidRun = FRAME_COUNT;
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      stillPresentMidRun = framePaths.filter((p) => fs.existsSync(p)).length;
+      if (stillPresentMidRun < FRAME_COUNT) break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
 
     await resultPromise;
 
