@@ -1,0 +1,22 @@
+tests/ingestion/videoExtract/analyzeFrames.test.ts
+  s_6b7af8068c04fb::t_0e3d3349d5ed31 104-113
+tests/cli/ingestDir.test.ts
+  s_6b7af8068c04fb::t_7f6bdc81769ccd 848-856
+  s_6b7af8068c04fb::t_5a2291d590174f 736-744
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "cf2cddfc6070bc8102523bed419a9649ac631bc6",
+  "prompts": {},
+  "sessions": {
+    "s_6b7af8068c04fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ad7dd25b-eab9-4815-b098-9b74ce197d61",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
