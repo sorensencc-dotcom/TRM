@@ -358,4 +358,79 @@ describe('runIngestNotebooklm', () => {
     expect(src2Item?.status).toBe('failed');
     expect(src2Item?.detail).toMatch(/unsorted/i);
   });
+
+  it('deletes this run\'s _staging-intake-<runId> directories after ingest, since trm ingest already persisted their content permanently', () => {
+    // Live bug (2026-08-14): route-intake --apply re-copies the entire
+    // vault-wide doneEntries history into a fresh topics/charlie/<topic>/
+    // _staging-intake-<runId>/ dir on every ingest-notebooklm run, and
+    // nothing ever removed the old ones -- 11 runs left 15GB of duplicate
+    // content in one topic alone. trm ingest reads each stagedPath once and
+    // writes its content into permanent topic storage, so the staging dir
+    // is safe to delete once the ingest loop below has consumed it.
+    (nlmCli.listSources as jest.Mock).mockReturnValue({
+      ok: true,
+      data: [{ id: 'src-1', title: 'Willow Run Plant', type: 'web_page', url: 'https://example.com/a' }],
+    });
+    (nlmCli.getSourceContent as jest.Mock).mockReturnValue({ ok: true, data: 'Willow Run bomber plant content.' });
+    (nlmCli.listNotes as jest.Mock).mockReturnValue({ ok: true, data: [] });
+
+    const willowRunRelPath = 'intake/notebooklm/cic-kb/src-1--willow-run-plant.md';
+    const stagingDir = path.join(root, 'topics/charlie/willow_run/_staging-intake-route-run-1');
+    const stagedFile = path.join(stagingDir, 'src-1--willow-run-plant.md');
+    // A second, unrelated topic's staging dir from the same route-intake call --
+    // route-intake restages every topic's doneEntries vault-wide, not just the
+    // one this notebook pull touched, so cleanup must not be scoped to
+    // extractTopics alone.
+    const otherStagingDir = path.join(root, 'topics/charlie/cuba/_staging-intake-route-run-1');
+    fs.mkdirSync(stagingDir, { recursive: true });
+    fs.writeFileSync(stagedFile, 'Willow Run bomber plant content.');
+    fs.mkdirSync(otherStagingDir, { recursive: true });
+    fs.writeFileSync(path.join(otherStagingDir, 'unrelated.md'), 'Unrelated cuba content.');
+
+    const fakeSpawn = jest.fn((_cmd: string, args: string[]) => {
+      if (args[1] === 'route-intake') {
+        fs.writeFileSync(
+          path.join(root, 'intake-routing-report.json'),
+          JSON.stringify({
+            reportVersion: 1,
+            generatedAt: new Date().toISOString(),
+            applied: true,
+            runStatus: 'completed',
+            runId: 'route-run-1',
+            totalConsidered: 2,
+            byTopic: { willow_run: 1, cuba: 1 },
+            ambiguousCount: 0,
+            entries: [
+              {
+                sourcePath: willowRunRelPath,
+                hash: 'h1',
+                topic: 'willow_run',
+                matchedKeyword: 'willow run',
+                ambiguous: false,
+                status: 'staged',
+                stagedPath: stagedFile,
+              },
+              {
+                sourcePath: 'topics/charlie/cuba/some-older-file.md',
+                hash: 'h2',
+                topic: 'cuba',
+                matchedKeyword: 'cuba',
+                ambiguous: false,
+                status: 'staged',
+                stagedPath: path.join(otherStagingDir, 'unrelated.md'),
+              },
+            ],
+          })
+        );
+        return { status: 0, stdout: JSON.stringify({ totalConsidered: 2, byTopic: { willow_run: 1, cuba: 1 }, ambiguousCount: 0, runStatus: 'completed' }), stderr: '' };
+      }
+      return { status: 0, stdout: '{}', stderr: '' };
+    });
+
+    const result = runIngestNotebooklm(root, 'nb-1', { narrativeRoot: 'C:\\dev\\charlie-deep-research', spawn: fakeSpawn as any });
+
+    expect(result.ok).toBe(true);
+    expect(fs.existsSync(stagingDir)).toBe(false);
+    expect(fs.existsSync(otherStagingDir)).toBe(false);
+  });
 });

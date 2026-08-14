@@ -262,6 +262,24 @@ export function runIngestNotebooklm(root: string, notebookId: string, opts: RunI
     report = JSON.parse(fs.readFileSync(reportPath, 'utf-8')) as { entries: RouteReportEntry[] };
   }
 
+  // route-intake --apply re-copies the *entire* per-topic doneEntries history
+  // (vault-wide, not just this run's items) into a fresh topics/charlie/<topic>/
+  // _staging-intake-<runId>/ dir on every call. trm ingest below reads each
+  // stagedPath once and persists its content into permanent topic storage via
+  // writeRawEnvelope -- the staged file is never referenced again afterward.
+  // Left alone, every ingest-notebooklm run leaves behind a full duplicate
+  // staging snapshot of every routed topic, forever (found live: 11 runs left
+  // 15GB of near-identical duplicates in one topic alone). These dirs are
+  // scoped to this run's runId and only reachable through this report, so
+  // it's safe to remove them all once the ingest loop below has consumed
+  // whatever it needed -- a standalone `trm route-intake --apply` invocation
+  // (not routed through ingest-notebooklm) never reaches this cleanup, so a
+  // human queuing files for manual `trm ingest` later is unaffected.
+  const stagingDirsThisRun = new Set<string>();
+  for (const e of report?.entries ?? []) {
+    if (e.stagedPath) stagingDirsThisRun.add(path.dirname(e.stagedPath));
+  }
+
   // Topics actually affected by THIS run's successfully-ingested items --
   // not route-intake's vault-wide byTopic summary, which includes every
   // topic that has ever received intake. Bounds the extract sweep below to
@@ -347,6 +365,16 @@ export function runIngestNotebooklm(root: string, notebookId: string, opts: RunI
     } catch (err) {
       recordItem(root, runId, { key: `topic:${topic}`, status: 'failed', detail: (err as Error).message });
       failed.push(`topic:${topic}`);
+    }
+  }
+
+  // Best-effort: a cleanup failure (e.g. a locked file) must not fail the
+  // whole run -- the content is already durably persisted by trm ingest above.
+  for (const dir of stagingDirsThisRun) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // ignore
     }
   }
 
