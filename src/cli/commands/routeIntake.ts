@@ -7,8 +7,19 @@ import { writeFileAtomic, copyFileAtomic } from '../../core/atomicWrite';
 import { readTopicMeta } from '../../core/topicNode';
 import { acquireLock, releaseLock } from '../../sync/lock';
 
-export type RouteEntryStatus = 'staged' | 'unsorted' | 'missing' | 'failed' | 'would-stage';
+export type RouteEntryStatus = 'staged' | 'unsorted' | 'missing' | 'failed' | 'would-stage' | 'already-staged';
 export type RouteRunStatus = 'completed' | 'preflight-failed' | 'failed';
+
+interface RoutingStateEntry {
+  topic: string;
+  stagedPath: string;
+  runId: string;
+  stagedAt: string;
+}
+
+interface RoutingState {
+  entries: Record<string, RoutingStateEntry>;
+}
 
 export interface RouteReportEntry {
   sourcePath: string;
@@ -49,6 +60,28 @@ function reportPath(root: string): string {
   return path.join(root, 'intake-routing-report.json');
 }
 
+function routingStatePath(root: string): string {
+  return path.join(root, 'intake-routing-state.json');
+}
+
+function readRoutingState(root: string): RoutingState {
+  const file = routingStatePath(root);
+  if (!fs.existsSync(file)) return { entries: {} };
+  const raw = fs.readFileSync(file, 'utf-8');
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    throw new Error(
+      `Intake routing state at ${file} is not valid JSON (${(err as Error).message}). ` +
+        'Fix or delete the file to continue; deleting it forces every entry to be re-staged on the next --apply.'
+    );
+  }
+}
+
+function writeRoutingStateAtomic(root: string, state: RoutingState): void {
+  writeFileAtomic(routingStatePath(root), JSON.stringify(state, null, 2));
+}
+
 function resolveConfigPath(root: string, configPath?: string): string {
   if (configPath) return path.resolve(root, configPath);
   // Default config ships with the tool itself, not the vault -- resolve relative to
@@ -70,20 +103,33 @@ function resolvePhysicalPath(root: string, sourcePath: string): string {
   return resolved;
 }
 
-function classifyEntries(root: string, entries: IntakeEntry[], config: ReturnType<typeof loadTopicRoutingConfig>): RouteReportEntry[] {
+function classifyEntries(
+  root: string,
+  entries: IntakeEntry[],
+  config: ReturnType<typeof loadTopicRoutingConfig>,
+  routingState: RoutingState
+): RouteReportEntry[] {
   const rows: RouteReportEntry[] = [];
   for (const entry of entries) {
     const physicalPaths = [entry.sourcePath, ...(entry.dupPaths ?? [])];
     for (const sourcePath of physicalPaths) {
       resolvePhysicalPath(root, sourcePath); // throws on escape; result unused here, absolute path resolved again at apply time
       const { result, ambiguous } = classifyPath(normalize(sourcePath), config);
+      // Skip re-staging a path a prior --apply already copied for the same topic,
+      // as long as the previously-staged file is still there. Without this every
+      // --apply re-classified and re-copied the FULL history of every file ever
+      // staged, not just what's new since the last run.
+      const priorStage = routingState.entries[sourcePath];
+      const alreadyStaged =
+        result !== null && priorStage !== undefined && priorStage.topic === result.topic && fs.existsSync(priorStage.stagedPath);
       rows.push({
         sourcePath,
         hash: entry.hash,
         topic: result?.topic ?? null,
         matchedKeyword: result?.matchedKeyword ?? null,
         ambiguous,
-        status: result ? 'would-stage' : 'unsorted',
+        status: alreadyStaged ? 'already-staged' : result ? 'would-stage' : 'unsorted',
+        stagedPath: alreadyStaged ? priorStage.stagedPath : undefined,
       });
     }
   }
@@ -128,7 +174,8 @@ export async function runRouteIntake(root: string, opts: RouteIntakeOptions): Pr
   const config = loadTopicRoutingConfig(resolveConfigPath(root, opts.configPath));
   const manifest = readIntakeManifest(root);
   const doneEntries = Object.values(manifest.entries).filter((e) => e.status === 'done');
-  const entries = classifyEntries(root, doneEntries, config);
+  const routingState = readRoutingState(root);
+  const entries = classifyEntries(root, doneEntries, config, routingState);
   const { byTopic, ambiguousCount } = summarize(entries);
   const runId = opts.runId ?? generateRunId();
 
@@ -170,11 +217,12 @@ export async function runRouteIntake(root: string, opts: RouteIntakeOptions): Pr
 
   acquireLock(lockPath(root), runId);
   let stagedEntries: RouteReportEntry[] = [];
+  let routingStateDirty = false;
   try {
     const basenamesUsed = new Map<string, Set<string>>(); // topic -> set of basenames already staged this run
 
     for (const entry of entries) {
-      if (!entry.topic) {
+      if (!entry.topic || entry.status === 'already-staged') {
         stagedEntries.push(entry);
         continue;
       }
@@ -198,10 +246,14 @@ export async function runRouteIntake(root: string, opts: RouteIntakeOptions): Pr
       try {
         copyFileAtomic(absSource, destPath);
         stagedEntries.push({ ...entry, status: 'staged', stagedPath: destPath });
+        routingState.entries[entry.sourcePath] = { topic: entry.topic, stagedPath: destPath, runId, stagedAt: new Date().toISOString() };
+        routingStateDirty = true;
       } catch (err) {
         stagedEntries.push({ ...entry, status: 'failed', error: (err as Error).message });
       }
     }
+
+    if (routingStateDirty) writeRoutingStateAtomic(root, routingState);
 
     return writeAndReturn({
       reportVersion: 1,
@@ -216,6 +268,7 @@ export async function runRouteIntake(root: string, opts: RouteIntakeOptions): Pr
     });
   } catch (err) {
     try {
+      if (routingStateDirty) writeRoutingStateAtomic(root, routingState);
       writeAndReturn({
         reportVersion: 1,
         generatedAt: new Date().toISOString(),

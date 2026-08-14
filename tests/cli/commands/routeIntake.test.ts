@@ -313,6 +313,51 @@ describe('runRouteIntake (--apply)', () => {
     }
   });
 
+  it('does not re-copy a file already staged by a prior --apply run', async () => {
+    const root = makeRoot();
+    writeConfig(root, CONFIG);
+    createNode(root, 'charlie/cuba', 'ACTOR-TEST');
+    const srcDir = path.join(root, 'intake', 'dump', 'Cuba Trip');
+    fs.mkdirSync(srcDir, { recursive: true });
+    fs.writeFileSync(path.join(srcDir, 'photo1.jpg'), 'bytes');
+    writeManifestEntry(root, { hash: 'h1', sourcePath: 'intake/dump/Cuba Trip/photo1.jpg' });
+
+    await runRouteIntake(root, { ...FIXTURE_CONFIG, apply: true, runId: 'first-run' });
+    const firstStagedPath = path.join(root, 'topics', 'charlie', 'cuba', '_staging-intake-first-run', 'photo1.jpg');
+    expect(fs.existsSync(firstStagedPath)).toBe(true);
+
+    mockCopyFileThrowOnce = true; // proves a second copy is never attempted
+    try {
+      const summary = await runRouteIntake(root, { ...FIXTURE_CONFIG, apply: true, runId: 'second-run' });
+      expect(summary.runStatus).toBe('completed');
+    } finally {
+      mockCopyFileThrowOnce = false;
+    }
+
+    // no new staging dir created for the second run
+    expect(fs.existsSync(path.join(root, 'topics', 'charlie', 'cuba', '_staging-intake-second-run'))).toBe(false);
+    const report = JSON.parse(fs.readFileSync(path.join(root, 'intake-routing-report.json'), 'utf-8'));
+    expect(report.entries[0]).toMatchObject({ status: 'already-staged', stagedPath: firstStagedPath });
+  });
+
+  it('re-stages a file whose prior staged copy was removed (e.g. consumed by ingest-dir)', async () => {
+    const root = makeRoot();
+    writeConfig(root, CONFIG);
+    createNode(root, 'charlie/cuba', 'ACTOR-TEST');
+    const srcDir = path.join(root, 'intake', 'dump', 'Cuba Trip');
+    fs.mkdirSync(srcDir, { recursive: true });
+    fs.writeFileSync(path.join(srcDir, 'photo1.jpg'), 'bytes');
+    writeManifestEntry(root, { hash: 'h1', sourcePath: 'intake/dump/Cuba Trip/photo1.jpg' });
+
+    await runRouteIntake(root, { ...FIXTURE_CONFIG, apply: true, runId: 'first-run' });
+    fs.rmSync(path.join(root, 'topics', 'charlie', 'cuba', '_staging-intake-first-run'), { recursive: true, force: true });
+
+    await runRouteIntake(root, { ...FIXTURE_CONFIG, apply: true, runId: 'second-run' });
+
+    const secondStagedPath = path.join(root, 'topics', 'charlie', 'cuba', '_staging-intake-second-run', 'photo1.jpg');
+    expect(fs.readFileSync(secondStagedPath, 'utf-8')).toBe('bytes');
+  });
+
   it('fails fast with a lock conflict when a live lock is already held', async () => {
     const root = makeRoot();
     writeConfig(root, CONFIG);
