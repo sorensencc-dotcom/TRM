@@ -1,9 +1,10 @@
 {
   "benson-ford": ["benson ford"],
-  "cuba": ["cuba", "banco nacional", "sabbatino", "castro"],
+  "cuba": ["cuba", "banco nacional", "sabbatino", "castro", "willysresearchlog"],
   "helene": ["helene", "5185 n bay", "5185 bay road", "miami beach"],
   "helene-i": ["helene i", "helene 1", "first helene"],
   "michigan-flight-museum": ["michigan flight museum", "mfm"],
+  "retirement": ["retirement", "later life", "later-life", "post-willys", "laterliferesearchlog"],
   "willow-run": ["willow run", "b-24", "liberator", "willow run bomber"],
   "willys-overland": ["willys", "willys-overland", "willys overland", "jeep", "cj3b"]
 }
