@@ -9,7 +9,7 @@ export interface ClaudeCliExec {
   (args: string[], input: string): { stdout: string; status: number | null };
 }
 
-const CLAUDE_BIN = process.platform === 'win32' ? 'claude.cmd' : 'claude';
+const CLAUDE_BIN = 'claude';
 
 function defaultExec(args: string[], input: string): { stdout: string; status: number | null } {
   // On Windows, spawnSync can't exec a .cmd wrapper directly (EINVAL) and shell:true

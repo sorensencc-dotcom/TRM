@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { queryNotebook } from '../../notebooklm/nlmCli';
 import { readRegistry, findNotebook, flushMinedState } from '../../notebooklm/registry';
 import { writeFileAtomic } from '../../core/atomicWrite';
@@ -57,6 +58,70 @@ function appendTodoIfUrgent(root: string, answer: string, question: MiningQuesti
   writeFileAtomic(todosPath, updated);
 }
 
+function appendResearchGapsMatrix(root: string, question: MiningQuestion, answer: string, notebookTitle: string, key: string): void {
+  const candidatePaths = [
+    path.join(root, 'trm-research-gaps.md'),
+    path.resolve(root, '..', 'dev', 'kb-sync', 'trm-research-gaps.md'),
+    path.resolve('C:\\dev\\kb-sync\\trm-research-gaps.md'),
+  ];
+  const gapsPath = candidatePaths.find((p) => fs.existsSync(p));
+  if (!gapsPath) return;
+
+  const content = fs.readFileSync(gapsPath, 'utf-8');
+  if (content.includes(key) || content.includes(answer.slice(0, 50))) return;
+
+  const excerpt = answer.replace(/\r?\n/g, ' ').slice(0, 150).trim();
+  const line = `- [ ] **${notebookTitle} (${question.id})**: ${excerpt}\n`;
+
+  const marker = '## Active Research Gaps\n';
+  const idx = content.indexOf(marker);
+  const updated =
+    idx === -1
+      ? `${content}\n\n## Active Research Gaps\n\n${line}`
+      : `${content.slice(0, idx + marker.length)}\n${line}${content.slice(idx + marker.length)}`;
+  writeFileAtomic(gapsPath, updated);
+}
+
+function triggerGapTriage(root: string): void {
+  const candidateScripts = [
+    path.join(root, 'scripts', 'trm-triage.mjs'),
+    path.resolve(root, '..', 'dev', 'kb-sync', 'scripts', 'trm-triage.mjs'),
+    path.resolve('C:\\dev\\kb-sync\\scripts\\trm-triage.mjs'),
+  ];
+  const scriptPath = candidateScripts.find((p) => fs.existsSync(p));
+  if (!scriptPath) return;
+
+  try {
+    spawnSync(process.execPath, [scriptPath], {
+      cwd: path.dirname(path.dirname(scriptPath)),
+      stdio: 'ignore',
+    });
+  } catch {
+    // Fail-soft: triage error must not break mining run
+  }
+}
+
+function uploadResearchGapsSource(root: string, notebookId: string, relativeDocPath: string): void {
+  const absPath = path.join(root, relativeDocPath);
+  if (!fs.existsSync(absPath)) return;
+
+  try {
+    const title = 'TRM Research Gaps & Synthesis';
+    const nlmBin = 'nlm';
+    if (process.platform === 'win32') {
+      spawnSync('cmd.exe', ['/d', '/s', '/c', nlmBin, 'source', 'add', notebookId, '--file', absPath, '--title', title, '--wait'], {
+        encoding: 'utf-8',
+      });
+    } else {
+      spawnSync(nlmBin, ['source', 'add', notebookId, '--file', absPath, '--title', title, '--wait'], {
+        encoding: 'utf-8',
+      });
+    }
+  } catch {
+    // Fail-soft: upload error must not fail mining run
+  }
+}
+
 export function runMineNotebooklm(root: string, notebookId: string, _opts: { topic?: string }): { newEntries: number; docPath: string } {
   const registry = readRegistry(root);
   const entry = findNotebook(registry, notebookId);
@@ -80,6 +145,7 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
 
     appendDocRow(root, relativeDocPath, question, result.data, entry.title, key);
     appendTodoIfUrgent(root, result.data, question, key);
+    appendResearchGapsMatrix(root, question, result.data, entry.title, key);
     seenKeys.add(key);
     newEntries++;
   }
@@ -91,7 +157,12 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
   // next run.
   if (anySuccess) {
     flushMinedState(root, notebookId, Array.from(seenKeys), new Date().toISOString());
+    if (newEntries > 0) {
+      triggerGapTriage(root);
+      uploadResearchGapsSource(root, notebookId, relativeDocPath);
+    }
   }
 
   return { newEntries, docPath: relativeDocPath };
 }
+
