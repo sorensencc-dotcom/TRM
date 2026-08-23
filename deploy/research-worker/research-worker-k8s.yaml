@@ -1,0 +1,92 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: trm-research
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: research-worker-config
+  namespace: trm-research
+data:
+  PORT: "8085"
+  NODE_ENV: "staging"
+  WORKER_PROTOCOL: "research.task.v1 -> research.result.v1"
+  TASK_TIMEOUT_SEC: "30"
+  PROVIDER_NAME: "ollama"
+  OLLAMA_MODEL: "llama3.2"
+  OLLAMA_HOST: "http://host.docker.internal:11434"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: research-worker-secrets
+  namespace: trm-research
+type: Opaque
+stringData:
+  # Non-secret placeholders - update interactively in real clusters
+  PROVIDER_API_KEY: "placeholder-non-secret"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: research-worker-deployment
+  namespace: trm-research
+  labels:
+    app: research-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: research-worker
+  template:
+    metadata:
+      labels:
+        app: research-worker
+    spec:
+      containers:
+      - name: research-worker
+        image: trm-research-worker:v1.0.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8085
+          name: http
+        envFrom:
+        - configMapRef:
+            name: research-worker-config
+        - secretRef:
+            name: research-worker-secrets
+        resources:
+          limits:
+            cpu: "1000m"
+            memory: "512Mi"
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 3
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: research-worker-svc
+  namespace: trm-research
+spec:
+  type: ClusterIP
+  selector:
+    app: research-worker
+  ports:
+  - port: 8085
+    targetPort: http
+    name: http
