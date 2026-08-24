@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Topic Manifest v1",
+  "type": "object",
+  "required": [
+    "$schema",
+    "topicId",
+    "topicSlug",
+    "domain",
+    "title",
+    "timeHorizon",
+    "primaryEntities",
+    "status",
+    "createdAt"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "$schema": { "type": "string" },
+    "topicId": { "type": "string" },
+    "topicSlug": { "type": "string" },
+    "domain": { "type": "string" },
+    "title": { "type": "string" },
+    "timeHorizon": {
+      "type": "object",
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "string" },
+        "end": { "type": "string" }
+      }
+    },
+    "primaryEntities": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "status": { "type": "string" },
+    "createdAt": { "type": "string" }
+  }
+}

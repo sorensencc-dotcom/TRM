@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Audit Rules v1",
+  "type": "object",
+  "required": ["topicId", "temporalSanity", "overClaimTriggers", "entityResolution"],
+  "additionalProperties": true,
+  "properties": {
+    "topicId": { "type": "string" },
+    "temporalSanity": {
+      "type": "object",
+      "required": ["validRange", "flagCrossDateConflicts"],
+      "properties": {
+        "validRange": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "flagCrossDateConflicts": { "type": "boolean" }
+      }
+    },
+    "overClaimTriggers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["forbiddenPattern", "requiredContext", "flagMessage"],
+        "properties": {
+          "forbiddenPattern": { "type": "string" },
+          "requiredContext": { "type": "string" },
+          "flagMessage": { "type": "string" }
+        }
+      }
+    },
+    "entityResolution": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "string" }
+      }
+    }
+  }
+}

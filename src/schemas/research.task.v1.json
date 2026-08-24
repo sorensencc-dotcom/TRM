@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Research Task v1",
+  "type": "object",
+  "required": [
+    "$schema",
+    "taskId",
+    "topicId",
+    "idempotencyKey",
+    "evidenceType",
+    "sourceTargets",
+    "exactQuestion",
+    "outputContract",
+    "approvalRequired"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "$schema": { "type": "string" },
+    "taskId": { "type": "string" },
+    "topicId": { "type": "string" },
+    "idempotencyKey": { "type": "string" },
+    "evidenceType": { "type": "string" },
+    "sourceTargets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["sourceId", "sourceRevision"],
+        "properties": {
+          "sourceId": { "type": "string" },
+          "sourceRevision": { "type": "string" },
+          "expectedSpan": {
+            "type": "object",
+            "properties": {
+              "startByte": { "type": "integer" },
+              "endByte": { "type": "integer" }
+            }
+          }
+        }
+      }
+    },
+    "exactQuestion": { "type": "string" },
+    "outputContract": { "type": "string" },
+    "approvalRequired": { "type": "boolean" }
+  }
+}
