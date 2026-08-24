@@ -98,6 +98,8 @@ export function createLocalReferenceWorker(
           const doc = sourcesMap[sourceId];
           if (!doc || typeof doc.text !== 'string' || doc.text.length === 0) continue;
 
+          const findingsBefore = findings.length;
+
           if (providerName === 'ollama') {
             try {
               const prompt = `You are a research citation engine. Analyze this document according to the following instruction:
@@ -158,8 +160,8 @@ Return a JSON object with this exact structure:
             }
           }
 
-          // Fallback if no findings from Ollama or in fixture mode
-          if (findings.length === 0) {
+          // Fallback if this source produced no findings from Ollama or in fixture mode
+          if (findings.length === findingsBefore) {
             const sliceLen = Math.min(doc.text.length, 64);
             const spanText = doc.text.slice(0, sliceLen);
             findings.push({
