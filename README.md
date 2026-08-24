@@ -27,6 +27,31 @@ Or during development, without building:
 npm run trm -- <command> ...
 ```
 
+## Controlled evidence extraction & topic tools
+
+TRM includes automated Python utilities for topic scaffolding, topic coverage auditing, and bounded cryptographic evidence extraction:
+
+### Topic scaffolder (`scaffold_topic.py`)
+
+Scaffolds a new topic research testbed directory with corpus folders, task specifications, and pipeline components:
+
+```bash
+python scaffold_topic.py --topic-slug <topic-slug>
+```
+
+### Topic coverage auditor (`topic_coverage_auditor.py`)
+
+Executes a 3-tier coverage audit across research topics:
+1. **Source coverage audit**: Detects unindexed corpus files.
+2. **Topic emergence audit**: Discovers unmapped entity density clusters for candidate topic creation.
+3. **Temporal scope drift audit**: Compares `eventDate` against declared topic time horizons.
+
+```bash
+python topic_coverage_auditor.py --topics-dir ./tests/pilots --corpus-dir ./tests/pilots/willow-run-1941/corpus
+```
+
+See [`ControlledEvidencePipeline.md`](file:///c:/dev/wiki/ControlledEvidencePipeline.md) for the complete workflow diagram and architecture specification.
+
 ## Safety guardrail
 
 Every command call runs `assertSafeRoot(process.cwd())` first (`src/core/rootSafety.ts`). It walks up from the current directory looking for a `.git` folder; if one is found **and** its `config` has a `[remote "..."]` section, the command refuses to run:
