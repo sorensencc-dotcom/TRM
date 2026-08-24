@@ -69,7 +69,8 @@ class TopicCoverageAuditor:
                             with open(os.path.join(specs_dir, spec_file), "r", encoding="utf-8") as sf:
                                 spec_data = json.load(sf)
                                 for target in spec_data.get("sourceTargets", []):
-                                    if target.get("sourceId") in filename:
+                                    source_id = target.get("sourceId", "")
+                                    if source_id and filename == f"{source_id}.txt":
                                         is_covered = True
                                         break
 
@@ -88,41 +89,103 @@ class TopicCoverageAuditor:
             "orphans": orphans
         }
 
+    ENTITY_RE = re.compile(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}\b")
+    YEAR_RE = re.compile(r"\b(1[6-9]\d{2}|20\d{2})\b")
+    MIN_ENTITY_DENSITY = 2   # entity phrase must recur at least this many times in the corpus
+    MIN_CLUSTER_SIZE = 2     # a candidate needs at least this many distinct unmapped entities
+
+    def _known_entities(self) -> set:
+        known = set()
+        for topic in self._get_active_topics():
+            manifest_path = os.path.join(self.topics_dir, topic, "topic.manifest.json")
+            if not os.path.exists(manifest_path):
+                continue
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                manifest = json.load(f)
+            for entity in manifest.get("primaryEntities", []):
+                known.add(entity.strip().lower())
+        return known
+
     def _audit_topic_emergence(self) -> dict:
-        candidates = [
-            {
-                "title": "Highland Park Moving Assembly Line Development (1913-1914)",
-                "slug": "highland-park-assembly-1913",
-                "domain": "assembly_line_origins",
-                "window": "1913-01-01 to 1914-12-31",
-                "entities": ["Highland Park Plant", "Magneto Assembly Line", "Charles E. Sorensen", "Henry Ford"],
-                "action": 'python trm/scaffold_topic.py --topic highland-park-assembly-1913 --title "Highland Park Moving Assembly Line Development (1913-1914)" --start 1913-01-01 --end 1914-12-31'
-            },
-            {
-                "title": "Rouge Foundry & Cast-Iron Tooling Metallurgy (1928-1935)",
-                "slug": "rouge-foundry-tooling-1928",
-                "domain": "metallurgy_and_tooling",
-                "window": "1928-01-01 to 1935-12-31",
-                "entities": ["Rouge River Plant", "Foundry Building", "Die Sinkers", "Tool and Die Shop"],
-                "action": 'python trm/scaffold_topic.py --topic rouge-foundry-tooling-1928 --title "Rouge Foundry & Cast-Iron Tooling Metallurgy (1928-1935)" --start 1928-01-01 --end 1935-12-31'
-            },
-            {
-                "title": "Edsel Ford Design Studios & Lincoln Continental Origins (1938-1940)",
-                "slug": "edsel-ford-styling-studios-1938",
-                "domain": "automotive_design",
-                "window": "1938-01-01 to 1940-12-31",
-                "entities": ["Edsel Ford", "E.T. Gregorie", "Lincoln Continental", "Design Styling Studio"],
-                "action": 'python trm/scaffold_topic.py --topic edsel-ford-styling-studios-1938 --title "Edsel Ford Design Studios & Lincoln Continental Origins (1938-1940)" --start 1938-01-01 --end 1940-12-31'
-            },
-            {
-                "title": "Willow Run Bomber Peak Output & Flight Acceptance (1943-1944)",
-                "slug": "willow-run-production-ramp-1944",
-                "domain": "wartime_aircraft_production",
-                "window": "1943-01-01 to 1944-12-31",
-                "entities": ["Willow Run Bomber Plant", "Army Air Forces", "B-24 Liberator", "Production Ramp"],
-                "action": 'python trm/scaffold_topic.py --topic willow-run-production-ramp-1944 --title "Willow Run Bomber Peak Output & Flight Acceptance (1943-1944)" --start 1943-01-01 --end 1944-12-31'
-            }
-        ]
+        candidates = []
+
+        if not (self.corpus_dir and os.path.exists(self.corpus_dir)):
+            return {"status": "PASS", "candidates": candidates}
+
+        known_entities = self._known_entities()
+
+        # Pass 1: count entity-phrase frequency across the corpus, and record
+        # per-file entity/year occurrences for clustering.
+        entity_counts: dict = {}
+        file_entities: dict = {}
+        file_years: dict = {}
+        for filename in sorted(os.listdir(self.corpus_dir)):
+            if not filename.endswith(".txt"):
+                continue
+            filepath = os.path.join(self.corpus_dir, filename)
+            with open(filepath, "r", encoding="utf-8") as f:
+                text = f.read()
+
+            found = set(self.ENTITY_RE.findall(text))
+            unmapped = {e for e in found if e.strip().lower() not in known_entities}
+            if unmapped:
+                file_entities[filename] = unmapped
+                file_years[filename] = set(self.YEAR_RE.findall(text))
+            for e in unmapped:
+                entity_counts[e] = entity_counts.get(e, 0) + 1
+
+        dense_entities = {e for e, c in entity_counts.items() if c >= self.MIN_ENTITY_DENSITY}
+        if not dense_entities:
+            return {"status": "PASS", "candidates": candidates}
+
+        # Pass 2: cluster files by shared dense entities (connected components).
+        adjacency: dict = {fn: set() for fn in file_entities}
+        for a in file_entities:
+            for b in file_entities:
+                if a < b and (file_entities[a] & file_entities[b] & dense_entities):
+                    adjacency[a].add(b)
+                    adjacency[b].add(a)
+
+        visited = set()
+        clusters = []
+        for start in file_entities:
+            if start in visited:
+                continue
+            stack = [start]
+            component = []
+            while stack:
+                node = stack.pop()
+                if node in visited:
+                    continue
+                visited.add(node)
+                component.append(node)
+                stack.extend(adjacency[node] - visited)
+            clusters.append(component)
+
+        for component in clusters:
+            cluster_entities = set()
+            cluster_years = set()
+            for fn in component:
+                cluster_entities |= (file_entities[fn] & dense_entities)
+                cluster_years |= file_years[fn]
+            if len(cluster_entities) < self.MIN_CLUSTER_SIZE:
+                continue
+
+            ranked = sorted(cluster_entities, key=lambda e: (-entity_counts[e], e))
+            top_entity = ranked[0]
+            slug_base = re.sub(r"[^a-z0-9]+", "-", top_entity.lower()).strip("-")
+            window = f"{min(cluster_years)}-01-01 to {max(cluster_years)}-12-31" if cluster_years else "unknown"
+            slug = f"{slug_base}-{min(cluster_years)}" if cluster_years else slug_base
+
+            candidates.append({
+                "title": f"Emergent cluster: {', '.join(ranked[:4])}",
+                "slug": slug,
+                "domain": slug_base.replace("-", "_"),
+                "window": window,
+                "entities": ranked,
+                "sourceFiles": sorted(component),
+                "action": f"python trm/scaffold_topic.py --topic-slug {slug}"
+            })
 
         return {
             "status": "ACTION_REQUIRED" if candidates else "PASS",
@@ -133,20 +196,37 @@ class TopicCoverageAuditor:
         drifted = []
         if self.topics_dir and os.path.exists(self.topics_dir):
             for topic in self._get_active_topics():
-                staging_file = os.path.join(self.topics_dir, topic, "_kb-sync-staging", "canonical_knowledge.json")
+                topic_dir = os.path.join(self.topics_dir, topic)
+                staging_file = os.path.join(topic_dir, "_kb-sync-staging", "canonical_knowledge.json")
                 if not os.path.exists(staging_file):
                     continue
+
+                manifest_path = os.path.join(topic_dir, "topic.manifest.json")
+                if not os.path.exists(manifest_path):
+                    # No declared time horizon to check against; skip rather than guess.
+                    continue
+                with open(manifest_path, "r", encoding="utf-8") as mf:
+                    manifest = json.load(mf)
+                horizon = manifest.get("timeHorizon") or {}
+                start, end = horizon.get("start"), horizon.get("end")
+                if not start or not end:
+                    continue
+                declared_window = f"{start} to {end}"
 
                 with open(staging_file, "r", encoding="utf-8") as f:
                     canonical_records = json.load(f)
 
                 for rec in canonical_records:
                     event_date = rec.get("eventDate", "")
-                    if event_date.startswith("1945") or event_date.startswith("1950"):
+                    if not event_date:
+                        continue
+                    # eventDate may be a bare year/month ("1941" or "1941-01"); pad for lexical comparison.
+                    comparable = (event_date + "-01-01")[:10]
+                    if comparable < start or comparable > end:
                         drifted.append({
                             "factKey": rec["factKey"],
                             "eventDate": event_date,
-                            "declaredWindow": "1941-01-01 to 1941-12-31",
+                            "declaredWindow": declared_window,
                             "remediation": f"Branch {rec['factKey']} into continuation topic"
                         })
 
