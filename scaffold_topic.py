@@ -9,7 +9,10 @@ for new research domains.
 import argparse
 import json
 import os
+import re
 import sys
+
+TOPIC_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 TORQUE_SPAN_RESOLVER_TEMPLATE = '''"""TorqueQuery span and revision resolver for {topic_title}."""
 
@@ -63,9 +66,6 @@ class OllamaBoundedExtractor:
     def extract(self, task_spec: dict, span_payload: dict) -> dict:
         task_id = task_spec["taskId"]
         span_text = span_payload["spanText"]
-        
-        # Bounded extraction mapped strictly from validated span payload
-        claim = f"Extracted bounded claim from span [{{span_payload['span']['start']}}:{{span_payload['span']['end']}}]"
         fact_key = f"fact-{topic_slug}-{{task_id.lower()}}"
 
         return {{
@@ -451,6 +451,10 @@ class GapMiningEngine:
 '''
 
 def scaffold_topic(topic_slug: str, output_dir: str = None):
+    if not TOPIC_SLUG_RE.match(topic_slug):
+        raise ValueError(
+            f"Invalid topic slug {topic_slug!r}: must match {TOPIC_SLUG_RE.pattern}"
+        )
     topic_title = topic_slug.replace("-", " ").title()
     if not output_dir:
         base_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))

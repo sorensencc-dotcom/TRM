@@ -6,10 +6,13 @@ Automated generator for TRM Topic Packs (topic.pack.v1) and controlled evidence 
 import os
 import json
 import hashlib
+import re
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+
+TOPIC_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 
 def write_json_atomic(target_path: Path, data: Any) -> None:
@@ -49,6 +52,10 @@ class TRMTopicScaffolder:
         :param audit_rules: Optional custom audit rules object
         :return: Absolute path to the scaffolded topic directory
         """
+        if not TOPIC_SLUG_RE.match(topic_slug):
+            raise ValueError(
+                f"Invalid topic slug {topic_slug!r}: must match {TOPIC_SLUG_RE.pattern}"
+            )
         topic_dir = self.base_topics_dir / topic_slug
         corpus_dir = topic_dir / "corpus"
         specs_dir = topic_dir / "specs"
