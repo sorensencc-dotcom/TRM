@@ -7,6 +7,8 @@
     "trm": "dist/cli/index.js"
   },
   "scripts": {
+    "prepare": "node scripts/install-git-hooks.mjs",
+    "secret-scan": "node scripts/secret-scan.mjs",
     "build": "tsc",
     "test": "jest",
     "test:load": "ts-node src/ingestion/imageExtract/imageAnalyzer.load-test.ts",

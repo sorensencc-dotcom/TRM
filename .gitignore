@@ -6,3 +6,10 @@ dist/
 # Raw private archive dump + its generated triage manifest
 intake/
 intake-manifest.json
+
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+secrets/

@@ -1,0 +1,4 @@
+title = "trm gitleaks config"
+
+[extend]
+useDefault = true
