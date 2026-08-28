@@ -82,4 +82,36 @@ describe('mineNotebooklm', () => {
     const result = runMineNotebooklm(root, 'nb-1', {});
     expect(result.newEntries).toBe(0);
   });
+
+  it('replaces existing question rows in place without duplicating table rows when answers change', () => {
+    (nlmCli.queryNotebook as jest.Mock).mockImplementation((_nb: string, question: string) => ({
+      ok: true,
+      data: question.includes('contradictions') ? 'Version 1 contradiction.' : 'Version 1 answer.',
+    }));
+
+    const first = runMineNotebooklm(root, 'nb-1', {});
+    expect(first.newEntries).toBe(4);
+
+    const docPath = path.join(root, first.docPath);
+    let lines = fs.readFileSync(docPath, 'utf-8').trim().split('\n');
+    // Header + separator + 4 question rows = 6 lines (plus title/blank)
+    const tableRows1 = lines.filter((l) => l.startsWith('| What '));
+    expect(tableRows1.length).toBe(4);
+    expect(tableRows1.find((r) => r.includes('Version 1 contradiction.'))).toBeDefined();
+
+    // Now answer changes on next run
+    (nlmCli.queryNotebook as jest.Mock).mockImplementation((_nb: string, question: string) => ({
+      ok: true,
+      data: question.includes('contradictions') ? 'Version 2 contradiction updated.' : 'Version 2 answer updated.',
+    }));
+
+    const second = runMineNotebooklm(root, 'nb-1', {});
+    expect(second.newEntries).toBe(4);
+
+    lines = fs.readFileSync(docPath, 'utf-8').trim().split('\n');
+    const tableRows2 = lines.filter((l) => l.startsWith('| What '));
+    expect(tableRows2.length).toBe(4);
+    expect(tableRows2.find((r) => r.includes('Version 2 contradiction updated.'))).toBeDefined();
+    expect(tableRows2.find((r) => r.includes('Version 1 contradiction.'))).toBeUndefined();
+  });
 });

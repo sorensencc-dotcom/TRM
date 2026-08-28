@@ -29,15 +29,35 @@ function docPathFor(root: string, notebookSlug: string): string {
   return path.join('trm', 'research-gaps', `${notebookSlug}.md`);
 }
 
-function appendDocRow(root: string, relativeDocPath: string, question: MiningQuestion, answer: string, notebookTitle: string, key: string): void {
+function upsertDocRow(root: string, relativeDocPath: string, question: MiningQuestion, answer: string, notebookTitle: string, key: string): void {
   const absPath = path.join(root, relativeDocPath);
   const exists = fs.existsSync(absPath);
   const header = '| Question | Answer excerpt | Notebook | First-seen date | Entry key |\n|---|---|---|---|---|\n';
   const excerpt = answer.length > 200 ? `${answer.slice(0, 200)}...` : answer;
-  const row = `| ${question.text} | ${excerpt.replace(/\|/g, '\\|').replace(/\n/g, ' ')} | ${notebookTitle} | ${new Date().toISOString().slice(0, 10)} | ${key} |\n`;
+  const newRow = `| ${question.text} | ${excerpt.replace(/\|/g, '\\|').replace(/\n/g, ' ')} | ${notebookTitle} | ${new Date().toISOString().slice(0, 10)} | ${key} |`;
   fs.mkdirSync(path.dirname(absPath), { recursive: true });
-  const existing = exists ? fs.readFileSync(absPath, 'utf-8') : `# Research Gaps: ${notebookTitle}\n\n${header}`;
-  writeFileAtomic(absPath, existing + row);
+
+  if (!exists) {
+    writeFileAtomic(absPath, `# Research Gaps: ${notebookTitle}\n\n${header}${newRow}\n`);
+    return;
+  }
+
+  const existingContent = fs.readFileSync(absPath, 'utf-8');
+  const lines = existingContent.split(/\r?\n/);
+
+  // Match existing row for this specific question
+  const questionPrefix = `| ${question.text} |`;
+  const existingIdx = lines.findIndex((l) => l.startsWith(questionPrefix));
+
+  if (existingIdx !== -1) {
+    lines[existingIdx] = newRow;
+  } else {
+    // Append to table
+    lines.push(newRow);
+  }
+
+  const cleaned = lines.filter((l, idx) => idx < lines.length - 1 || l.trim().length > 0).join('\n').trimEnd() + '\n';
+  writeFileAtomic(absPath, cleaned);
 }
 
 function appendTodoIfUrgent(root: string, answer: string, question: MiningQuestion, key: string): void {
@@ -46,7 +66,7 @@ function appendTodoIfUrgent(root: string, answer: string, question: MiningQuesti
 
   const todosPath = path.join(root, 'TODOS.md');
   const content = fs.existsSync(todosPath) ? fs.readFileSync(todosPath, 'utf-8') : '# TODOS\n\n## Open\n\n## Completed\n';
-  if (content.includes(key)) return; // idempotent across Open + Completed
+  if (content.includes(key) || content.includes(question.text)) return; // idempotent across Open + Completed
 
   const line = `- [ ] ${question.text} -- ${answer.slice(0, 150)} (${key})\n`;
   const openMarker = '## Open\n';
@@ -68,10 +88,11 @@ function appendResearchGapsMatrix(root: string, question: MiningQuestion, answer
   if (!gapsPath) return;
 
   const content = fs.readFileSync(gapsPath, 'utf-8');
-  if (content.includes(key) || content.includes(answer.slice(0, 50))) return;
+  const gapTarget = `**${notebookTitle} (${question.id})**`;
+  if (content.includes(key) || content.includes(gapTarget) || content.includes(answer.slice(0, 50))) return;
 
   const excerpt = answer.replace(/\r?\n/g, ' ').slice(0, 150).trim();
-  const line = `- [ ] **${notebookTitle} (${question.id})**: ${excerpt}\n`;
+  const line = `- [ ] ${gapTarget}: ${excerpt}\n`;
 
   const marker = '## Active Research Gaps\n';
   const idx = content.indexOf(marker);
@@ -143,7 +164,7 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
     const key = answerKey(notebookId, question.id, result.data);
     if (seenKeys.has(key)) continue;
 
-    appendDocRow(root, relativeDocPath, question, result.data, entry.title, key);
+    upsertDocRow(root, relativeDocPath, question, result.data, entry.title, key);
     appendTodoIfUrgent(root, result.data, question, key);
     appendResearchGapsMatrix(root, question, result.data, entry.title, key);
     seenKeys.add(key);

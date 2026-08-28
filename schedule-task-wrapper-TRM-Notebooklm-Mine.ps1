@@ -56,6 +56,17 @@ foreach ($Notebook in $Registry.notebooks) {
     }
 }
 
+# Refresh Daily Status Report
+$StatusRunner = "C:\Users\soren\OneDrive\Documents\Claude\Projects\CIC\scripts\Run-DailyStatus.ps1"
+if (Test-Path -Path $StatusRunner) {
+    "Refreshing CIC Daily Project Status Report..." | Tee-Object -FilePath $LogFile -Append
+    try {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $StatusRunner 2>&1 | Tee-Object -FilePath $LogFile -Append
+    } catch {
+        "Failed to refresh Daily Status Report: $_" | Tee-Object -FilePath $LogFile -Append
+    }
+}
+
 $EndTime = Get-Date
 $Duration = ($EndTime - $StartTime).TotalSeconds
 "Completed: $EndTime (Duration: {0:F2}s, Exit Code: {1})" -f $Duration, $ExitCode | Tee-Object -FilePath $LogFile -Append
