@@ -1,0 +1,121 @@
+{
+  "evaluated_at": "2026-09-02T17:24:29.777352+00:00",
+  "hardware_profile": {
+    "gpu_count": 1,
+    "gpu_name": "NVIDIA RTX 4090",
+    "vram_gb": 24,
+    "ram_gb": 64
+  },
+  "test_suite_coverage": {
+    "total_bfcl_scenarios": 4,
+    "scenarios_run": [
+      {
+        "id": "bfcl-cic-001-simple-read",
+        "name": "Simple Tool Call - Read Shared Context"
+      },
+      {
+        "id": "bfcl-cic-002-parallel-dispatch",
+        "name": "Parallel Tool Call - Dual-Task Submission"
+      },
+      {
+        "id": "bfcl-cic-003-nested-resolver",
+        "name": "Nested Tool Call - Parse and Resolve Upstream ID"
+      },
+      {
+        "id": "bfcl-cic-004-relevance-rejection",
+        "name": "Negative Relevance Rejection (No tool match)"
+      }
+    ]
+  },
+  "recommendations": {
+    "frontier_judgment_anchor": "claude-3-5-sonnet-20241022",
+    "local_muscle_anchor": "llama3:8b-instruct-fp16",
+    "local_fit_reasoning": "Model fits cleanly in VRAM with comfortable overhead. Maximum tokens/sec unlocked."
+  },
+  "ranked_candidates": [
+    {
+      "model_name": "claude-3-5-sonnet-20241022",
+      "tier": "Tier 1 (Judgment)",
+      "vram_fit_status": "fits_easily",
+      "benchmark_matrix": {
+        "bfcl_composite_score": 0.948,
+        "metrics": {
+          "simple_tool_call_accuracy": 0.98,
+          "parallel_tool_call_accuracy": 0.96,
+          "nested_tool_call_accuracy": 0.91,
+          "relevance_rejection_rate": 0.94
+        },
+        "quantization_overhead_penalty": 0.0
+      }
+    },
+    {
+      "model_name": "qwen2.5:72b-instruct-q4_k_m",
+      "tier": "Tier 2 (Muscle)",
+      "vram_fit_status": "out_of_vram_degraded",
+      "benchmark_matrix": {
+        "bfcl_composite_score": 0.87,
+        "metrics": {
+          "simple_tool_call_accuracy": 0.92,
+          "parallel_tool_call_accuracy": 0.88,
+          "nested_tool_call_accuracy": 0.81,
+          "relevance_rejection_rate": 0.87
+        },
+        "quantization_overhead_penalty": 0.0
+      }
+    },
+    {
+      "model_name": "qwen2.5:32b-instruct-q8_0",
+      "tier": "Tier 2 (Muscle)",
+      "vram_fit_status": "out_of_vram_degraded",
+      "benchmark_matrix": {
+        "bfcl_composite_score": 0.835,
+        "metrics": {
+          "simple_tool_call_accuracy": 0.89,
+          "parallel_tool_call_accuracy": 0.84,
+          "nested_tool_call_accuracy": 0.77,
+          "relevance_rejection_rate": 0.84
+        },
+        "quantization_overhead_penalty": 0.03
+      }
+    },
+    {
+      "model_name": "llama3.1:70b-instruct-q2_k",
+      "tier": "Tier 2 (Muscle)",
+      "vram_fit_status": "out_of_vram_degraded",
+      "benchmark_matrix": {
+        "bfcl_composite_score": 0.753,
+        "metrics": {
+          "simple_tool_call_accuracy": 0.82,
+          "parallel_tool_call_accuracy": 0.76,
+          "nested_tool_call_accuracy": 0.66,
+          "relevance_rejection_rate": 0.77
+        },
+        "quantization_overhead_penalty": 0.1
+      }
+    },
+    {
+      "model_name": "llama3:8b-instruct-fp16",
+      "tier": "Tier 2 (Muscle)",
+      "vram_fit_status": "fits_easily",
+      "benchmark_matrix": {
+        "bfcl_composite_score": 0.694,
+        "metrics": {
+          "simple_tool_call_accuracy": 0.77,
+          "parallel_tool_call_accuracy": 0.7,
+          "nested_tool_call_accuracy": 0.59,
+          "relevance_rejection_rate": 0.72
+        },
+        "quantization_overhead_penalty": 0.15
+      }
+    }
+  ],
+  "lineage": {
+    "contract_type": "extractor-upgrade-sweep",
+    "schema_version": "2.4.0",
+    "provenance_flags": [
+      "bfcl_v2_automated",
+      "hardware_aware_compaction"
+    ]
+  },
+  "hash_chain_self": "ea3756afa4b7dc9df3ed25a256e3ef2fc350ccb8365ecbeff1214588b7e32c29"
+}
