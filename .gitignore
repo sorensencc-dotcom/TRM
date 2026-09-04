@@ -13,3 +13,4 @@ intake-manifest.json
 *.pem
 *.key
 secrets/
+.kb_cache/
