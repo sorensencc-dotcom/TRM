@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "viking-vfs": {
+      "command": "node",
+      "args": ["C:/dev/trm/viking-vfs-mount.mjs", "--mcp"],
+      "env": {
+        "KB_CACHE_DB": "C:/dev/trm/.kb_cache/knowledge.db"
+      }
+    }
+  }
+}
