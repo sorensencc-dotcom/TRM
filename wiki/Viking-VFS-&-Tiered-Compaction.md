@@ -1,32 +1,38 @@
 # Viking Virtual File System (VFS) & Tiered Compaction
 
-The `viking://` virtual filesystem provider implements a high-speed SQLite WAL state machine and AST skeletonizer designed to reduce agent token overhead by up to 94.5% during codebase exploration and knowledge synthesis.
+The `viking://` virtual filesystem provider implements a high-speed SQLite Write-Ahead Logging (WAL) state machine and AST skeletonizer designed to reduce agent token overhead by up to 94.5% during codebase exploration and knowledge synthesis.
 
 ---
 
 ## Architecture Overview
 
+![Viking VFS: three-tier resolution & AST skeletonization](viking-vfs-architecture.png)
+
+<details>
+<summary>Mermaid source (kept for editing — the image above is what renders on the wiki)</summary>
+
+```mermaid
+flowchart LR
+    classDef inputStyle fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#f8fafc;
+    classDef stageStyle fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef compStyle fill:#312e81,stroke:#a855f7,stroke-width:2px,color:#f8fafc;
+    classDef modeStyle fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc;
+
+    URI["1. viking:// URI Request<br/>(vfs_read_file / vfs_search)"]:::inputStyle --> WAL["2. SQLite WAL Database<br/>(knowledge.db / FTS5 BM25)"]:::stageStyle
+    
+    WAL --> L0["L0 Abstract Tier<br/>(Summary ~94.5% cut)"]:::stageStyle
+    WAL --> L1["L1 Overview & AST Skeleton<br/>(Signatures 48.5%-90% cut)"]:::compStyle
+    WAL --> L2["L2 Full Raw Source<br/>(Full Payload 0% cut)"]:::stageStyle
+
+    L1 --> T1["T1: TypeScript Compiler API<br/>(Compacted Skeleton)"]:::compStyle
+    L1 --> T2["T2: Graft CLI Integration<br/>(graft skeleton)"]:::stageStyle
+    L1 --> T3["T3: Regex Scraper<br/>(Signature Header Scrape)"]:::stageStyle
+
+    T1 --> EXP["Exploration Mode<br/>([explore] / .claude-explore.md)"]:::modeStyle
+    L2 --> REF["Refactor Mode<br/>([refactor] / .claude-refactor.md)"]:::modeStyle
 ```
-[Agent Query / URI Lookup]
-           │
-           ▼
- Is this an active code edit or refactor?
-          / \
-    YES  /   \  NO
-        /     \
-       ▼       ▼
-   [L2 Raw]   Is this a broad survey or conceptual search?
-               / \
-         YES  /   \  NO (Need structural boundaries & signatures)
-             /     \
-            ▼       ▼
-       [L0 Abstract] [L1 AST Skeletonizer]
-                            │
-              ┌─────────────┴─────────────┐
-              ▼                           ▼
-       TypeScript AST             Non-TS / Markdown
-   (Stripped Function Bodies)    (Heading & Interface Outlines)
-```
+
+</details>
 
 ---
 

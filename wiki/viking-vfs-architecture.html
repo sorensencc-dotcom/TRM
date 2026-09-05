@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TRM · Viking VFS & Tiered Compaction Architecture</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Barlow+Condensed:wght@300;400;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f2ece2;
+      --color-ink:     #2c2420;
+      --color-muted:   #5c5349;
+      --color-accent:  #c4501a;
+      --font-sans:     'Barlow Condensed', system-ui, sans-serif;
+      --font-serif:    'Playfair Display', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    .frame { max-width: 1240px; width: 100%; }
+
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.4rem;
+    }
+
+    h1 {
+      font-family: var(--font-serif);
+      font-size: 1.85rem;
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.2rem;
+    }
+
+    svg { width: 100%; display: block; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">TRM Virtual Filesystem · Tiered Compaction</p>
+    <h1>Viking VFS: three-tier resolution & AST skeletonization</h1>
+
+    <svg viewBox="0 0 1200 520" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#5c5349"/>
+        </marker>
+        <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#c4501a"/>
+        </marker>
+      </defs>
+
+      <!-- Lane 1: Query & Intercept -->
+      <rect x="20" y="20" width="260" height="470" rx="8" fill="rgba(44,36,32,0.02)" stroke="rgba(44,36,32,0.10)" stroke-width="0.8"/>
+      <text x="150" y="42" fill="rgba(44,36,32,0.45)" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">1. PROTOCOL INTERCEPT</text>
+
+      <rect x="40" y="70" width="220" height="74" rx="6" fill="#faf6f0" stroke="#2c2420" stroke-width="1"/>
+      <text x="56" y="90" fill="#2c2420" font-size="8" font-family="'Geist Mono', monospace">URI</text>
+      <text x="150" y="110" fill="#2c2420" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">viking:// URI Request</text>
+      <text x="150" y="128" fill="#5c5349" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle">vfs_read_file / vfs_search</text>
+
+      <rect x="40" y="220" width="220" height="74" rx="6" fill="#faf6f0" stroke="#2c2420" stroke-width="1"/>
+      <text x="56" y="240" fill="#2c2420" font-size="8" font-family="'Geist Mono', monospace">WAL</text>
+      <text x="150" y="260" fill="#2c2420" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">SQLite WAL Database</text>
+      <text x="150" y="278" fill="#5c5349" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle">knowledge.db / FTS5 BM25</text>
+
+      <!-- Lane 2: Tier Routing -->
+      <rect x="310" y="20" width="270" height="470" rx="8" fill="rgba(44,36,32,0.02)" stroke="rgba(44,36,32,0.10)" stroke-width="0.8"/>
+      <text x="445" y="42" fill="rgba(44,36,32,0.45)" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">2. TIER RESOLUTION</text>
+
+      <rect x="330" y="70" width="230" height="74" rx="6" fill="#faf6f0" stroke="#2c2420" stroke-width="1"/>
+      <text x="346" y="90" fill="#2c2420" font-size="8" font-family="'Geist Mono', monospace">L0</text>
+      <text x="445" y="110" fill="#2c2420" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">L0 Abstract Tier</text>
+      <text x="445" y="128" fill="#5c5349" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle">Summary & Purpose (~94.5% cut)</text>
+
+      <rect x="330" y="220" width="230" height="74" rx="6" fill="rgba(196,80,26,0.08)" stroke="#c4501a" stroke-width="1.2"/>
+      <text x="346" y="240" fill="#c4501a" font-size="8" font-family="'Geist Mono', monospace">L1</text>
+      <text x="445" y="260" fill="#c4501a" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">L1 Overview & AST Skeleton</text>
+      <text x="445" y="278" fill="#5c5349" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle">Contracts / Signatures (48.5%-90%)</text>
+
+      <rect x="330" y="370" width="230" height="74" rx="6" fill="#faf6f0" stroke="#2c2420" stroke-width="1"/>
+      <text x="346" y="390" fill="#2c2420" font-size="8" font-family="'Geist Mono', monospace">L2</text>
+      <text x="445" y="410" fill="#2c2420" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">L2 Full Raw Source</text>
+      <text x="445" y="428" fill="#5c5349" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle">Bit-for-bit Full Payload (0% cut)</text>
+
+      <!-- Lane 3: AST Fallback Engine -->
+      <rect x="610" y="20" width="290" height="470" rx="8" fill="rgba(44,36,32,0.02)" stroke="rgba(44,36,32,0.10)" stroke-width="0.8"/>
+      <text x="755" y="42" fill="rgba(44,36,32,0.45)" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">3. THREE-TIER AST FALLBACK</text>
+
+      <rect x="630" y="70" width="250" height="74" rx="6" fill="rgba(196,80,26,0.08)" stroke="#c4501a" stroke-width="1"/>
+      <text x="646" y="90" fill="#c4501a" font-size="8" font-family="'Geist Mono', monospace">T1</text>
+      <text x="755" y="110" fill="#2c2420" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Native TypeScript Compiler API</text>
+      <text x="755" y="128" fill="#5c5349" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle">AST Compactor: Bodies -> Error Trap</text>
+
+      <rect x="630" y="220" width="250" height="74" rx="6" fill="#faf6f0" stroke="#2c2420" stroke-width="1"/>
+      <text x="646" y="240" fill="#2c2420" font-size="8" font-family="'Geist Mono', monospace">T2</text>
+      <text x="755" y="260" fill="#2c2420" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Graft CLI Integration</text>
+      <text x="755" y="278" fill="#5c5349" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle">npx @nanonets/graft skeleton</text>
+
+      <rect x="630" y="370" width="250" height="74" rx="6" fill="#faf6f0" stroke="#2c2420" stroke-width="1"/>
+      <text x="646" y="390" fill="#2c2420" font-size="8" font-family="'Geist Mono', monospace">T3</text>
+      <text x="755" y="410" fill="#2c2420" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Regex Signature Scraper</text>
+      <text x="755" y="428" fill="#5c5349" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle">Zero-Dependency Signature Header Scrape</text>
+
+      <!-- Lane 4: Output / Modes -->
+      <rect x="930" y="20" width="250" height="470" rx="8" fill="rgba(44,36,32,0.02)" stroke="rgba(44,36,32,0.10)" stroke-width="0.8"/>
+      <text x="1055" y="42" fill="rgba(44,36,32,0.45)" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">4. AGENT MODES</text>
+
+      <rect x="950" y="70" width="210" height="85" rx="6" fill="#faf6f0" stroke="#2c2420" stroke-width="1"/>
+      <text x="966" y="90" fill="#2c2420" font-size="8" font-family="'Geist Mono', monospace">EXP</text>
+      <text x="1055" y="110" fill="#2c2420" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Exploration Mode</text>
+      <text x="1055" y="128" fill="#5c5349" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle">Query L0/L1 Compaction</text>
+      <text x="1055" y="142" fill="#c4501a" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">[explore] / .claude-explore.md</text>
+
+      <rect x="950" y="360" width="210" height="85" rx="6" fill="#faf6f0" stroke="#2c2420" stroke-width="1"/>
+      <text x="966" y="380" fill="#2c2420" font-size="8" font-family="'Geist Mono', monospace">REF</text>
+      <text x="1055" y="400" fill="#2c2420" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Refactor Mode</text>
+      <text x="1055" y="418" fill="#5c5349" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle">Direct L2 Raw Disk Read</text>
+      <text x="1055" y="432" fill="#c4501a" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">[refactor] / .claude-refactor.md</text>
+
+      <!-- Connectors -->
+      <!-- URI -> WAL -->
+      <line x1="150" y1="144" x2="150" y2="220" stroke="#5c5349" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+      <!-- WAL -> Tiers -->
+      <path d="M 260 257 L 295 257 L 295 107 L 330 107" fill="none" stroke="#5c5349" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <line x1="260" y1="257" x2="330" y2="257" stroke="#c4501a" stroke-width="1.5" marker-end="url(#arrow-accent)"/>
+      <path d="M 260 257 L 295 257 L 295 407 L 330 407" fill="none" stroke="#5c5349" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+      <!-- L1 -> AST Fallback (elbow paths around nodes) -->
+      <path d="M 560 257 L 595 257 L 595 107 L 630 107" fill="none" stroke="#c4501a" stroke-width="1.5" marker-end="url(#arrow-accent)"/>
+      <line x1="560" y1="257" x2="630" y2="257" stroke="#5c5349" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <path d="M 560 257 L 595 257 L 595 407 L 630 407" fill="none" stroke="#5c5349" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+      <!-- Outputs -> Modes -->
+      <line x1="880" y1="107" x2="950" y2="107" stroke="#c4501a" stroke-width="1.5" marker-end="url(#arrow-accent)"/>
+      <path d="M 560 407 L 595 407 L 595 470 L 920 470 L 920 402 L 950 402" fill="none" stroke="#5c5349" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+    </svg>
+  </div>
+</body>
+</html>
