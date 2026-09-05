@@ -19,7 +19,8 @@ fs.mkdirSync(hooksDir, { recursive: true });
 const hookPath = path.join(hooksDir, 'pre-commit');
 const hookBody = `#!/bin/sh
 node "${path.relative(repoRoot, path.join(here, 'secret-scan.mjs')).split(path.sep).join('/')}" || exit 1
+node "${path.relative(repoRoot, path.join(here, 'validate-diagram-triplets.mjs')).split(path.sep).join('/')}" || exit 1
 `;
 
 fs.writeFileSync(hookPath, hookBody, { mode: 0o755 });
-console.log('Installed pre-commit secret-scan hook.');
+console.log('Installed pre-commit hooks (secret-scan, validate-diagram-triplets).');

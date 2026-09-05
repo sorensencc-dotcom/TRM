@@ -9,6 +9,8 @@
   "scripts": {
     "prepare": "node scripts/install-git-hooks.mjs",
     "secret-scan": "node scripts/secret-scan.mjs",
+    "wiki:validate": "node scripts/validate-diagram-triplets.mjs",
+    "wiki:publish": "node scripts/sync-remote-wiki.mjs",
     "gov:validate": "node ../CIC-GOVERNANCE/scripts/validate-governance-contract.mjs",
     "gov:smoke": "npm test -- tests/smoke.test.ts --watchAll=false",
     "build": "tsc",
