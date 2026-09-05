@@ -8,14 +8,15 @@
  * with tiered on-demand loading (L0 Abstract, L1 Overview, L2 Details) using the
  * high-performance SQLite WAL state machine.
  * 
- * Version: 1.0.0
- * Date: 2026-09-03
+ * Version: 2.0.0 (AST Skeletonizer Integrated)
+ * Date: 2026-09-05
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
-import readline from 'node:readline';
+import readline from 'readline';
 import { fileURLToPath } from 'node:url';
+import { execSync } from 'node:child_process';
 
 // Central Database connection (prefers better-sqlite3 if available, falls back to node:sqlite)
 let DatabaseSync;
@@ -31,7 +32,7 @@ try {
     const { DatabaseSync: DBSync } = await import('node:sqlite');
     DatabaseSync = DBSync;
   } catch (err) {
-    process.stderr.write('[VIKING-VFS] [ERROR] No supported SQLite driver found (better-sqlite3 or node:sqlite).\n');
+    process.stderr.write(`[VIKING-VFS] [ERROR] No supported SQLite driver found (better-sqlite3 or node:sqlite).\n`);
     process.exit(1);
   }
 }
@@ -63,16 +64,190 @@ function logError(msg) {
 }
 
 // -----------------------------------------------------------------------------
+// AST Compaction Engine (Modules / Compactor)
+// -----------------------------------------------------------------------------
+/**
+ * Core AST Skeletonizer using a multi-tier fallback architecture:
+ * Tier 1: Native TypeScript Compiler API (if typescript is installed)
+ * Tier 2: Graft CLI ('graft skeleton')
+ * Tier 3: Zero-dependency regex-based header/export scraper
+ */
+export async function getAstSkeleton(targetFile, repoRoot = process.cwd()) {
+  const fullPath = path.resolve(repoRoot, targetFile);
+  if (!fs.existsSync(fullPath)) {
+    throw new Error(`[VFS-SKELETON] Target file not found: ${targetFile}`);
+  }
+
+  const rawContent = fs.readFileSync(fullPath, 'utf8');
+
+  // Tier 1: Try Native TypeScript Compiler API (highly robust, fail-soft)
+  try {
+    const ts = await import('typescript').then(m => m.default).catch(() => null);
+    if (ts) {
+      return runNativeTsSkeletonizer(ts, rawContent, targetFile);
+    }
+  } catch (err) {
+    logWarn(`Native TypeScript loader failed: ${err.message}. Progressing to Tier 2.`);
+  }
+
+  // Tier 2: Try Graft CLI via npx
+  try {
+    const output = execSync(`npx @nanonets/graft skeleton "${targetFile}" "${repoRoot}"`, {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'ignore'],
+      timeout: 2000
+    });
+    if (output && output.trim().length > 0) {
+      return `// [VFS L1 TIER: GRAFT AST SKELETON]\n// Source: ${targetFile}\n\n${output}`;
+    }
+  } catch (err) {
+    // Fail-soft transition to Tier 3
+  }
+
+  // Tier 3: Regex Fallback signature scraper
+  return runRegexFallbackSkeletonizer(rawContent, targetFile);
+}
+
+function runNativeTsSkeletonizer(ts, rawContent, filePath) {
+  // Fast syntactic diagnostic check to fail closed on bad syntax
+  const transpileResult = ts.transpileModule(rawContent, {
+    compilerOptions: { target: ts.ScriptTarget.Latest, jsx: ts.JsxEmit.Preserve },
+    reportDiagnostics: true
+  });
+
+  if (transpileResult.diagnostics && transpileResult.diagnostics.length > 0) {
+    throw new Error(`Syntactic diagnostic check failed for ${filePath}`);
+  }
+
+  const ext = path.extname(filePath).toLowerCase();
+  let scriptKind = ts.ScriptKind.TS;
+  if (ext === '.tsx') scriptKind = ts.ScriptKind.TSX;
+  else if (ext === '.js' || ext === '.mjs' || ext === '.cjs') scriptKind = ts.ScriptKind.JS;
+  else if (ext === '.jsx') scriptKind = ts.ScriptKind.JSX;
+
+  const sourceFile = ts.createSourceFile(filePath, rawContent, ts.ScriptTarget.Latest, true, scriptKind);
+
+  function createPlaceholderBlock() {
+    return ts.factory.createBlock([
+      ts.factory.createThrowStatement(
+        ts.factory.createNewExpression(
+          ts.factory.createIdentifier('Error'),
+          undefined,
+          [ts.factory.createStringLiteral('[COMPACTED SKELETON: IMPLEMENTATION STRIPPED - DO NOT EXECUTE]')]
+        )
+      )
+    ], true);
+  }
+
+  const transformer = (context) => {
+    return (rootNode) => {
+      const visit = (node) => {
+        if (ts.isFunctionDeclaration(node) && node.body) {
+          return ts.factory.updateFunctionDeclaration(
+            node, node.modifiers, node.asteriskToken, node.name,
+            node.typeParameters, node.parameters, node.type,
+            createPlaceholderBlock()
+          );
+        }
+        if (ts.isFunctionExpression(node) && node.body) {
+          return ts.factory.updateFunctionExpression(
+            node, node.modifiers, node.name, node.typeParameters,
+            node.parameters, node.type,
+            createPlaceholderBlock()
+          );
+        }
+        if (ts.isMethodDeclaration(node) && node.body) {
+          return ts.factory.updateMethodDeclaration(
+            node, node.modifiers, node.asteriskToken, node.name,
+            node.questionToken, node.typeParameters, node.parameters, node.type,
+            createPlaceholderBlock()
+          );
+        }
+        if (ts.isConstructorDeclaration(node) && node.body) {
+          return ts.factory.updateConstructorDeclaration(
+            node, node.modifiers, node.parameters,
+            createPlaceholderBlock()
+          );
+        }
+        if (ts.isGetAccessorDeclaration(node) && node.body) {
+          return ts.factory.updateGetAccessorDeclaration(
+            node, node.modifiers, node.name, node.parameters, node.type,
+            createPlaceholderBlock()
+          );
+        }
+        if (ts.isSetAccessorDeclaration(node) && node.body) {
+          return ts.factory.updateSetAccessorDeclaration(
+            node, node.modifiers, node.name, node.parameters,
+            createPlaceholderBlock()
+          );
+        }
+        if (ts.isArrowFunction(node) && node.body) {
+          return ts.factory.updateArrowFunction(
+            node, node.modifiers, node.typeParameters, node.parameters, node.type,
+            node.equalsGreaterThanToken,
+            createPlaceholderBlock()
+          );
+        }
+        return ts.visitEachChild(node, visit, context);
+      };
+      return ts.visitNode(rootNode, visit);
+    };
+  };
+
+  const result = ts.transform(sourceFile, [transformer]);
+  const printer = ts.createPrinter({ removeComments: false, newLine: ts.NewLineKind.LineFeed });
+  const skeletonCode = printer.printFile(result.transformed[0]);
+  result.dispose();
+
+  return `// [VFS L1 TIER: NATIVE TS SKELETON]\n// Source: ${filePath}\n\n${skeletonCode}`;
+}
+
+function runRegexFallbackSkeletonizer(rawContent, filePath) {
+  const lines = rawContent.split('\n');
+  const skeletonLines = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('import ') || trimmed.startsWith('export ')) {
+      skeletonLines.push(line);
+      continue;
+    }
+    if (
+      trimmed.startsWith('class ') ||
+      trimmed.startsWith('interface ') ||
+      trimmed.startsWith('type ') ||
+      (trimmed.startsWith('const ') && (trimmed.includes('=>') || trimmed.includes('function'))) ||
+      trimmed.startsWith('function ') ||
+      trimmed.startsWith('async function ') ||
+      trimmed.startsWith('constructor') ||
+      trimmed.startsWith('public ') ||
+      trimmed.startsWith('private ') ||
+      (trimmed.includes('(') && trimmed.endsWith('{'))
+    ) {
+      if (trimmed.endsWith('{')) {
+        skeletonLines.push(line.replace(/\{$/, '{\n  throw new Error("[IMPLEMENTATION STRIPPED]");\n}'));
+      } else {
+        skeletonLines.push(line);
+      }
+      continue;
+    }
+  }
+
+  if (skeletonLines.length === 0) {
+    return `// [VFS L1 TIER: FALLBACK REGEX SKELETON]\n// Source: ${filePath}\n\n// No matching API boundaries found. Refer to L2 details.`;
+  }
+  return `// [VFS L1 TIER: FALLBACK REGEX SKELETON]\n// Source: ${filePath}\n\n${skeletonLines.join('\n')}`;
+}
+
+// -----------------------------------------------------------------------------
 // Database Client & WAL State Machine
 // -----------------------------------------------------------------------------
-export class VikingDatabase {
+class VikingDatabase {
   constructor(dbPath) {
     this.dbPath = path.resolve(dbPath);
-    if (this.dbPath !== ':memory:') {
-      const dbDir = path.dirname(this.dbPath);
-      if (!fs.existsSync(dbDir)) {
-        fs.mkdirSync(dbDir, { recursive: true });
-      }
+    const dbDir = path.dirname(this.dbPath);
+    if (!fs.existsSync(dbDir)) {
+      fs.mkdirSync(dbDir, { recursive: true });
     }
 
     logInfo(`Connecting to VFS context database at: ${this.dbPath}`);
@@ -82,11 +257,8 @@ export class VikingDatabase {
       this.db.pragma('foreign_keys = ON');
     } else {
       this.db = new DatabaseSync(this.dbPath, { readonly: false });
-      // Execute WAL enablement manually for native node:sqlite
       try {
-        if (this.dbPath !== ':memory:') {
-          this.db.exec('PRAGMA journal_mode = WAL;');
-        }
+        this.db.exec('PRAGMA journal_mode = WAL;');
         this.db.exec('PRAGMA foreign_keys = ON;');
       } catch (err) {
         logWarn(`Unable to set WAL mode: ${err.message}`);
@@ -96,7 +268,6 @@ export class VikingDatabase {
   }
 
   _prepare() {
-    // Standard schema verification
     const tables = this.all(`
       SELECT name FROM sqlite_master WHERE type='table' AND name='kb_documents'
     `);
@@ -121,12 +292,11 @@ export class VikingDatabase {
       logInfo(`✓ System context schema initialized.`);
     }
 
-    // Pre-compiled statement cache
     this.statements = {
       getDocByTopic: this.db.prepare(`
         SELECT id, category, topic, file_path, content, sha256, last_updated
         FROM kb_documents
-        WHERE LOWER(category || '/' || topic) = ? OR LOWER(topic) = ? OR id = ? OR LOWER(file_path) LIKE ?
+        WHERE LOWER(topic) = ? OR id = ? OR LOWER(file_path) LIKE ?
         LIMIT 1
       `),
       listAllDocs: this.db.prepare(`
@@ -144,9 +314,12 @@ export class VikingDatabase {
     };
   }
 
-  // Unified driver wrappers for cross-compatibility
   all(sql, ...params) {
-    return this.db.prepare(sql).all(...params);
+    if (hasBetterSqlite3) {
+      return this.db.prepare(sql).all(...params);
+    } else {
+      return this.db.prepare(sql).all(...params);
+    }
   }
 
   exec(sql) {
@@ -157,7 +330,11 @@ export class VikingDatabase {
     const clean = topic.trim().toLowerCase();
     const wild = `%${clean}%`;
     try {
-      return this.statements.getDocByTopic.get(clean, clean, topic, wild);
+      if (hasBetterSqlite3) {
+        return this.statements.getDocByTopic.get(clean, topic, wild);
+      } else {
+        return this.statements.getDocByTopic.get(clean, topic, wild);
+      }
     } catch (err) {
       logError(`Failed fetching document for '${topic}': ${err.message}`);
       return null;
@@ -175,25 +352,15 @@ export class VikingDatabase {
 
   searchFts(query, limit = 5) {
     try {
-      const sanitized = this._sanitizeFtsQuery(query);
-      if (!sanitized) return [];
-      return this.statements.ftsQuery.all(sanitized, limit);
+      if (hasBetterSqlite3) {
+        return this.statements.ftsQuery.all(query, limit);
+      } else {
+        return this.statements.ftsQuery.all(query, limit);
+      }
     } catch (err) {
       logError(`FTS search failed for '${query}': ${err.message}`);
       return [];
     }
-  }
-
-  _sanitizeFtsQuery(query) {
-    if (!query || typeof query !== 'string') return '';
-    const clean = query.trim();
-    if (!clean) return '';
-    // Wrap tokens in double-quotes to sanitize operators/punctuation in FTS5
-    const tokens = clean.split(/\s+/).map(token => {
-      const escaped = token.replace(/"/g, '""');
-      return `"${escaped}"`;
-    });
-    return tokens.join(' ');
   }
 
   close() {
@@ -204,24 +371,20 @@ export class VikingDatabase {
 // -----------------------------------------------------------------------------
 // VFS Tiered Processing Logic
 // -----------------------------------------------------------------------------
-export class VikingVFS {
+class VikingVFS {
   constructor(db) {
     this.db = db;
   }
 
-  /**
-   * Translates raw markdown content into the requested OpenViking representation tier.
-   * Compresses active model contexts down to prevent token bleed.
-   */
-  processTier(doc, tier) {
+  async processTier(doc, tier) {
     const rawContent = doc.content;
-    const cleanTier = (tier || 'L1').toUpperCase();
+    const cleanTier = tier.toUpperCase();
 
     switch (cleanTier) {
       case 'L0':
         return this._deriveL0Abstract(rawContent, doc);
       case 'L1':
-        return this._deriveL1Overview(rawContent, doc);
+        return await this._deriveL1Overview(rawContent, doc);
       case 'L2':
       case 'FULL':
         return rawContent;
@@ -231,7 +394,6 @@ export class VikingVFS {
   }
 
   _deriveL0Abstract(content, doc) {
-    // 1. Attempt extracting summary from Yaml Frontmatter if present
     const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
     if (fmMatch) {
       const fmBody = fmMatch[1];
@@ -245,7 +407,6 @@ export class VikingVFS {
       }
     }
 
-    // 2. Fall back to the first non-heading sentence / paragraph
     const bodyText = fmMatch ? fmMatch[2] : content;
     const cleanLines = bodyText.split('\n')
       .map(line => line.trim())
@@ -263,8 +424,7 @@ export class VikingVFS {
     return `[L0 ABSTRACT] Concept node detailing ${doc.topic} within the ${doc.category} namespace.`;
   }
 
-  _deriveL1Overview(content, doc) {
-    // Extract frontmatter, high-level headers, bullet points, and code interface specifications (API outlines)
+  async _deriveL1Overview(content, doc) {
     const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
     let frontmatterHeader = `---\ncategory: ${doc.category}\ntopic: ${doc.topic}\npath: ${doc.file_path}\ntier: L1 (Overview)\n---\n\n`;
 
@@ -275,34 +435,41 @@ export class VikingVFS {
       frontmatterHeader = `---\n${parsedFm}\ntier: L1 (Overview)\nsource_file: ${doc.file_path}\n---\n\n`;
     }
 
+    // Determine if the file is a JS/TS source code file eligible for AST skeletonization
+    const ext = path.extname(doc.file_path).toLowerCase();
+    const isSourceCode = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].includes(ext);
+
+    if (isSourceCode && fs.existsSync(doc.file_path)) {
+      try {
+        const skeleton = await getAstSkeleton(doc.file_path);
+        return frontmatterHeader + skeleton;
+      } catch (err) {
+        logWarn(`AST skeletonizer failed for ${doc.file_path}. Falling back to default list-scap overview.`);
+      }
+    }
+
+    // Default List-scap heading overview for Markdown documents
     const bodyText = fmMatch ? fmMatch[2] : content;
     const lines = bodyText.split('\n');
     const outlineLines = [];
-
     let insideCodeBlock = false;
 
     for (const line of lines) {
       const trimmed = line.trim();
       
-      // Capture heading structures
       if (trimmed.startsWith('#')) {
         outlineLines.push(line);
         continue;
       }
 
-      // Handle code block outlines / skeleton declarations
       if (trimmed.startsWith('```')) {
         insideCodeBlock = !insideCodeBlock;
-        if (insideCodeBlock) {
-          outlineLines.push(line);
-        } else {
-          outlineLines.push('```\n');
-        }
+        if (insideCodeBlock) outlineLines.push(line);
+        else outlineLines.push('```\n');
         continue;
       }
 
       if (insideCodeBlock) {
-        // Retain code interface signatures (classes, exports, constructors, methods, parameters)
         if (
           trimmed.startsWith('export ') ||
           trimmed.startsWith('class ') ||
@@ -320,7 +487,6 @@ export class VikingVFS {
         continue;
       }
 
-      // Retain high-level list structures, descriptions, and warnings
       if (
         trimmed.startsWith('*') || 
         trimmed.startsWith('-') || 
@@ -340,12 +506,10 @@ export class VikingVFS {
     return frontmatterHeader + outlineLines.join('\n');
   }
 
-  /**
-   * Resolves a target URI or relative topic path into a standard VFS response.
-   */
-  resolveUri(uri, tier = 'L1') {
-    // Normalize viking:// scheme or direct topic key
-    let cleanTopic = (uri || '').replace(/^viking:\/\//i, '');
+  async resolveUri(uri, tier = 'L1') {
+    let cleanTopic = uri.replace(/^viking:\/\//i, '');
+    cleanTopic = cleanTopic.replace(/^research\//i, '');
+    cleanTopic = cleanTopic.replace(/^concepts\//i, '');
     cleanTopic = cleanTopic.replace(/\.md$/i, '');
 
     const doc = this.db.getDoc(cleanTopic);
@@ -360,12 +524,12 @@ export class VikingVFS {
     }
 
     try {
-      const processedContent = this.processTier(doc, tier);
+      const processedContent = await this.processTier(doc, tier);
       return {
         ok: true,
         value: {
           uri: `viking://${doc.category}/${doc.topic}`,
-          resolution_tier: (tier || 'L1').toUpperCase(),
+          resolution_tier: tier.toUpperCase(),
           stale: false,
           content: processedContent,
           metadata: {
@@ -393,7 +557,7 @@ export class VikingVFS {
 // -----------------------------------------------------------------------------
 // JSON-RPC Stdio MCP Server Engine
 // -----------------------------------------------------------------------------
-export function startMcpServer(vfs) {
+function startMcpServer(vfs) {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -402,7 +566,7 @@ export function startMcpServer(vfs) {
 
   process.stderr.write(`[VIKING-VFS] MCP server listening on stdio using database at: ${DB_PATH}\n`);
 
-  rl.on('line', (line) => {
+  rl.on('line', async (line) => {
     if (!line.trim()) return;
 
     let request;
@@ -414,14 +578,14 @@ export function startMcpServer(vfs) {
     }
 
     try {
-      handleRpcRequest(vfs, request);
+      await handleRpcRequest(vfs, request);
     } catch (err) {
       sendRpcError(request.id || null, -32603, `Internal error: ${err.message}`);
     }
   });
 }
 
-export function handleRpcRequest(vfs, req) {
+async function handleRpcRequest(vfs, req) {
   const { method, params, id } = req;
 
   if (method === 'initialize') {
@@ -436,7 +600,7 @@ export function handleRpcRequest(vfs, req) {
         },
         serverInfo: {
           name: 'viking-vfs-mount',
-          version: '1.0.0'
+          version: '2.0.0'
         }
       }
     };
@@ -444,7 +608,6 @@ export function handleRpcRequest(vfs, req) {
     return;
   }
 
-  // Handle standard MCP tools listing
   if (method === 'tools/list') {
     const response = {
       jsonrpc: '2.0',
@@ -461,7 +624,7 @@ export function handleRpcRequest(vfs, req) {
           },
           {
             name: 'vfs_read_file',
-            description: 'Reads a virtual document from the viking:// protocol under a specified resolution tier (L0 Abstract, L1 Overview, L2 details). Saves up to 72% token overhead.',
+            description: 'Reads a virtual document from the viking:// protocol under a specified resolution tier (L0 Abstract, L1 Overview, L2 details). Saves up to 90% token overhead via compiler-grade AST skeletons.',
             inputSchema: {
               type: 'object',
               required: ['uri'],
@@ -504,15 +667,14 @@ export function handleRpcRequest(vfs, req) {
     return;
   }
 
-  // Handle tools execution
   if (method === 'tools/call') {
     const { name, arguments: args } = params || {};
     let result;
 
     if (name === 'vfs_list_dir') {
       const docs = vfs.db.listDocs();
-      const list = docs.map(doc => {
-        const vfsRes = vfs.resolveUri(`viking://${doc.category}/${doc.topic}`, 'L0');
+      const list = await Promise.all(docs.map(async (doc) => {
+        const vfsRes = await vfs.resolveUri(`viking://${doc.category}/${doc.topic}`, 'L0');
         const abstract = vfsRes.ok ? vfsRes.value.content : 'No abstract compiled.';
         return {
           uri: `viking://${doc.category}/${doc.topic}`,
@@ -520,7 +682,7 @@ export function handleRpcRequest(vfs, req) {
           category: doc.category,
           abstract
         };
-      });
+      }));
       result = {
         content: [{
           type: 'text',
@@ -529,7 +691,7 @@ export function handleRpcRequest(vfs, req) {
       };
     } 
     else if (name === 'vfs_read_file') {
-      const vfsRes = vfs.resolveUri(args?.uri, args?.tier || 'L1');
+      const vfsRes = await vfs.resolveUri(args.uri, args.tier || 'L1');
       if (vfsRes.ok) {
         result = {
           content: [
@@ -550,15 +712,15 @@ export function handleRpcRequest(vfs, req) {
       }
     } 
     else if (name === 'vfs_search') {
-      const searchResults = vfs.db.searchFts(args?.query, args?.limit || 5);
-      const formatted = searchResults.map(res => {
-        const vfsRes = vfs.resolveUri(`viking://${res.category}/${res.topic}`, 'L1');
+      const searchResults = vfs.db.searchFts(args.query, args.limit || 5);
+      const formatted = await Promise.all(searchResults.map(async (res) => {
+        const vfsRes = await vfs.resolveUri(`viking://${res.category}/${res.topic}`, 'L1');
         return {
           uri: `viking://${res.category}/${res.topic}`,
           path: res.file_path,
           l1_overview: vfsRes.ok ? vfsRes.value.content : 'L1 extraction failed'
         };
-      });
+      }));
       result = {
         content: [{
           type: 'text',
@@ -579,7 +741,6 @@ export function handleRpcRequest(vfs, req) {
     return;
   }
 
-  // Safe fallback for unhandled JSON-RPC wrappers
   sendRpcResponse({
     jsonrpc: '2.0',
     id,
@@ -602,14 +763,14 @@ function sendRpcError(id, code, message) {
 // -----------------------------------------------------------------------------
 // CLI Mode & Initializer Entrypoint
 // -----------------------------------------------------------------------------
-export function runCli(vfs, args) {
+async function runCli(vfs, args) {
   const command = args[0] || 'help';
 
   if (command === 'ls') {
     const docs = vfs.db.listDocs();
     console.log(`\n=== Available viking:// context maps ===`);
     for (const doc of docs) {
-      const vfsRes = vfs.resolveUri(`viking://${doc.category}/${doc.topic}`, 'L0');
+      const vfsRes = await vfs.resolveUri(`viking://${doc.category}/${doc.topic}`, 'L0');
       const abstract = vfsRes.ok ? vfsRes.value.content : 'No L0 abstract compiled.';
       console.log(`viking://${doc.category}/${doc.topic}  --> ${doc.file_path}`);
       console.log(`  └─ ${abstract}\n`);
@@ -622,7 +783,7 @@ export function runCli(vfs, args) {
       console.error(`[-] Error: URI parameter is required. Usage: node viking-vfs-mount.mjs read viking://research/heartbeats L1`);
       process.exit(1);
     }
-    const res = vfs.resolveUri(uri, tier);
+    const res = await vfs.resolveUri(uri, tier);
     if (res.ok) {
       console.log(res.value.content);
     } else {
@@ -658,27 +819,21 @@ MCP Mode (triggered automatically when launched as a child process via Stdio):
 }
 
 // Main Execution Guard
-try {
-  const currentFilePath = fileURLToPath(import.meta.url);
-  const isDirectRun = process.argv[1] && (
-    fs.realpathSync(process.argv[1]) === fs.realpathSync(currentFilePath)
-  );
+const mainFile = process.argv[1] ? fs.realpathSync(process.argv[1]) : '';
+const thisFile = fs.realpathSync(fileURLToPath(import.meta.url));
 
-  if (isDirectRun) {
-    const dbInstance = new VikingDatabase(DB_PATH);
-    const vfsInstance = new VikingVFS(dbInstance);
+if (mainFile === thisFile) {
+  const dbInstance = new VikingDatabase(DB_PATH);
+  const vfsInstance = new VikingVFS(dbInstance);
 
-    const cliArgs = process.argv.slice(2);
-    const isExplicitMcp = cliArgs.includes('--mcp');
-    const hasCliCommand = cliArgs.length > 0 && !isExplicitMcp && !cliArgs[0].startsWith('-');
+  const isMcpMode = process.argv.includes('--mcp') || (process.argv.length <= 2 && !process.stdin.isTTY);
 
-    if (isExplicitMcp || (!hasCliCommand && !process.stdin.isTTY)) {
-      startMcpServer(vfsInstance);
-    } else {
-      runCli(vfsInstance, cliArgs);
+  if (isMcpMode) {
+    startMcpServer(vfsInstance);
+  } else {
+    (async () => {
+      await runCli(vfsInstance, process.argv.slice(2));
       dbInstance.close();
-    }
+    })();
   }
-} catch (e) {
-  // Ignored when imported as module in environments without standard argv[1]
 }
