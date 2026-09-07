@@ -27,7 +27,9 @@ export function runExtract(
   readTopicMeta(root, topicPath); // throws if node doesn't exist
   const dir = nodeDir(root, topicPath);
   const metadataPath = path.join(dir, 'sources', 'metadata.json');
-  const metadata: SourceMetadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));
+  const metadata: SourceMetadata = fs.existsSync(metadataPath)
+    ? JSON.parse(fs.readFileSync(metadataPath, 'utf-8'))
+    : { sources: [] };
 
   const collectedFacts: Fact[] = [];
   const summaries: string[] = [];

@@ -15,6 +15,7 @@ import { runTriageIntake } from './commands/triageIntake';
 import { runRouteIntake } from './commands/routeIntake';
 import { runIngestNotebooklm } from './commands/ingestNotebooklm';
 import { runMineNotebooklm } from './commands/mineNotebooklm';
+import { runReingestUrls } from './commands/reingestUrls';
 import { assertSafeRoot } from '../core/rootSafety';
 import { LockConflictError, LockUnrecoverableError } from '../sync/lock';
 
@@ -69,6 +70,22 @@ program
       if (summary.failureCount > 0) process.exitCode = 1;
     } catch (err) {
       console.error(`[ingest-dir] ${(err as Error).message}`);
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('reingest-urls [path]')
+  .option('--all', 're-ingest missing URL sources across all topics')
+  .option('--dry-run', 'simulate without writing files')
+  .option('--force', 'overwrite existing raw source envelopes')
+  .action(async (path, opts) => {
+    try {
+      const summary = await runReingestUrls(root, path, opts);
+      console.log(JSON.stringify(summary, null, 2));
+      if (summary.failures.length > 0) process.exitCode = 1;
+    } catch (err) {
+      console.error(`[reingest-urls] ${(err as Error).message}`);
       process.exitCode = 1;
     }
   });

@@ -16,13 +16,13 @@ function makeRoot() {
 }
 
 describe('full TRM lifecycle', () => {
-  it('create -> ingest -> extract -> score -> crosslink -> version-bump -> validate', () => {
+  it('create -> ingest -> extract -> score -> crosslink -> version-bump -> validate', async () => {
     const root = makeRoot();
     const actor = 'ACTOR-001';
 
     runCreate(root, 'cuba/industry/automotive', { actor, description: 'Automotive research', tags: ['history', 'industry'] });
 
-    runIngest(root, 'cuba/industry/automotive', { actor, type: 'text', title: 'Overview', origin: 'LOC', url: 'https://example.com' });
+    await runIngest(root, 'cuba/industry/automotive', { actor, type: 'text', title: 'Overview', origin: 'LOC', url: 'https://example.com' });
     const rawDir = path.join(root, 'topics', 'cuba', 'industry', 'automotive', 'sources', 'raw');
     fs.mkdirSync(rawDir, { recursive: true });
     fs.writeFileSync(path.join(rawDir, 'SRC-001.json'), JSON.stringify({

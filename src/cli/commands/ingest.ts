@@ -5,6 +5,7 @@ import { addSource } from '../../core/sourceIngest';
 import { resolveActor } from '../../registry/actorRegistry';
 import { convertFileToText } from '../../ingestion/fileConvert';
 import { extractImage } from '../../ingestion/imageExtract';
+import { fetchUrlToText, FetchUrlOptions } from '../../ingestion/urlFetch';
 import { writeRawEnvelope, RawSourceEnvelope } from '../../core/rawSource';
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic']);
@@ -12,7 +13,8 @@ const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.he
 export async function runIngest(
   root: string,
   topicPath: string,
-  cliArgs: { actor?: string; type: string; title: string; origin: string; url?: string; file?: string; dryRun?: boolean }
+  cliArgs: { actor?: string; type: string; title: string; origin: string; url?: string; file?: string; dryRun?: boolean },
+  fetchOptions?: FetchUrlOptions
 ): Promise<SourceEntry | null> {
   const actor = resolveActor(root, cliArgs.actor);
   if (cliArgs.dryRun) return null;
@@ -31,6 +33,12 @@ export async function runIngest(
     imageResult = await extractImage(cliArgs.file);
   } else if (cliArgs.file) {
     text = await convertFileToText(cliArgs.file);
+  } else if (cliArgs.url && /^https?:\/\//i.test(cliArgs.url)) {
+    try {
+      text = await fetchUrlToText(cliArgs.url, fetchOptions);
+    } catch (err: any) {
+      console.warn(`[ingest] Warning: Failed to fetch URL ${cliArgs.url}: ${err.message || err}`);
+    }
   }
 
   const entry = addSource(root, topicPath, actor, { type: cliArgs.type, title: cliArgs.title, origin: cliArgs.origin, url });
