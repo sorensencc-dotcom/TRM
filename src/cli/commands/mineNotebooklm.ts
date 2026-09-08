@@ -129,6 +129,29 @@ function uploadResearchGapsSource(root: string, notebookId: string, relativeDocP
   try {
     const title = 'TRM Research Gaps & Synthesis';
     const nlmBin = 'nlm';
+    const baseName = path.basename(absPath).toLowerCase();
+
+    // Query existing sources in target notebook to find previous versions of this gaps source
+    let existingSources: Array<{ id: string; title?: string; name?: string }> = [];
+    try {
+      const listProc = process.platform === 'win32'
+        ? spawnSync('cmd.exe', ['/d', '/s', '/c', nlmBin, 'source', 'list', notebookId, '--json'], { encoding: 'utf-8' })
+        : spawnSync(nlmBin, ['source', 'list', notebookId, '--json'], { encoding: 'utf-8' });
+
+      if (listProc.status === 0 && listProc.stdout) {
+        const parsed = JSON.parse(listProc.stdout);
+        existingSources = Array.isArray(parsed) ? parsed : (parsed.sources || []);
+      }
+    } catch {
+      // Fail-soft: continue if listing fails
+    }
+
+    const staleSources = existingSources.filter((s) => {
+      const sTitle = (s.title || s.name || '').toLowerCase().trim();
+      return sTitle === title.toLowerCase() || sTitle === baseName;
+    });
+
+    // Add fresh source
     if (process.platform === 'win32') {
       spawnSync('cmd.exe', ['/d', '/s', '/c', nlmBin, 'source', 'add', notebookId, '--file', absPath, '--title', title, '--wait'], {
         encoding: 'utf-8',
@@ -137,6 +160,20 @@ function uploadResearchGapsSource(root: string, notebookId: string, relativeDocP
       spawnSync(nlmBin, ['source', 'add', notebookId, '--file', absPath, '--title', title, '--wait'], {
         encoding: 'utf-8',
       });
+    }
+
+    // Purge stale previous versions
+    if (staleSources.length > 0) {
+      const ids = staleSources.map((s) => s.id);
+      if (process.platform === 'win32') {
+        spawnSync('cmd.exe', ['/d', '/s', '/c', nlmBin, 'source', 'delete', ...ids, '-y'], {
+          encoding: 'utf-8',
+        });
+      } else {
+        spawnSync(nlmBin, ['source', 'delete', ...ids, '-y'], {
+          encoding: 'utf-8',
+        });
+      }
     }
   } catch {
     // Fail-soft: upload error must not fail mining run
