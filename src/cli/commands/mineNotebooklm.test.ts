@@ -4,8 +4,10 @@ import * as path from 'node:path';
 import { loadMiningQuestions, answerKey, runMineNotebooklm } from './mineNotebooklm';
 import * as nlmCli from '../../notebooklm/nlmCli';
 import { registryPath } from '../../notebooklm/registry';
+import { spawnSync } from 'node:child_process';
 
 jest.mock('../../notebooklm/nlmCli');
+jest.mock('node:child_process');
 
 function seedRegistry(root: string): void {
   fs.writeFileSync(
@@ -113,5 +115,24 @@ describe('mineNotebooklm', () => {
     expect(tableRows2.length).toBe(4);
     expect(tableRows2.find((r) => r.includes('Version 2 contradiction updated.'))).toBeDefined();
     expect(tableRows2.find((r) => r.includes('Version 1 contradiction.'))).toBeUndefined();
+  });
+
+  it('preserves existing research-gaps sources when replacement upload fails', () => {
+    (nlmCli.queryNotebook as jest.Mock).mockReturnValue({ ok: false, error: 'timeout' });
+    (spawnSync as jest.Mock).mockImplementation((_command: string, args: string[]) => {
+      if (args.includes('list')) {
+        return { status: 0, stdout: JSON.stringify([{ id: 'old-source', title: 'Willow Run Videos research gaps' }]) };
+      }
+      if (args.includes('add')) return { status: 1, stdout: '', stderr: 'upload failed' };
+      throw new Error(`unexpected command: ${args.join(' ')}`);
+    });
+
+    runMineNotebooklm(root, 'nb-1', {});
+
+    expect(spawnSync).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.arrayContaining(['source', 'delete', 'old-source']),
+      expect.anything(),
+    );
   });
 });

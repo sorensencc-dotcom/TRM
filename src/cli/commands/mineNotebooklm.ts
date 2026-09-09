@@ -151,19 +151,18 @@ function uploadResearchGapsSource(root: string, notebookId: string, relativeDocP
       return sTitle === title.toLowerCase() || sTitle === baseName;
     });
 
-    // Add fresh source
-    if (process.platform === 'win32') {
-      spawnSync('cmd.exe', ['/d', '/s', '/c', nlmBin, 'source', 'add', notebookId, '--file', absPath, '--title', title, '--wait'], {
+    // Add fresh source before deleting older versions. Preserve an existing
+    // source when a transient upload failure occurs.
+    const addProc = process.platform === 'win32'
+      ? spawnSync('cmd.exe', ['/d', '/s', '/c', nlmBin, 'source', 'add', notebookId, '--file', absPath, '--title', title, '--wait'], {
+        encoding: 'utf-8',
+        })
+      : spawnSync(nlmBin, ['source', 'add', notebookId, '--file', absPath, '--title', title, '--wait'], {
         encoding: 'utf-8',
       });
-    } else {
-      spawnSync(nlmBin, ['source', 'add', notebookId, '--file', absPath, '--title', title, '--wait'], {
-        encoding: 'utf-8',
-      });
-    }
 
     // Purge stale previous versions
-    if (staleSources.length > 0) {
+    if (addProc.status === 0 && staleSources.length > 0) {
       const ids = staleSources.map((s) => s.id);
       if (process.platform === 'win32') {
         spawnSync('cmd.exe', ['/d', '/s', '/c', nlmBin, 'source', 'delete', ...ids, '-y'], {
