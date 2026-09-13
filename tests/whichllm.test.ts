@@ -21,6 +21,7 @@ import {
   verifyArtifactHash,
   writeArtifactAtomically,
 } from '../src/whichllm/evaluator';
+import type { WhichLlmArtifact } from '../src/whichllm/types';
 import { discoverOllamaModels } from '../src/whichllm/ollamaClient';
 import {
   getIcfTelemetryReporter,
@@ -133,6 +134,8 @@ describe('WhichLLM BFCL Evaluator & Cascade Engine', () => {
           contract_type: 'extractor-upgrade-sweep',
           schema_version: '2.4.0',
           provenance_flags: ['test'],
+          evaluation_mode: 'heuristic' as const,
+          evaluated_at: '2026-09-13T10:00:00.000Z',
         },
       };
 
@@ -173,7 +176,7 @@ describe('WhichLLM BFCL Evaluator & Cascade Engine', () => {
       const outputPath = path.join(tmpDir, 'model_selection.json');
 
       try {
-        const testArtifact = {
+        const testPayload: Omit<WhichLlmArtifact, 'hash_chain_self'> = {
           evaluated_at: new Date().toISOString(),
           hardware_profile: DEFAULT_HARDWARE_PROFILE,
           test_suite_coverage: {
@@ -190,8 +193,14 @@ describe('WhichLLM BFCL Evaluator & Cascade Engine', () => {
             contract_type: 'extractor-upgrade-sweep',
             schema_version: '2.4.0',
             provenance_flags: [],
+            evaluation_mode: 'heuristic',
+            evaluated_at: new Date().toISOString(),
           },
-          hash_chain_self: 'dummy',
+        };
+        const testHash = computeArtifactHash(testPayload);
+        const testArtifact: WhichLlmArtifact = {
+          ...testPayload,
+          hash_chain_self: testHash,
         };
 
         writeArtifactAtomically(outputPath, testArtifact);
@@ -207,7 +216,7 @@ describe('WhichLLM BFCL Evaluator & Cascade Engine', () => {
       const result = resolveHardwareProfile();
       expect(result.hardware.gpu_name).toBe('NVIDIA RTX 4090');
       expect(result.hardware.ram_gb).toBeGreaterThan(0);
-      expect(result.source).toBe('configured_default_with_host_ram_probe');
+      expect(result.source).toBe('configured_preset_with_host_ram_probe');
 
       const injectedHw = { gpu_count: 2, gpu_name: 'A100', vram_gb: 80, ram_gb: 256 };
       const injectedRes = resolveHardwareProfile(undefined, injectedHw);

@@ -2,6 +2,7 @@ export interface IcfTelemetryEvent {
   severity: 'INFO' | 'WARN' | 'CRITICAL';
   eventType:
     | 'LOCAL_MODEL_FAILURE'
+    | 'LIVE_INFERENCE_UNAVAILABLE'
     | 'WHICHLLM_DEGRADED_CASCADE'
     | 'MODEL_SWEEP_COMPLETE'
     | 'RATE_LIMIT_ADVANCEMENT';
@@ -10,6 +11,7 @@ export interface IcfTelemetryEvent {
   failureStage?:
     | 'DISCOVERY'
     | 'PRE_FLIGHT_CHECK'
+    | 'INFERENCE'
     | 'INFERENCE_DISPATCH'
     | 'CONTEXT_OVERFLOW'
     | 'OOM'

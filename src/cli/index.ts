@@ -254,8 +254,13 @@ program
   .option('--output <path>', 'path to output model_selection.json artifact')
   .option('--dry-run', 'evaluate and display recommendations without writing files')
   .option('--allow-degraded-cli', 'allow falling back to ollama list CLI if HTTP API fails')
+  .option('--live-inference', 'execute active BFCL tool-calling benchmarks against discovered Ollama models')
+  .option('--samples <number>', 'number of sampled inference attempts per scenario (default: 3)', (v) => parseInt(v, 10))
+  .option('--timeout <number>', 'per-request inference timeout in milliseconds (default: 15000)', (v) => parseInt(v, 10))
+  .option('--allow-unsafe-relevance', 'allow selecting local model anchor even if it fails negative relevance rejection safety threshold (< 50%)')
   .action(async (opts) => {
     await runEvalWhichllm(root, opts);
   });
 
 program.parse();
+

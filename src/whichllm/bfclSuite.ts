@@ -1,3 +1,4 @@
+import { CANONICAL_BFCL_TOOLS } from './toolDefinitions';
 import type {
   BfclScenario,
   HardwareProfile,
@@ -9,6 +10,8 @@ export const BFCL_TEST_SUITE: BfclScenario[] = [
   {
     id: 'bfcl-cic-001-simple-read',
     name: 'Simple Tool Call - Read Shared Context',
+    discipline: 'simple_tools',
+    available_tools: CANONICAL_BFCL_TOOLS,
     expected_tool: 'sigil.core/read_shared_context',
     expected_args: {
       path: 'wiki/research/mobile-websocket-heartbeats.md',
@@ -19,13 +22,17 @@ export const BFCL_TEST_SUITE: BfclScenario[] = [
   {
     id: 'bfcl-cic-002-parallel-dispatch',
     name: 'Parallel Tool Call - Dual-Task Submission',
+    discipline: 'parallel_tools',
+    available_tools: CANONICAL_BFCL_TOOLS,
     expected_tools: ['sigil_send_task', 'sigil_send_task'],
     negative_prompt: false,
     prompt: 'Dispatch two concurrent tasks to conv_willow_run and conv_ford_politics.',
   },
   {
     id: 'bfcl-cic-003-nested-resolver',
-    name: 'Nested Tool Call - Parse and Resolve Upstream ID',
+    name: 'Nested Tool-Call Sequence Proposal Conformance - Parse and Resolve Upstream ID',
+    discipline: 'nested_tools',
+    available_tools: CANONICAL_BFCL_TOOLS,
     expected_tool_sequence: ['trm_fetch_findings', 'trm_source_resolver'],
     negative_prompt: false,
     prompt: 'Fetch the findings and resolve the corresponding upstream source ID.',
@@ -33,6 +40,8 @@ export const BFCL_TEST_SUITE: BfclScenario[] = [
   {
     id: 'bfcl-cic-004-relevance-rejection',
     name: 'Negative Relevance Rejection (No tool match)',
+    discipline: 'relevance_rejection',
+    available_tools: CANONICAL_BFCL_TOOLS,
     expected_tool: null,
     negative_prompt: true,
     prompt: 'Synthesize a brief historical timeline of the Willow Run aviation plant based on memory.',
@@ -130,15 +139,20 @@ export function evaluateModelBfcl(
       baseScores.relevance_rejection) /
     4;
 
+  const heuristicMetrics = {
+    simple_tool_call_accuracy: parseFloat(baseScores.simple_tools.toFixed(2)),
+    parallel_tool_call_accuracy: parseFloat(baseScores.parallel_tools.toFixed(2)),
+    nested_tool_call_accuracy: parseFloat(baseScores.nested_tools.toFixed(2)),
+    relevance_rejection_rate: parseFloat(baseScores.relevance_rejection.toFixed(2)),
+  };
+
   return {
+    evaluation_mode: 'heuristic',
     bfcl_composite_score: parseFloat(composite.toFixed(3)),
-    metrics: {
-      simple_tool_call_accuracy: parseFloat(baseScores.simple_tools.toFixed(2)),
-      parallel_tool_call_accuracy: parseFloat(baseScores.parallel_tools.toFixed(2)),
-      nested_tool_call_accuracy: parseFloat(baseScores.nested_tools.toFixed(2)),
-      relevance_rejection_rate: parseFloat(baseScores.relevance_rejection.toFixed(2)),
-    },
+    heuristic_metrics: heuristicMetrics,
+    metrics: heuristicMetrics,
     quantization_overhead_penalty:
       accuracyPenalty > 0 ? parseFloat(accuracyPenalty.toFixed(2)) : 0.0,
   };
 }
+
