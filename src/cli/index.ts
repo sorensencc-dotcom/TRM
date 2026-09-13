@@ -16,11 +16,14 @@ import { runRouteIntake } from './commands/routeIntake';
 import { runIngestNotebooklm } from './commands/ingestNotebooklm';
 import { runMineNotebooklm } from './commands/mineNotebooklm';
 import { runReingestUrls } from './commands/reingestUrls';
+import { runEvalWhichllm } from './commands/evalWhichllm';
 import { assertSafeRoot } from '../core/rootSafety';
 import { LockConflictError, LockUnrecoverableError } from '../sync/lock';
 
 const root = process.cwd();
-assertSafeRoot(root);
+if (!process.argv.includes('eval-whichllm')) {
+  assertSafeRoot(root);
+}
 const program = new Command();
 program.name('trm').version('0.1.0');
 
@@ -243,6 +246,16 @@ program
   .action((notebookId) => {
     const result = runMineNotebooklm(root, notebookId, {});
     console.log(JSON.stringify(result, null, 2));
+  });
+
+program
+  .command('eval-whichllm')
+  .option('--config <path>', 'path to hardware config JSON')
+  .option('--output <path>', 'path to output model_selection.json artifact')
+  .option('--dry-run', 'evaluate and display recommendations without writing files')
+  .option('--allow-degraded-cli', 'allow falling back to ollama list CLI if HTTP API fails')
+  .action(async (opts) => {
+    await runEvalWhichllm(root, opts);
   });
 
 program.parse();

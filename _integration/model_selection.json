@@ -1,5 +1,5 @@
 {
-  "evaluated_at": "2026-09-02T17:24:29.777352+00:00",
+  "evaluated_at": "2026-09-13T14:54:00.698Z",
   "hardware_profile": {
     "gpu_count": 1,
     "gpu_name": "NVIDIA RTX 4090",
@@ -29,7 +29,7 @@
   },
   "recommendations": {
     "frontier_judgment_anchor": "claude-3-5-sonnet-20241022",
-    "local_muscle_anchor": "llama3:8b-instruct-fp16",
+    "local_muscle_anchor": "qwen2.5:7b",
     "local_fit_reasoning": "Model fits cleanly in VRAM with comfortable overhead. Maximum tokens/sec unlocked."
   },
   "ranked_candidates": [
@@ -45,13 +45,13 @@
           "nested_tool_call_accuracy": 0.91,
           "relevance_rejection_rate": 0.94
         },
-        "quantization_overhead_penalty": 0.0
+        "quantization_overhead_penalty": 0
       }
     },
     {
-      "model_name": "qwen2.5:72b-instruct-q4_k_m",
+      "model_name": "gemma4:26b",
       "tier": "Tier 2 (Muscle)",
-      "vram_fit_status": "out_of_vram_degraded",
+      "vram_fit_status": "tight_vram_warning",
       "benchmark_matrix": {
         "bfcl_composite_score": 0.87,
         "metrics": {
@@ -60,41 +60,56 @@
           "nested_tool_call_accuracy": 0.81,
           "relevance_rejection_rate": 0.87
         },
-        "quantization_overhead_penalty": 0.0
+        "quantization_overhead_penalty": 0
       }
     },
     {
-      "model_name": "qwen2.5:32b-instruct-q8_0",
+      "model_name": "qwen2.5:7b",
       "tier": "Tier 2 (Muscle)",
-      "vram_fit_status": "out_of_vram_degraded",
+      "vram_fit_status": "fits_easily",
       "benchmark_matrix": {
-        "bfcl_composite_score": 0.835,
+        "bfcl_composite_score": 0.694,
         "metrics": {
-          "simple_tool_call_accuracy": 0.89,
-          "parallel_tool_call_accuracy": 0.84,
-          "nested_tool_call_accuracy": 0.77,
-          "relevance_rejection_rate": 0.84
+          "simple_tool_call_accuracy": 0.77,
+          "parallel_tool_call_accuracy": 0.7,
+          "nested_tool_call_accuracy": 0.59,
+          "relevance_rejection_rate": 0.72
         },
-        "quantization_overhead_penalty": 0.03
+        "quantization_overhead_penalty": 0.15
       }
     },
     {
-      "model_name": "llama3.1:70b-instruct-q2_k",
+      "model_name": "llama3.1:8b",
       "tier": "Tier 2 (Muscle)",
-      "vram_fit_status": "out_of_vram_degraded",
+      "vram_fit_status": "fits_easily",
       "benchmark_matrix": {
-        "bfcl_composite_score": 0.753,
+        "bfcl_composite_score": 0.694,
         "metrics": {
-          "simple_tool_call_accuracy": 0.82,
-          "parallel_tool_call_accuracy": 0.76,
-          "nested_tool_call_accuracy": 0.66,
-          "relevance_rejection_rate": 0.77
+          "simple_tool_call_accuracy": 0.77,
+          "parallel_tool_call_accuracy": 0.7,
+          "nested_tool_call_accuracy": 0.59,
+          "relevance_rejection_rate": 0.72
         },
-        "quantization_overhead_penalty": 0.1
+        "quantization_overhead_penalty": 0.15
       }
     },
     {
-      "model_name": "llama3:8b-instruct-fp16",
+      "model_name": "llama3.2:latest",
+      "tier": "Tier 2 (Muscle)",
+      "vram_fit_status": "fits_easily",
+      "benchmark_matrix": {
+        "bfcl_composite_score": 0.694,
+        "metrics": {
+          "simple_tool_call_accuracy": 0.77,
+          "parallel_tool_call_accuracy": 0.7,
+          "nested_tool_call_accuracy": 0.59,
+          "relevance_rejection_rate": 0.72
+        },
+        "quantization_overhead_penalty": 0.15
+      }
+    },
+    {
+      "model_name": "llama3.3:latest",
       "tier": "Tier 2 (Muscle)",
       "vram_fit_status": "fits_easily",
       "benchmark_matrix": {
@@ -114,8 +129,9 @@
     "schema_version": "2.4.0",
     "provenance_flags": [
       "bfcl_v2_automated",
-      "hardware_aware_compaction"
+      "hardware_aware_compaction",
+      "live_ollama_discovery"
     ]
   },
-  "hash_chain_self": "ea3756afa4b7dc9df3ed25a256e3ef2fc350ccb8365ecbeff1214588b7e32c29"
+  "hash_chain_self": "ecfb1399217ece0eef68b56f9f3c87fcd3e8e1ae84139b66887f281fba1e72b8"
 }

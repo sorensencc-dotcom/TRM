@@ -19,7 +19,8 @@
     "typecheck": "tsc --noEmit",
     "trm": "ts-node src/cli/index.ts",
     "triage:intake": "ts-node src/cli/index.ts triage-intake",
-    "triage:export:staging": "ts-node src/cli/index.ts triage-intake --export-staging=../kb-sync/_kb-sync-staging/trm"
+    "triage:export:staging": "ts-node src/cli/index.ts triage-intake --export-staging=../kb-sync/_kb-sync-staging/trm",
+    "eval:whichllm": "ts-node src/cli/index.ts eval-whichllm"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.8",
