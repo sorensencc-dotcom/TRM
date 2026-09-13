@@ -43,7 +43,11 @@ describe('analyzeFrames', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tempDir, { recursive: true, force: true });
+    try {
+      fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+    } catch {
+      // Ignore transient Windows file handle lock during temp cleanup
+    }
   });
 
   it('bounds concurrent in-flight extract() calls to TRM_FRAME_ANALYSIS_CONCURRENCY', async () => {
