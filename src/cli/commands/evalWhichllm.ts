@@ -39,28 +39,28 @@ export async function runEvalWhichllm(
 
     const { artifact } = result;
     console.log(
-      `Hardware Profile : ${artifact.hardware_profile.gpu_count}x ${artifact.hardware_profile.gpu_name} (${artifact.hardware_profile.vram_gb} GB VRAM, ${artifact.hardware_profile.ram_gb} GB RAM)`,
+      `Hardware Profile : ${artifact.hardware_profile.gpu_count}x ${artifact.hardware_profile.gpu_name} (${artifact.hardware_profile.vram_gb} GB VRAM, ${artifact.hardware_profile.ram_gb} GB RAM) [Source: ${result.hardwareSource}]`,
     );
     console.log(`Discovery Source : ${result.discoverySource}`);
-    console.log(`Scenarios Run    : ${artifact.test_suite_coverage.total_bfcl_scenarios} BFCL disciplines`);
-    console.log(`Self-Hash        : ${artifact.hash_chain_self}\n`);
+    console.log(`Scenarios Run    : ${artifact.test_suite_coverage.total_bfcl_scenarios} deterministic BFCL scoring disciplines evaluated`);
+    console.log(`Self-Hash (SHA256): ${artifact.hash_chain_self}\n`);
 
-    console.log('Ranked Candidates:');
+    console.log('Ranked Candidates (Deterministic BFCL Scoring):');
     console.log('----------------------------------------------------------------------');
     for (const candidate of artifact.ranked_candidates) {
       console.log(
-        `• [${candidate.tier}] ${candidate.model_name.padEnd(36)} | BFCL: ${candidate.benchmark_matrix.bfcl_composite_score.toFixed(3)} | Fit: ${candidate.vram_fit_status}`,
+        `• [${candidate.tier}] ${candidate.model_name.padEnd(36)} | Score: ${candidate.benchmark_matrix.bfcl_composite_score.toFixed(3)} | Fit: ${candidate.vram_fit_status}`,
       );
     }
     console.log('----------------------------------------------------------------------\n');
 
     console.log('Recommendations:');
-    console.log(`  Frontier Judgment Anchor : ${artifact.recommendations.frontier_judgment_anchor ?? '(none)'}`);
-    console.log(`  Local Muscle Anchor      : ${artifact.recommendations.local_muscle_anchor ?? '(none)'}`);
-    console.log(`  Fit Reasoning            : ${artifact.recommendations.local_fit_reasoning}\n`);
+    console.log(`  Frontier Reference Anchor (Configured) : ${artifact.recommendations.frontier_judgment_anchor ?? '(none)'}`);
+    console.log(`  Local Muscle Anchor                    : ${artifact.recommendations.local_muscle_anchor ?? '(none)'}`);
+    console.log(`  Fit Reasoning                          : ${artifact.recommendations.local_fit_reasoning}\n`);
 
     if (result.outputPath) {
-      console.log(`✔ Model selection artifact written to: ${result.outputPath}\n`);
+      console.log(`✔ Hash-verified model selection artifact written atomically to: ${result.outputPath}\n`);
     } else {
       console.log('✔ Dry-run evaluation completed successfully (0 files written).\n');
     }

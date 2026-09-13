@@ -1,6 +1,7 @@
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import { reportIcfEvent } from '../telemetry/icfReporter';
 import { BFCL_TEST_SUITE, calculateVramFit, evaluateModelBfcl } from './bfclSuite';
 import { discoverOllamaModels, type OllamaDiscoveryOptions } from './ollamaClient';
@@ -19,6 +20,58 @@ export const DEFAULT_HARDWARE_PROFILE: HardwareProfile = {
 };
 
 export const FRONTIER_ANCHORS = ['claude-3-5-sonnet-20241022'];
+
+/**
+ * Resolves the hardware profile from configuration, host probing, or baseline defaults.
+ */
+export function resolveHardwareProfile(
+  configPath?: string,
+  injectedHardware?: HardwareProfile,
+): { hardware: HardwareProfile; source: string } {
+  if (injectedHardware) {
+    return { hardware: injectedHardware, source: 'injected_override' };
+  }
+  if (configPath && fs.existsSync(configPath)) {
+    try {
+      const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      if (cfg.hardware) {
+        return {
+          hardware: { ...DEFAULT_HARDWARE_PROFILE, ...cfg.hardware },
+          source: 'configured_file',
+        };
+      }
+    } catch {
+      // Fallback
+    }
+  }
+  const systemRamGb = Math.round(os.totalmem() / (1024 * 1024 * 1024));
+  return {
+    hardware: {
+      ...DEFAULT_HARDWARE_PROFILE,
+      ram_gb: systemRamGb > 0 ? systemRamGb : DEFAULT_HARDWARE_PROFILE.ram_gb,
+    },
+    source: 'configured_default_with_host_ram_probe',
+  };
+}
+
+/**
+ * Writes the artifact to disk atomically via temporary file rename.
+ */
+export function writeArtifactAtomically(
+  outputPath: string,
+  artifact: WhichLlmArtifact,
+): void {
+  const parentDir = path.dirname(outputPath);
+  if (!fs.existsSync(parentDir)) {
+    fs.mkdirSync(parentDir, { recursive: true });
+  }
+  const tempPath = path.join(
+    parentDir,
+    `.model_selection.${Date.now()}.${Math.random().toString(36).slice(2, 8)}.tmp`,
+  );
+  fs.writeFileSync(tempPath, JSON.stringify(artifact, null, 2), 'utf8');
+  fs.renameSync(tempPath, outputPath);
+}
 
 /**
  * Deterministic JSON stringifier to guarantee stable SHA-256 hashing.
@@ -72,6 +125,7 @@ export interface EvaluatorRunResult {
   outputPath: string | null;
   dryRun: boolean;
   discoverySource: string;
+  hardwareSource: string;
 }
 
 /**
@@ -88,24 +142,10 @@ export async function runWhichLlmEvaluator(
   const dryRun = options.dryRun ?? false;
 
   // 1. Resolve hardware context
-  let hardware: HardwareProfile = options.injectedHardware ?? { ...DEFAULT_HARDWARE_PROFILE };
-  if (options.configPath && fs.existsSync(options.configPath)) {
-    try {
-      const cfg = JSON.parse(fs.readFileSync(options.configPath, 'utf8'));
-      if (cfg.hardware) {
-        hardware = { ...hardware, ...cfg.hardware };
-      }
-    } catch {
-      reportIcfEvent({
-        severity: 'WARN',
-        eventType: 'WHICHLLM_DEGRADED_CASCADE',
-        subsystem: 'TRM',
-        modelName: 'hardware_config',
-        errorReason: `Unable to parse hardware config at ${options.configPath}. Using defaults.`,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+  const { hardware, source: hardwareSource } = resolveHardwareProfile(
+    options.configPath,
+    options.injectedHardware,
+  );
 
   // 2. Discover local models
   let localModelNames: string[] = [];
@@ -215,13 +255,9 @@ export async function runWhichLlmEvaluator(
     hash_chain_self: hash,
   };
 
-  // 5. Write artifact only if not in dry-run mode
+  // 5. Write artifact atomically only if not in dry-run mode
   if (!dryRun) {
-    const parentDir = path.dirname(outputPath);
-    if (!fs.existsSync(parentDir)) {
-      fs.mkdirSync(parentDir, { recursive: true });
-    }
-    fs.writeFileSync(outputPath, JSON.stringify(artifact, null, 2), 'utf8');
+    writeArtifactAtomically(outputPath, artifact);
   }
 
   reportIcfEvent({
@@ -238,5 +274,6 @@ export async function runWhichLlmEvaluator(
     outputPath: dryRun ? null : outputPath,
     dryRun,
     discoverySource,
+    hardwareSource,
   };
 }

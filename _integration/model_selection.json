@@ -1,10 +1,10 @@
 {
-  "evaluated_at": "2026-09-13T14:54:00.698Z",
+  "evaluated_at": "2026-09-13T15:05:45.342Z",
   "hardware_profile": {
     "gpu_count": 1,
     "gpu_name": "NVIDIA RTX 4090",
     "vram_gb": 24,
-    "ram_gb": 64
+    "ram_gb": 31
   },
   "test_suite_coverage": {
     "total_bfcl_scenarios": 4,
@@ -133,5 +133,5 @@
       "live_ollama_discovery"
     ]
   },
-  "hash_chain_self": "ecfb1399217ece0eef68b56f9f3c87fcd3e8e1ae84139b66887f281fba1e72b8"
+  "hash_chain_self": "802fa10c82422f040149fc0f835265179508dd5b1259153eb0d312d1e7d91671"
 }
