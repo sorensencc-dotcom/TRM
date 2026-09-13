@@ -3,6 +3,12 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { reportIcfEvent } from '../telemetry/icfReporter';
+import {
+  probeNvidiaGpu,
+  probeNvidiaGpuSync,
+  type GpuProbeOptions,
+  type GpuProbeOptionsSync,
+} from '../telemetry/gpuProbe';
 import { BFCL_TEST_SUITE, calculateVramFit, evaluateModelBfcl } from './bfclSuite';
 import { discoverOllamaModels, type OllamaDiscoveryOptions } from './ollamaClient';
 import {
@@ -20,10 +26,10 @@ import type {
 } from './types';
 
 export const DEFAULT_HARDWARE_PROFILE: HardwareProfile = {
-  gpu_count: 1,
-  gpu_name: 'NVIDIA RTX 4090',
-  vram_gb: 24,
-  ram_gb: 64,
+  gpu_count: 0,
+  gpu_name: 'none',
+  vram_gb: 0,
+  ram_gb: 16,
 };
 
 export const FRONTIER_ANCHORS = ['claude-3-5-sonnet-20241022'];
@@ -52,35 +58,141 @@ export function sanitizeEndpointUrl(rawUrl: string): string {
 }
 
 /**
- * Resolves the hardware profile from configuration, host probing, or baseline defaults.
+ * Resolves the hardware profile from configuration, live GPU probing, host RAM probing, or baseline defaults.
+ * Precedence: Injected Override -> Config File -> Live GPU Probe -> Baseline Preset with Host RAM Probe.
  */
-export function resolveHardwareProfile(
+export async function resolveHardwareProfile(
   configPath?: string,
   injectedHardware?: HardwareProfile,
-): { hardware: HardwareProfile; source: string } {
+  gpuProbeOptions?: GpuProbeOptions,
+): Promise<{ hardware: HardwareProfile; source: string; provenanceFlag: string }> {
   if (injectedHardware) {
-    return { hardware: injectedHardware, source: 'injected_override' };
+    return {
+      hardware: injectedHardware,
+      source: 'injected_override',
+      provenanceFlag: 'injected_hardware_override',
+    };
   }
   if (configPath && fs.existsSync(configPath)) {
     try {
       const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      if (cfg.hardware) {
+      let hwConfig = cfg.hardware;
+      if (hwConfig?.profile_path || cfg.profile_path) {
+        const subPath = hwConfig?.profile_path || cfg.profile_path;
+        const resolvedPath = path.isAbsolute(subPath)
+          ? subPath
+          : path.resolve(path.dirname(configPath), subPath);
+        if (fs.existsSync(resolvedPath)) {
+          hwConfig = JSON.parse(fs.readFileSync(resolvedPath, 'utf8'));
+        }
+      }
+      if (hwConfig && typeof hwConfig === 'object') {
         return {
-          hardware: { ...DEFAULT_HARDWARE_PROFILE, ...cfg.hardware },
+          hardware: { ...DEFAULT_HARDWARE_PROFILE, ...hwConfig },
           source: 'configured_file',
+          provenanceFlag: 'configured_file_hardware_profile',
         };
       }
     } catch {
       // Fallback
     }
   }
+
   const systemRamGb = Math.round(os.totalmem() / (1024 * 1024 * 1024));
+  const probedRamGb = systemRamGb > 0 ? systemRamGb : DEFAULT_HARDWARE_PROFILE.ram_gb;
+
+  const gpuResult = await probeNvidiaGpu(gpuProbeOptions);
+  if (gpuResult.available) {
+    return {
+      hardware: {
+        gpu_count: gpuResult.gpu_count,
+        gpu_name: gpuResult.gpu_name,
+        vram_gb: gpuResult.vram_gb,
+        ram_gb: probedRamGb,
+        vram_free_gb: gpuResult.vram_free_gb,
+        vram_used_gb: gpuResult.vram_used_gb,
+      },
+      source: 'probed_gpu_and_ram_telemetry',
+      provenanceFlag: 'probed_gpu_telemetry',
+    };
+  }
+
   return {
     hardware: {
       ...DEFAULT_HARDWARE_PROFILE,
-      ram_gb: systemRamGb > 0 ? systemRamGb : DEFAULT_HARDWARE_PROFILE.ram_gb,
+      ram_gb: probedRamGb,
     },
-    source: 'configured_preset_with_host_ram_probe',
+    source: 'baseline_preset_with_host_ram_probe',
+    provenanceFlag: 'preset_hardware_profile',
+  };
+}
+
+/**
+ * Bounded synchronous version of hardware profile resolver for sync CLI paths.
+ */
+export function resolveHardwareProfileSync(
+  configPath?: string,
+  injectedHardware?: HardwareProfile,
+  gpuProbeOptions?: GpuProbeOptionsSync,
+): { hardware: HardwareProfile; source: string; provenanceFlag: string } {
+  if (injectedHardware) {
+    return {
+      hardware: injectedHardware,
+      source: 'injected_override',
+      provenanceFlag: 'injected_hardware_override',
+    };
+  }
+  if (configPath && fs.existsSync(configPath)) {
+    try {
+      const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      let hwConfig = cfg.hardware;
+      if (hwConfig?.profile_path || cfg.profile_path) {
+        const subPath = hwConfig?.profile_path || cfg.profile_path;
+        const resolvedPath = path.isAbsolute(subPath)
+          ? subPath
+          : path.resolve(path.dirname(configPath), subPath);
+        if (fs.existsSync(resolvedPath)) {
+          hwConfig = JSON.parse(fs.readFileSync(resolvedPath, 'utf8'));
+        }
+      }
+      if (hwConfig && typeof hwConfig === 'object') {
+        return {
+          hardware: { ...DEFAULT_HARDWARE_PROFILE, ...hwConfig },
+          source: 'configured_file',
+          provenanceFlag: 'configured_file_hardware_profile',
+        };
+      }
+    } catch {
+      // Fallback
+    }
+  }
+
+  const systemRamGb = Math.round(os.totalmem() / (1024 * 1024 * 1024));
+  const probedRamGb = systemRamGb > 0 ? systemRamGb : DEFAULT_HARDWARE_PROFILE.ram_gb;
+
+  const gpuResult = probeNvidiaGpuSync(gpuProbeOptions);
+  if (gpuResult.available) {
+    return {
+      hardware: {
+        gpu_count: gpuResult.gpu_count,
+        gpu_name: gpuResult.gpu_name,
+        vram_gb: gpuResult.vram_gb,
+        ram_gb: probedRamGb,
+        vram_free_gb: gpuResult.vram_free_gb,
+        vram_used_gb: gpuResult.vram_used_gb,
+      },
+      source: 'probed_gpu_and_ram_telemetry',
+      provenanceFlag: 'probed_gpu_telemetry',
+    };
+  }
+
+  return {
+    hardware: {
+      ...DEFAULT_HARDWARE_PROFILE,
+      ram_gb: probedRamGb,
+    },
+    source: 'baseline_preset_with_host_ram_probe',
+    provenanceFlag: 'preset_hardware_profile',
   };
 }
 
@@ -167,6 +279,7 @@ export interface EvaluatorRunOptions {
   discoveryOptions?: OllamaDiscoveryOptions;
   injectedModels?: string[]; // for isolated testing
   injectedHardware?: HardwareProfile;
+  gpuProbeOptions?: GpuProbeOptions;
   liveInference?: boolean;
   samplesPerScenario?: number;
   timeoutMs?: number;
@@ -201,9 +314,10 @@ export async function runWhichLlmEvaluator(
   const liveInference = options.liveInference ?? false;
 
   // 1. Resolve hardware context
-  const { hardware, source: hardwareSource } = resolveHardwareProfile(
+  const { hardware, source: hardwareSource, provenanceFlag: hardwareProvenanceFlag } = await resolveHardwareProfile(
     options.configPath,
     options.injectedHardware,
+    options.gpuProbeOptions,
   );
 
   // 2. Discover local models
@@ -418,6 +532,7 @@ export async function runWhichLlmEvaluator(
       provenance_flags: [
         'bfcl_v2_automated',
         'hardware_aware_compaction',
+        hardwareProvenanceFlag,
         liveInference ? 'live_bfcl_inference' : 'heuristic_bfcl_estimate',
         discoverySource === 'http_api' ? 'live_ollama_discovery' : 'degraded_discovery',
       ],

@@ -3,6 +3,8 @@ export interface HardwareProfile {
   gpu_name: string;
   vram_gb: number;
   ram_gb: number;
+  vram_free_gb?: number;
+  vram_used_gb?: number;
 }
 
 export type VramFitStatus = 'fits_easily' | 'tight_vram_warning' | 'out_of_vram_degraded';

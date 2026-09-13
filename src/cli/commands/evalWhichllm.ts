@@ -49,8 +49,17 @@ export async function runEvalWhichllm(
     });
 
     const { artifact } = result;
+    let gpuProvenanceLabel = '[Baseline Fallback Preset]';
+    if (artifact.lineage.provenance_flags.includes('injected_hardware_override')) {
+      gpuProvenanceLabel = '[Injected Override]';
+    } else if (artifact.lineage.provenance_flags.includes('configured_file_hardware_profile')) {
+      gpuProvenanceLabel = '[Configured Hardware Profile]';
+    } else if (artifact.lineage.provenance_flags.includes('probed_gpu_telemetry')) {
+      gpuProvenanceLabel = '[Probed GPU Telemetry]';
+    }
+
     console.log(
-      `Hardware Profile : GPU: ${artifact.hardware_profile.gpu_count}x ${artifact.hardware_profile.gpu_name} (${artifact.hardware_profile.vram_gb} GB VRAM) [Configured Preset] | Host RAM: ${artifact.hardware_profile.ram_gb} GB [Probed Host Telemetry]`,
+      `Hardware Profile : GPU: ${artifact.hardware_profile.gpu_count}x ${artifact.hardware_profile.gpu_name} (${artifact.hardware_profile.vram_gb} GB VRAM) ${gpuProvenanceLabel} | Host RAM: ${artifact.hardware_profile.ram_gb} GB [Probed Host Telemetry]`,
     );
     console.log(`Evaluation Mode  : ${artifact.lineage.evaluation_mode.toUpperCase()}`);
     console.log(`Discovery Source : ${result.discoverySource}`);

@@ -28,10 +28,12 @@ describe('trm sync-treatment CLI', () => {
   it('runs end-to-end via the CLI entrypoint and prints the report path to stdout', () => {
     const vaultRoot = makeVault();
     const narrativeRoot = makeNarrative();
+    const isWin = process.platform === 'win32';
+    const cmd = isWin ? 'npx.cmd' : 'npx';
     try {
       const output = execFileSync(
-        'ts-node',
-        ['src/cli/index.ts', 'sync-treatment', 'willow-run', '--vault-root', vaultRoot, '--narrative-root', narrativeRoot],
+        cmd,
+        ['ts-node', 'src/cli/index.ts', 'sync-treatment', 'willow-run', '--vault-root', vaultRoot, '--narrative-root', narrativeRoot],
         { cwd: path.resolve(__dirname, '..', '..'), encoding: 'utf-8', shell: true, env: { ...process.env, TRM_ALLOW_GIT_ROOT: '1' } }
       );
       expect(output).toMatch(/TRM_SYNC_REPORT_willow-run_.*\.md/);
@@ -55,10 +57,12 @@ describe('trm sync-treatment CLI', () => {
     };
     fs.writeFileSync(lockPath, JSON.stringify(staleLockInfo, null, 2));
 
+    const isWin = process.platform === 'win32';
+    const cmd = isWin ? 'npx.cmd' : 'npx';
     try {
       execFileSync(
-        'ts-node',
-        ['src/cli/index.ts', 'sync-treatment', 'willow-run', '--vault-root', vaultRoot, '--narrative-root', narrativeRoot],
+        cmd,
+        ['ts-node', 'src/cli/index.ts', 'sync-treatment', 'willow-run', '--vault-root', vaultRoot, '--narrative-root', narrativeRoot],
         { cwd: path.resolve(__dirname, '..', '..'), encoding: 'utf-8', shell: true, env: { ...process.env, TRM_ALLOW_GIT_ROOT: '1' } }
       );
       // Should not reach here

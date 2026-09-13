@@ -212,14 +212,14 @@ describe('WhichLLM BFCL Evaluator & Cascade Engine', () => {
       }
     });
 
-    it('resolves hardware profile with RAM host probing and fallback handling', () => {
-      const result = resolveHardwareProfile();
-      expect(result.hardware.gpu_name).toBe('NVIDIA RTX 4090');
+    it('resolves hardware profile with RAM host probing and fallback handling', async () => {
+      const result = await resolveHardwareProfile();
+      expect(result.hardware.gpu_name).toBeDefined();
       expect(result.hardware.ram_gb).toBeGreaterThan(0);
-      expect(result.source).toBe('configured_preset_with_host_ram_probe');
+      expect(['baseline_preset_with_host_ram_probe', 'probed_gpu_and_ram_telemetry']).toContain(result.source);
 
       const injectedHw = { gpu_count: 2, gpu_name: 'A100', vram_gb: 80, ram_gb: 256 };
-      const injectedRes = resolveHardwareProfile(undefined, injectedHw);
+      const injectedRes = await resolveHardwareProfile(undefined, injectedHw);
       expect(injectedRes.hardware.gpu_name).toBe('A100');
       expect(injectedRes.source).toBe('injected_override');
     });
@@ -232,6 +232,7 @@ describe('WhichLLM BFCL Evaluator & Cascade Engine', () => {
         const result = await runWhichLlmEvaluator({
           outputPath,
           dryRun: true,
+          injectedHardware: { gpu_count: 1, gpu_name: 'Test GPU', vram_gb: 16, ram_gb: 32 },
           injectedModels: ['llama3:8b-instruct-fp16', 'qwen2.5:32b-instruct-q8_0'],
         });
 
@@ -252,6 +253,7 @@ describe('WhichLLM BFCL Evaluator & Cascade Engine', () => {
         const result = await runWhichLlmEvaluator({
           outputPath,
           dryRun: false,
+          injectedHardware: { gpu_count: 1, gpu_name: 'Test GPU', vram_gb: 16, ram_gb: 32 },
           injectedModels: ['llama3:8b-instruct-fp16', 'qwen2.5:32b-instruct-q8_0'],
         });
 

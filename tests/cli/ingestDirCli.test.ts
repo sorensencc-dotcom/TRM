@@ -14,7 +14,9 @@ function makeRoot() {
 
 function runCli(args: string[], cwd: string): { status: number; output: string } {
   try {
-    const output = execFileSync('ts-node', ['src/cli/index.ts', ...args], {
+    const isWin = process.platform === 'win32';
+    const cmd = isWin ? 'npx.cmd' : 'npx';
+    const output = execFileSync(cmd, ['ts-node', 'src/cli/index.ts', ...args], {
       cwd: path.resolve(__dirname, '..', '..'),
       encoding: 'utf-8',
       shell: true,
