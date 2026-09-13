@@ -1,7 +1,7 @@
 # NotebookLM push-research loop — design
 
 **Date:** 2026-09-13
-**Status:** Draft, pending review
+**Status:** Draft, revised post-review (2026-09-13)
 
 ## Problem
 
@@ -19,10 +19,17 @@ exposes exactly the missing capability:
 
 ```
 nlm research start <query> --source web|drive --mode fast|deep
-                    --notebook-id <id> [--auto-import]
-nlm research status <notebook_id>
+                    --notebook-id <id> [--auto-import|--wait-and-import] [--force]
+nlm research status <notebook_id> [--task-id] [--max-wait] [--poll-interval]
 nlm research import <notebook_id> [task_id] [--cited-only] [--indices ...]
 ```
+
+Verified live against the installed binary (`nlm research start/status/import
+--help`, 2026-09-13): `--cited-only` exists **only** on `research import`,
+not on `start`. `start --wait-and-import` waits and imports **all**
+discovered sources with no cited-only filter. Dispatch therefore cannot be a
+single `start --wait-and-import --cited-only` call — see the corrected
+3-step sequence in "New command" below.
 
 This design adds a closed loop: urgent gap → dispatch web research →
 import cited sources → next mining pass sees the new sources and
@@ -36,6 +43,18 @@ import cited sources → next mining pass sees the new sources and
 - Not adding a database. This extends the existing flat-JSON registry
   pattern (`notebooklm-registry.json`), consistent with the rest of
   `trm` — no SQLite, no new storage engine.
+- Not building cross-process locking. `research-notebooklm` assumes a
+  single running instance at a time, same assumption the existing
+  Windows Task Scheduler wrapper already relies on for
+  `mine-notebooklm` (default scheduler behavior does not overlap runs
+  of the same task). If ever invoked concurrently, the last
+  `writeFileAtomic` write wins and an in-flight dispatch could
+  duplicate; not guarded against.
+- Not garbage-collecting `research_queue` entries whose question text
+  no longer exists in `config/mining-questions.json` (e.g. after a
+  question is reworded). Orphaned entries sit inertly — bounded by
+  question-set size (tens of entries, not unbounded growth) — and are
+  simply never revisited. Acceptable dead weight, not cleaned up.
 
 ## Data model
 
@@ -45,6 +64,12 @@ Extend `src/notebooklm/registry.ts`.
 export interface ResearchQueueEntry {
   question_hash: string;               // sha256 of question text
   question_text: string;
+  question_id: string;                 // MiningQuestion.id, for gap_key rebuild
+  gap_key: string;                     // mineNotebooklm.answerKey() value at
+                                        // upsert time — same string
+                                        // appendTodoIfUrgent already wrote to
+                                        // TODOS.md, reused so a stall append
+                                        // dedupes against it
   mode: 'fast' | 'deep';
   attempt_count: number;               // completed dispatches only
   consecutive_dispatch_failures: number; // transient failures; resets on success
@@ -94,13 +119,18 @@ sibling call at that same point:
 
 ```ts
 if (isUrgent) {
-  upsertResearchQueueEntry(root, notebookId, question, mode: config.dispatch_limits.default_mode);
+  upsertResearchQueueEntry(root, notebookId, question, key, config.dispatch_limits.default_mode);
 }
 ```
 
+`key` here is the same `answerKey(notebookId, question.id, result.data)`
+string already computed at `mineNotebooklm.ts:200` and passed to
+`appendTodoIfUrgent` — reused verbatim as `gap_key`, not recomputed.
+
 `upsertResearchQueueEntry` (new function in `registry.ts`):
 - If no entry exists for `question_hash`, create one with
-  `status: 'PENDING'`, zeroed counters.
+  `status: 'PENDING'`, zeroed counters, `question_id` and `gap_key` set
+  from the arguments above.
 - If an entry already exists, leave it untouched — this call only
   ensures the queue knows about the gap, it never resets progress or
   cooldowns.
@@ -116,13 +146,20 @@ New file `src/cli/commands/researchNotebooklm.ts`, wired into
 `src/cli/index.ts` the same way `mine-notebooklm` is.
 
 **Notebook selection:**
-- `notebookId` given: operate on that notebook only, capped at
-  `max_jobs_per_notebook`.
-- omitted: iterate every notebook in the registry, applying the
-  per-notebook cap to each and a running `max_jobs_per_run_global`
-  cap across the whole invocation. Once the global cap is hit, stop
-  dispatching — remaining eligible entries are untouched (no state
-  penalty) and picked up next run.
+- `notebookId` given: look it up with `findNotebook` (same helper
+  `mineNotebooklm.ts:184` uses). Not found → throw, same as
+  `runMineNotebooklm` does at `mineNotebooklm.ts:186`
+  (`notebooklm-registry.json has no entry for notebook "<id>"`) — no
+  silent skip.
+- omitted: iterate every notebook in the registry ordered by
+  soonest-starved-first: notebooks whose `research_queue` contains a
+  `PENDING` entry with the oldest `last_researched_at`
+  (`null` sorts before any timestamp — never-yet-researched notebooks
+  go first) come first; tie-break by `notebookId` ascending for
+  determinism. Apply the per-notebook cap to each and a running
+  `max_jobs_per_run_global` cap across the whole invocation. Once the
+  global cap is hit, stop dispatching — remaining eligible entries are
+  untouched (no state penalty) and picked up next run.
 
 **Per-queue-entry logic**, in question order within a notebook:
 
@@ -131,26 +168,49 @@ New file `src/cli/commands/researchNotebooklm.ts`, wired into
 2. Not `--force-research` and inside the cooldown window
    (`now - last_researched_at < cooldown_days_fast|deep` based on
    `mode`) → skip.
-3. Otherwise dispatch:
+3. Otherwise dispatch, as three sequential `nlm` calls (confirmed
+   against the installed CLI's `--help` output 2026-09-13 — `start`
+   has no `--cited-only`, and `--wait-and-import` imports every
+   discovered source unfiltered, which would defeat the cited-only
+   signal-to-noise requirement):
    ```
    nlm research start "<question_text>" --notebook-id <id>
-       --source web --mode <mode> --wait-and-import --cited-only
+       --source web --mode <mode> [--force]   # --force only if --force-research
+   # capture task id from stdout
+   nlm research status <id> --task-id <task_id> --max-wait 300
+   # blocks (default poll-interval 30s) until the task completes or times out
+   nlm research import <id> <task_id> --cited-only
    ```
+   Any of the three steps failing nonzero is a transient failure for
+   the whole attempt (see below) — there is no partial-success state.
 
-**On success** (process exits 0, research completed and import ran):
+**On success** (all three calls exit 0, `status` reports the task
+completed rather than timed out):
 - `attempt_count += 1`
 - `last_researched_at = now`
 - `consecutive_dispatch_failures = 0`
 - `last_dispatch_error = null`
-- if `attempt_count >= max_attempts_before_stall` **and** the question
-  is still present as an urgent entry in the latest mining pass for
-  this notebook → `status = 'STALLED_NEEDS_HUMAN'` and append a
-  `TODOS.md` line tagged `[STALLED]`, same row format
-  `appendTodoIfUrgent` already uses (idempotent on the same key).
-  Otherwise `status = 'EXECUTED'`.
+- Stall check: immediately re-run `queryNotebook(notebookId,
+  question_text)` (the same call `mine-notebooklm` makes) against the
+  now-updated notebook and re-test the answer against
+  `URGENCY_PATTERNS`. This is the concrete mechanism for "still urgent
+  after research" — it does not wait for the next scheduled mining
+  pass, and does not read `TODOS.md` or the research-gaps doc as a
+  proxy.
+  - Still urgent **and** `attempt_count >= max_attempts_before_stall`
+    → `status = 'STALLED_NEEDS_HUMAN'`, append a `TODOS.md` line
+    tagged `[STALLED]` using the entry's stored `gap_key` as the
+    idempotency key (same key format `appendTodoIfUrgent` already
+    checked for/wrote at gap-creation time, so the existing "does
+    content already include this key" guard in
+    `appendTodoIfUrgent`-style logic dedupes correctly).
+  - Still urgent, attempts remain → `status` stays `PENDING` (eligible
+    again after cooldown).
+  - No longer urgent → `status = 'EXECUTED'`.
 
-**On transient failure** (nonzero exit, network/quota/timeout, or a
-conflicting already-pending research task without `--force`):
+**On transient failure** (any of the three calls exits nonzero —
+network/quota/timeout, or `start` reports a conflicting already-pending
+research task without `--force`):
 - `attempt_count` unchanged
 - `consecutive_dispatch_failures += 1`
 - `last_dispatch_error = <message>`
@@ -201,6 +261,14 @@ registry fixture, assert state transitions:
 - global cap stops dispatch across notebooks; per-notebook cap stops
   dispatch within one notebook
 - `TODOS.md` append on stall is idempotent (same key not duplicated)
+- explicit `notebookId` not present in registry throws, matching
+  `runMineNotebooklm`'s behavior
+- success path re-queries the notebook for the stall check and
+  transitions to `EXECUTED` when the re-query is no longer urgent,
+  even if `attempt_count >= max_attempts_before_stall`
+- global-cap notebook ordering picks the notebook with the oldest
+  `last_researched_at` (including `null`) first, tie-broken by
+  notebookId
 
 No test talks to the real `nlm` binary or a real NotebookLM notebook,
 consistent with the existing suite.
