@@ -372,7 +372,7 @@ export async function runWhichLlmEvaluator(
   if (!selectedLocal) {
     if (localCandidates.length > 0) {
       fitReasoning =
-        'No local candidate met the minimum tool-safety threshold (negative relevance rejection >= 50%). All candidate models exhibited 0% accuracy on non-tool queries (hallucinating tool calls). Local muscle anchor suppressed to prevent uncommanded execution. Pass --allow-unsafe-relevance for explicit operator override.';
+        'No local candidate met the minimum tool-safety threshold (negative relevance rejection >= 50%). All candidate models exhibited 0% accuracy on non-tool queries (hallucinating tool calls). Local muscle anchor suppressed to prevent unsafe automatic selection of a model whose tool-call proposals fail relevance safety. Pass --allow-unsafe-relevance for explicit operator override.';
     } else {
       fitReasoning = 'No local models available in Ollama inventory.';
     }

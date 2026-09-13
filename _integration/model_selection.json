@@ -1,5 +1,5 @@
 {
-  "evaluated_at": "2026-09-13T16:40:36.607Z",
+  "evaluated_at": "2026-09-13T17:49:08.639Z",
   "hardware_profile": {
     "gpu_count": 1,
     "gpu_name": "NVIDIA RTX 4090",
@@ -30,7 +30,7 @@
   "recommendations": {
     "frontier_judgment_anchor": "claude-3-5-sonnet-20241022",
     "local_muscle_anchor": null,
-    "local_fit_reasoning": "No local candidate met the minimum tool-safety threshold (negative relevance rejection >= 50%). All candidate models exhibited 0% accuracy on non-tool queries (hallucinating tool calls). Local muscle anchor suppressed to prevent uncommanded execution. Pass --allow-unsafe-relevance for explicit operator override."
+    "local_fit_reasoning": "No local candidate met the minimum tool-safety threshold (negative relevance rejection >= 50%). All candidate models exhibited 0% accuracy on non-tool queries (hallucinating tool calls). Local muscle anchor suppressed to prevent unsafe automatic selection of a model whose tool-call proposals fail relevance safety. Pass --allow-unsafe-relevance for explicit operator override."
   },
   "ranked_candidates": [
     {
@@ -231,7 +231,7 @@
       "vram_fit_status": "fits_easily",
       "benchmark_matrix": {
         "evaluation_mode": "empirical",
-        "bfcl_composite_score": 0.415,
+        "bfcl_composite_score": 0.417,
         "heuristic_metrics": {
           "simple_tool_call_accuracy": 0.77,
           "parallel_tool_call_accuracy": 0.7,
@@ -242,17 +242,17 @@
           "samples_per_scenario": 3,
           "total_attempts": 12,
           "successful_attempts": 5,
-          "composite_pass_rate": 0.415,
+          "composite_pass_rate": 0.417,
           "discipline_scores": {
             "simple_tool_call_accuracy": 1,
-            "parallel_tool_call_accuracy": 0.33,
-            "nested_tool_call_accuracy": 0.33,
+            "parallel_tool_call_accuracy": 0.67,
+            "nested_tool_call_accuracy": 0,
             "relevance_rejection_rate": 0
           },
           "discipline_variances": {
             "simple_tool_variance": 0,
             "parallel_tool_variance": 0.2222,
-            "nested_tool_variance": 0.2222,
+            "nested_tool_variance": 0,
             "relevance_rejection_variance": 0
           },
           "parser_breakdown": {
@@ -276,8 +276,8 @@
               "scenario_id": "bfcl-cic-002-parallel-dispatch",
               "discipline": "parallel_tools",
               "attempts_count": 3,
-              "passed_count": 1,
-              "pass_rate": 0.33,
+              "passed_count": 2,
+              "pass_rate": 0.67,
               "timeouts_count": 0,
               "malformed_count": 0
             },
@@ -285,8 +285,8 @@
               "scenario_id": "bfcl-cic-003-nested-resolver",
               "discipline": "nested_tools",
               "attempts_count": 3,
-              "passed_count": 1,
-              "pass_rate": 0.33,
+              "passed_count": 0,
+              "pass_rate": 0,
               "timeouts_count": 0,
               "malformed_count": 0
             },
@@ -303,8 +303,8 @@
         },
         "metrics": {
           "simple_tool_call_accuracy": 1,
-          "parallel_tool_call_accuracy": 0.33,
-          "nested_tool_call_accuracy": 0.33,
+          "parallel_tool_call_accuracy": 0.67,
+          "nested_tool_call_accuracy": 0,
           "relevance_rejection_rate": 0
         },
         "quantization_overhead_penalty": 0
@@ -492,7 +492,7 @@
     ],
     "evaluation_mode": "empirical",
     "ollama_endpoint": "http://127.0.0.1:11434",
-    "evaluated_at": "2026-09-13T16:40:36.607Z",
+    "evaluated_at": "2026-09-13T17:49:08.639Z",
     "scenario_attempt_counts": 3,
     "parser_breakdown": {
       "native_tool_call_count": 28,
@@ -502,5 +502,5 @@
       "timeout_count": 17
     }
   },
-  "hash_chain_self": "10f3c3075f95dbdc2fc68e1c8ef312dab50ed11945dc3d73726969edf063c2d4"
+  "hash_chain_self": "d696bb3c821baca0a28d94641c878366ab494d76d3e145eb666725b49f63ec6c"
 }
