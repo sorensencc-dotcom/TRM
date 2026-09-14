@@ -2,5 +2,8 @@
   "default_scoring_adapter": "stub",
   "promotion_threshold": 80,
   "actor_source": "env",
-  "time_source": "system"
+  "time_source": "system",
+  "dispatch_limits": {
+    "max_jobs_per_run_global": 1
+  }
 }

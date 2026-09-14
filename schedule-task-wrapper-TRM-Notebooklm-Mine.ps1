@@ -21,6 +21,27 @@ $StartTime = Get-Date
 "Started: $StartTime" | Tee-Object -FilePath $LogFile -Append
 "Vault Root: $VaultRoot" | Tee-Object -FilePath $LogFile -Append
 
+# The globally installed `trm` CLI is a symlink into the repo's dist/ output
+# (npm link), not a published package -- if src/ changes without a rebuild,
+# commands silently go stale and fail with "unknown command" deep into the
+# sweep. Rebuild before every run so dist/ never drifts from src/.
+$TrmRepoRoot = 'C:\dev\trm'
+"=== npm run build ($TrmRepoRoot) ===" | Tee-Object -FilePath $LogFile -Append
+Push-Location $TrmRepoRoot
+try {
+    & npm run build 2>&1 | Tee-Object -FilePath $LogFile -Append
+    if ($LASTEXITCODE -ne 0) {
+        "npm run build failed with exit code $LASTEXITCODE -- aborting sweep, dist/ may be stale" | Tee-Object -FilePath $LogFile -Append
+        Pop-Location
+        $EndTime = Get-Date
+        $Duration = ($EndTime - $StartTime).TotalSeconds
+        "Completed: $EndTime (Duration: {0:F2}s, Exit Code: 1)" -f $Duration | Tee-Object -FilePath $LogFile -Append
+        exit 1
+    }
+} finally {
+    Pop-Location
+}
+
 Set-Location $VaultRoot
 
 $RegistryPath = Join-Path $VaultRoot 'notebooklm-registry.json'
