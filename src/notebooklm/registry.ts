@@ -21,7 +21,10 @@ export interface ResearchQueueEntry {
   consecutive_dispatch_failures: number;
   last_researched_at: string | null;
   last_dispatch_error: string | null;
-  status: 'PENDING' | 'EXECUTED' | 'STALLED_NEEDS_HUMAN' | 'INFRASTRUCTURE_BLOCKED';
+  status: 'PENDING' | 'EXECUTED' | 'STALLED_NEEDS_HUMAN' | 'INFRASTRUCTURE_BLOCKED' | 'EVIDENCE_IMPORTED';
+  web_strategy?: 'web' | 'auto' | 'notebook';
+  imported_source?: string;
+  last_updated_at?: string;
 }
 
 export interface NotebookRegistryEntry {
@@ -145,7 +148,8 @@ export function upsertResearchQueueEntry(
   notebookId: string,
   question: { id: string; text: string },
   gapKey: string,
-  mode: 'fast' | 'deep'
+  mode: 'fast' | 'deep',
+  webStrategy?: 'web' | 'auto' | 'notebook'
 ): void {
   mutateNotebook(root, notebookId, (entry) => {
     if (!entry.research_queue) entry.research_queue = {};
@@ -157,6 +161,7 @@ export function upsertResearchQueueEntry(
       question_id: question.id,
       gap_key: gapKey,
       mode,
+      web_strategy: webStrategy,
       attempt_count: 0,
       consecutive_dispatch_failures: 0,
       last_researched_at: null,

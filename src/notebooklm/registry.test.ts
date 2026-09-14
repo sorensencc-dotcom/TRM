@@ -253,4 +253,55 @@ describe('registry', () => {
 
     expect(() => flushResearchQueueEntry(root, 'nb-1', 'no-such-hash', { status: 'EXECUTED' })).toThrow(/no entry for question_hash/);
   });
+
+  it('flushResearchQueueEntry accepts web_strategy, imported_source, last_updated_at, and EVIDENCE_IMPORTED status', () => {
+    seedRegistry(root, {
+      version: 1,
+      notebooks: [
+        {
+          notebook_id: 'nb-1', title: 'T', url: 'https://x',
+          last_pulled_hashes: {}, quarantined: {},
+          last_ingested_at: null, last_mined_at: null, last_mined_answer_keys: [],
+        },
+      ],
+    });
+
+    upsertResearchQueueEntry(root, 'nb-1', { id: 'q1', text: 'Q' }, 'gap-1', 'fast');
+    flushResearchQueueEntry(root, 'nb-1', questionHash('Q'), {
+      status: 'EVIDENCE_IMPORTED',
+      imported_source: 'gap-q1-evidence.md',
+      last_updated_at: '2026-09-14T00:00:00.000Z',
+    });
+
+    const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![questionHash('Q')];
+    expect(entry.status).toBe('EVIDENCE_IMPORTED');
+    expect(entry.imported_source).toBe('gap-q1-evidence.md');
+    expect(entry.last_updated_at).toBe('2026-09-14T00:00:00.000Z');
+  });
+
+  it('upsertResearchQueueEntry accepts an optional web_strategy and defaults it to undefined', () => {
+    seedRegistry(root, {
+      version: 1,
+      notebooks: [
+        {
+          notebook_id: 'nb-2', title: 'T', url: 'https://x',
+          last_pulled_hashes: {}, quarantined: {},
+          last_ingested_at: null, last_mined_at: null, last_mined_answer_keys: [],
+        },
+        {
+          notebook_id: 'nb-3', title: 'T', url: 'https://x',
+          last_pulled_hashes: {}, quarantined: {},
+          last_ingested_at: null, last_mined_at: null, last_mined_answer_keys: [],
+        },
+      ],
+    });
+
+    upsertResearchQueueEntry(root, 'nb-2', { id: 'q2', text: 'Q2' }, 'gap-2', 'fast', 'web');
+    const entry = findNotebook(readRegistry(root), 'nb-2')!.research_queue![questionHash('Q2')];
+    expect(entry.web_strategy).toBe('web');
+
+    upsertResearchQueueEntry(root, 'nb-3', { id: 'q3', text: 'Q3' }, 'gap-3', 'fast');
+    const entryNoStrategy = findNotebook(readRegistry(root), 'nb-3')!.research_queue![questionHash('Q3')];
+    expect(entryNoStrategy.web_strategy).toBeUndefined();
+  });
 });
