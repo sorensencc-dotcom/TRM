@@ -3,9 +3,10 @@ import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { queryNotebook } from '../../notebooklm/nlmCli';
-import { readRegistry, findNotebook, flushMinedState } from '../../notebooklm/registry';
+import { readRegistry, findNotebook, flushMinedState, upsertResearchQueueEntry } from '../../notebooklm/registry';
 import { writeFileAtomic } from '../../core/atomicWrite';
 import { slugifyTitle } from '../../notebooklm/stagingName';
+import { loadConfig } from '../../core/config';
 
 export interface MiningQuestion {
   id: string;
@@ -13,6 +14,10 @@ export interface MiningQuestion {
 }
 
 const URGENCY_PATTERNS = [/needs verification/i, /recommend investigating/i, /no source found/i];
+
+export function isUrgentAnswer(answer: string): boolean {
+  return URGENCY_PATTERNS.some((p) => p.test(answer));
+}
 
 export function loadMiningQuestions(): MiningQuestion[] {
   const configPath = path.resolve(__dirname, '../../../config/mining-questions.json');
@@ -61,14 +66,28 @@ function upsertDocRow(root: string, relativeDocPath: string, question: MiningQue
 }
 
 function appendTodoIfUrgent(root: string, answer: string, question: MiningQuestion, key: string): void {
-  const isUrgent = URGENCY_PATTERNS.some((p) => p.test(answer));
-  if (!isUrgent) return;
+  if (!isUrgentAnswer(answer)) return;
 
   const todosPath = path.join(root, 'TODOS.md');
   const content = fs.existsSync(todosPath) ? fs.readFileSync(todosPath, 'utf-8') : '# TODOS\n\n## Open\n\n## Completed\n';
   if (content.includes(key) || content.includes(question.text)) return; // idempotent across Open + Completed
 
   const line = `- [ ] ${question.text} -- ${answer.slice(0, 150)} (${key})\n`;
+  const openMarker = '## Open\n';
+  const idx = content.indexOf(openMarker);
+  const updated =
+    idx === -1
+      ? `${content}\n## Open\n${line}`
+      : `${content.slice(0, idx + openMarker.length)}${line}${content.slice(idx + openMarker.length)}`;
+  writeFileAtomic(todosPath, updated);
+}
+
+export function appendStalledTodo(root: string, questionText: string, gapKey: string): void {
+  const todosPath = path.join(root, 'TODOS.md');
+  const content = fs.existsSync(todosPath) ? fs.readFileSync(todosPath, 'utf-8') : '# TODOS\n\n## Open\n\n## Completed\n';
+  if (content.includes(gapKey)) return;
+
+  const line = `- [ ] [STALLED] ${questionText} -- research dispatched repeatedly, gap still unresolved (${gapKey})\n`;
   const openMarker = '## Open\n';
   const idx = content.indexOf(openMarker);
   const updated =
@@ -185,6 +204,7 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
   if (!entry) {
     throw new Error(`notebooklm-registry.json has no entry for notebook "${notebookId}"`);
   }
+  const config = loadConfig(root);
 
   const questions = loadMiningQuestions();
   const relativeDocPath = docPathFor(root, slugifyTitle(entry.title));
@@ -203,6 +223,9 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
     upsertDocRow(root, relativeDocPath, question, result.data, entry.title, key);
     appendTodoIfUrgent(root, result.data, question, key);
     appendResearchGapsMatrix(root, question, result.data, entry.title, key);
+    if (isUrgentAnswer(result.data)) {
+      upsertResearchQueueEntry(root, notebookId, question, key, config.dispatch_limits.default_mode);
+    }
     seenKeys.add(key);
     newEntries++;
   }
