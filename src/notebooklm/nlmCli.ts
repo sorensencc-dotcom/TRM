@@ -22,8 +22,16 @@ interface RawSpawnResult {
   error?: Error;
 }
 
+// Bounds every nlm invocation in this file so a wedged `nlm` process (most
+// notably `source add --wait`, which blocks on remote source processing)
+// cannot hang dispatch indefinitely. Matches nlmResearch.ts's FIXED_CALL_TIMEOUT_MS.
+const FIXED_CALL_TIMEOUT_MS = 120_000;
+
 function runNlm(args: string[]): NlmResult<unknown> {
-  const result = spawnSync('nlm', args, { encoding: 'utf-8' }) as unknown as RawSpawnResult;
+  const result = spawnSync('nlm', args, {
+    encoding: 'utf-8',
+    timeout: FIXED_CALL_TIMEOUT_MS,
+  }) as unknown as RawSpawnResult;
 
   if (result.error) {
     return { ok: false, error: result.error.message };
@@ -74,7 +82,7 @@ export function queryNotebook(notebookId: string, question: string, timeoutSecon
 }
 
 export function addSource(notebookId: string, filePath: string, title: string): NlmResult<undefined> {
-  const result = runNlm(['source', 'add', notebookId, '--file', filePath, '--title', title, '--wait']);
+  const result = runNlm(['source', 'add', notebookId, '--file', filePath, '--title', title, '--wait', '--json']);
   if (!result.ok) return result;
   return { ok: true, data: undefined };
 }

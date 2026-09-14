@@ -124,6 +124,12 @@ function recordTransientFailure(root: string, notebookId: string, entry: Researc
 
 type WebFallbackOutcome = { status: 'EVIDENCE_IMPORTED' } | { status: 'FAILED'; error: string };
 
+// Spec: "one clear error per run, not per-gap spam" -- when PARALLEL_API_KEY
+// is unset, every candidate that would otherwise reach the web fallback
+// fails with this same message, but the underlying cause is only ever
+// logged once (by the caller in runResearchNotebooklm), not once per gap.
+const MISSING_PARALLEL_API_KEY_ERROR = 'PARALLEL_API_KEY is not set';
+
 async function runWebFallback(
   root: string,
   notebookId: string,
@@ -158,7 +164,8 @@ async function recordSuccess(
   notebookId: string,
   entry: ResearchQueueEntry,
   limits: DispatchLimits,
-  nowIso: string
+  nowIso: string,
+  parallelKeyMissing: boolean
 ): Promise<'EXECUTED' | 'PENDING' | 'STALLED_NEEDS_HUMAN' | 'EVIDENCE_IMPORTED'> {
   const attemptCount = entry.attempt_count + 1;
   const requery = queryNotebook(notebookId, entry.question_text);
@@ -190,8 +197,11 @@ async function recordSuccess(
 
   // Last resort: about to stall, try the web fallback first -- unless the
   // entry is pinned to notebook-only research, in which case it must go
-  // straight to STALLED_NEEDS_HUMAN without ever calling searchWeb.
-  if (entry.web_strategy !== 'notebook') {
+  // straight to STALLED_NEEDS_HUMAN without ever calling searchWeb. If
+  // PARALLEL_API_KEY is missing for this whole run, skip calling
+  // runWebFallback entirely (the caller already logged this once) instead of
+  // hitting the same doomed searchWeb call and logging again per candidate.
+  if (entry.web_strategy !== 'notebook' && !parallelKeyMissing) {
     const fallbackEntry = { ...entry, attempt_count: attemptCount };
     const fallbackOutcome = await runWebFallback(root, notebookId, fallbackEntry, nowIso);
     if (fallbackOutcome.status === 'EVIDENCE_IMPORTED') {
@@ -218,12 +228,19 @@ async function dispatchCandidate(
   candidate: DispatchCandidate,
   limits: DispatchLimits,
   forceResearch: boolean,
-  nowIso: string
+  nowIso: string,
+  parallelKeyMissing: boolean
 ): Promise<'succeeded' | 'transientFailure' | 'stalled' | 'infrastructureBlocked'> {
   const { notebookId, entry } = candidate;
 
   if (entry.web_strategy === 'web') {
-    const outcome = await runWebFallback(root, notebookId, entry, nowIso);
+    // PARALLEL_API_KEY missing for this run: skip the doomed searchWeb call
+    // and route straight through the same failure handling a real fallback
+    // failure would get, without an additional per-candidate log (the
+    // caller already logged the missing key once for the whole run).
+    const outcome = parallelKeyMissing
+      ? ({ status: 'FAILED', error: MISSING_PARALLEL_API_KEY_ERROR } as const)
+      : await runWebFallback(root, notebookId, entry, nowIso);
     if (outcome.status === 'EVIDENCE_IMPORTED') {
       return 'succeeded';
     }
@@ -250,7 +267,7 @@ async function dispatchCandidate(
     return recordTransientFailure(root, notebookId, entry, limits, importResult.error) === 'INFRASTRUCTURE_BLOCKED' ? 'infrastructureBlocked' : 'transientFailure';
   }
 
-  const finalStatus = await recordSuccess(root, notebookId, entry, limits, nowIso);
+  const finalStatus = await recordSuccess(root, notebookId, entry, limits, nowIso, parallelKeyMissing);
   return finalStatus === 'STALLED_NEEDS_HUMAN' ? 'stalled' : 'succeeded';
 }
 
@@ -269,6 +286,17 @@ export async function runResearchNotebooklm(
   const plan = selectDispatchPlan(registry, notebookId, config.dispatch_limits, opts.forceResearch, now);
   const nowIso = now.toISOString();
 
+  // Checked once per run (not per-candidate): spec requires "one clear error
+  // per run, not per-gap spam" when PARALLEL_API_KEY is unset. Candidates
+  // that never touch the web-fallback path (pure notebook research, or
+  // web_strategy: "notebook") are unaffected by this flag entirely.
+  const parallelKeyMissing = !process.env.PARALLEL_API_KEY;
+  if (parallelKeyMissing) {
+    console.error(
+      `research-notebooklm: ${MISSING_PARALLEL_API_KEY_ERROR}; skipping web-strategy/fallback dispatch for this run`
+    );
+  }
+
   const result: ResearchNotebooklmResult = { dispatched: 0, succeeded: 0, transientFailures: 0, stalled: 0, infrastructureBlocked: 0, skipped: 0 };
   // Eligible-but-not-dispatched: entries that passed isEligible but were
   // excluded by max_jobs_per_notebook / max_jobs_per_run_global cap enforcement.
@@ -276,7 +304,7 @@ export async function runResearchNotebooklm(
 
   for (const candidate of plan) {
     result.dispatched++;
-    const outcome = await dispatchCandidate(root, candidate, config.dispatch_limits, opts.forceResearch, nowIso);
+    const outcome = await dispatchCandidate(root, candidate, config.dispatch_limits, opts.forceResearch, nowIso, parallelKeyMissing);
     if (outcome === 'succeeded') result.succeeded++;
     else if (outcome === 'stalled') result.stalled++;
     else if (outcome === 'infrastructureBlocked') result.infrastructureBlocked++;

@@ -333,6 +333,7 @@ describe('runResearchNotebooklm', () => {
 
 describe('runResearchNotebooklm — web search fallback', () => {
   let root: string;
+  const originalParallelApiKey = process.env.PARALLEL_API_KEY;
 
   beforeEach(() => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'trm-nlmresearch-web-'));
@@ -342,10 +343,16 @@ describe('runResearchNotebooklm — web search fallback', () => {
     );
     fs.writeFileSync(path.join(root, 'TODOS.md'), '# TODOS\n\n## Open\n\n## Completed\n');
     jest.resetAllMocks();
+    // All tests in this block except the "missing key" ones below exercise the
+    // real web-fallback path, so PARALLEL_API_KEY must read as present -- the
+    // dispatch loop now gates on it once per run (see I2 fix).
+    process.env.PARALLEL_API_KEY = 'test-key-123';
   });
 
   afterEach(() => {
     fs.rmSync(root, { recursive: true, force: true });
+    if (originalParallelApiKey === undefined) delete process.env.PARALLEL_API_KEY;
+    else process.env.PARALLEL_API_KEY = originalParallelApiKey;
   });
 
   it('web_strategy "web" bypasses nlm research and calls searchWeb directly', async () => {
@@ -361,6 +368,7 @@ describe('runResearchNotebooklm — web search fallback', () => {
 
     expect(nlmResearch.researchStart).not.toHaveBeenCalled();
     expect(webSearch.searchWeb).toHaveBeenCalledWith('What open questions or unresolved contradictions exist across these sources?');
+    expect(nlmCli.addSource).toHaveBeenCalledWith('nb-1', '/tmp/evidence.md', 'TRM Evidence: open-contradictions');
     const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
     expect(entry.status).toBe('EVIDENCE_IMPORTED');
     expect(entry.imported_source).toBe('/tmp/evidence.md');
@@ -393,6 +401,7 @@ describe('runResearchNotebooklm — web search fallback', () => {
     await runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
 
     expect(webSearch.searchWeb).toHaveBeenCalledTimes(1);
+    expect(nlmCli.addSource).toHaveBeenCalledWith('nb-1', '/tmp/evidence.md', 'TRM Evidence: open-contradictions');
     const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
     expect(entry.status).toBe('EVIDENCE_IMPORTED');
     const todos = fs.readFileSync(path.join(root, 'TODOS.md'), 'utf-8');
@@ -446,5 +455,63 @@ describe('runResearchNotebooklm — web search fallback', () => {
     expect(entry.consecutive_dispatch_failures).toBe(1);
     expect(entry.last_dispatch_error).toBe('Parallel search request failed with status 500');
     expect(nlmResearch.researchStart).not.toHaveBeenCalled();
+  });
+
+  it('missing PARALLEL_API_KEY logs once and routes a web_strategy "web" candidate through the normal transient-failure path without ever calling searchWeb', async () => {
+    delete process.env.PARALLEL_API_KEY;
+    seedRunRegistry(root, baseEntry({ web_strategy: 'web' }));
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    await runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
+
+    expect(webSearch.searchWeb).not.toHaveBeenCalled();
+    expect(nlmCli.addSource).not.toHaveBeenCalled();
+    const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
+    expect(entry.status).toBe('PENDING');
+    expect(entry.consecutive_dispatch_failures).toBe(1);
+    expect(entry.last_dispatch_error).toBe('PARALLEL_API_KEY is not set');
+    // Exactly one console.error for the whole run, not one per candidate.
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('PARALLEL_API_KEY is not set'));
+    errorSpy.mockRestore();
+  });
+
+  it('missing PARALLEL_API_KEY at the last-resort "auto" stall point falls straight to STALLED_NEEDS_HUMAN without ever calling searchWeb, logging only once for the run', async () => {
+    delete process.env.PARALLEL_API_KEY;
+    seedRunRegistry(root, baseEntry({ web_strategy: 'auto', attempt_count: 2 }));
+    (nlmResearch.researchStart as jest.Mock).mockReturnValue({ ok: true, data: { taskId: 'rt-1' } });
+    (nlmResearch.researchStatus as jest.Mock).mockReturnValue({ ok: true, data: { completed: true } });
+    (nlmResearch.researchImport as jest.Mock).mockReturnValue({ ok: true, data: undefined });
+    (nlmCli.queryNotebook as jest.Mock).mockReturnValue({ ok: true, data: 'Still no source found for this.' });
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    await runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
+
+    expect(webSearch.searchWeb).not.toHaveBeenCalled();
+    expect(nlmCli.addSource).not.toHaveBeenCalled();
+    const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
+    expect(entry.status).toBe('STALLED_NEEDS_HUMAN');
+    const todos = fs.readFileSync(path.join(root, 'TODOS.md'), 'utf-8');
+    expect(todos).toContain('[STALLED]');
+    // Exactly one console.error for the whole run -- the missing-key notice --
+    // not the per-candidate "web fallback failed before stalling" log too.
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('PARALLEL_API_KEY is not set'));
+    errorSpy.mockRestore();
+  });
+
+  it('missing PARALLEL_API_KEY does not affect a candidate with web_strategy "notebook" (no web-fallback path touched)', async () => {
+    delete process.env.PARALLEL_API_KEY;
+    seedRunRegistry(root, baseEntry({ web_strategy: 'notebook', attempt_count: 2 }));
+    (nlmResearch.researchStart as jest.Mock).mockReturnValue({ ok: true, data: { taskId: 'rt-1' } });
+    (nlmResearch.researchStatus as jest.Mock).mockReturnValue({ ok: true, data: { completed: true } });
+    (nlmResearch.researchImport as jest.Mock).mockReturnValue({ ok: true, data: undefined });
+    (nlmCli.queryNotebook as jest.Mock).mockReturnValue({ ok: true, data: 'Still no source found for this.' });
+
+    await runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
+
+    expect(webSearch.searchWeb).not.toHaveBeenCalled();
+    const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
+    expect(entry.status).toBe('STALLED_NEEDS_HUMAN'); // same outcome as with the key present -- unaffected
   });
 });

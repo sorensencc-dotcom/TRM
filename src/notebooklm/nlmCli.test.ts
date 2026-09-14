@@ -1,4 +1,4 @@
-import { listSources, getSourceContent, listNotes, queryNotebook } from './nlmCli';
+import { listSources, getSourceContent, listNotes, queryNotebook, addSource } from './nlmCli';
 import * as childProcess from 'node:child_process';
 
 jest.mock('node:child_process');
@@ -91,5 +91,47 @@ describe('nlmCli', () => {
     const result = listSources('nb-1');
 
     expect(result).toEqual({ ok: false, error: 'ENOENT' });
+  });
+
+  describe('addSource', () => {
+    it('calls nlm with --wait and --json, bounded by a timeout', () => {
+      mockSpawnSync.mockReturnValue({ status: 0, stdout: JSON.stringify({ status: 'success' }), stderr: '' });
+
+      addSource('nb-1', '/tmp/evidence.md', 'TRM Evidence: q1');
+
+      expect(mockSpawnSync).toHaveBeenCalledWith(
+        'nlm',
+        ['source', 'add', 'nb-1', '--file', '/tmp/evidence.md', '--title', 'TRM Evidence: q1', '--wait', '--json'],
+        expect.objectContaining({ encoding: 'utf-8', timeout: expect.any(Number) })
+      );
+    });
+
+    it('returns ok:true on a successful --json exit', () => {
+      mockSpawnSync.mockReturnValue({ status: 0, stdout: JSON.stringify({ status: 'success' }), stderr: '' });
+
+      const result = addSource('nb-1', '/tmp/evidence.md', 'TRM Evidence: q1');
+
+      expect(result).toEqual({ ok: true, data: undefined });
+    });
+
+    it('returns ok:false with the parsed error on a non-zero exit', () => {
+      mockSpawnSync.mockReturnValue({
+        status: 1,
+        stdout: JSON.stringify({ status: 'error', error: 'API error (code 5): NOT_FOUND' }),
+        stderr: '',
+      });
+
+      const result = addSource('nb-1', '/tmp/evidence.md', 'TRM Evidence: q1');
+
+      expect(result).toEqual({ ok: false, error: 'API error (code 5): NOT_FOUND' });
+    });
+
+    it('returns ok:false when spawnSync itself errors (e.g. timeout)', () => {
+      mockSpawnSync.mockReturnValue({ status: null, error: new Error('ETIMEDOUT'), stdout: '', stderr: '' });
+
+      const result = addSource('nb-1', '/tmp/evidence.md', 'TRM Evidence: q1');
+
+      expect(result).toEqual({ ok: false, error: 'ETIMEDOUT' });
+    });
   });
 });
