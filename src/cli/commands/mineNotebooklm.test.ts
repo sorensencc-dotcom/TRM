@@ -1,9 +1,9 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { loadMiningQuestions, answerKey, runMineNotebooklm } from './mineNotebooklm';
+import { loadMiningQuestions, answerKey, runMineNotebooklm, isUrgentAnswer, appendStalledTodo } from './mineNotebooklm';
 import * as nlmCli from '../../notebooklm/nlmCli';
-import { registryPath } from '../../notebooklm/registry';
+import { registryPath, readRegistry, findNotebook } from '../../notebooklm/registry';
 import { spawnSync } from 'node:child_process';
 
 jest.mock('../../notebooklm/nlmCli');
@@ -36,6 +36,10 @@ describe('mineNotebooklm', () => {
   beforeEach(() => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'trm-nlmmine-'));
     seedRegistry(root);
+    fs.writeFileSync(
+      path.join(root, 'config.json'),
+      JSON.stringify({ default_scoring_adapter: 'stub', promotion_threshold: 80, actor_source: 'env', time_source: 'system' })
+    );
     jest.resetAllMocks();
   });
 
@@ -134,5 +138,80 @@ describe('mineNotebooklm', () => {
       expect.arrayContaining(['source', 'delete', 'old-source']),
       expect.anything(),
     );
+  });
+
+  it('isUrgentAnswer matches the three urgency patterns and nothing else', () => {
+    expect(isUrgentAnswer('This needs verification against another source.')).toBe(true);
+    expect(isUrgentAnswer('We recommend investigating this further.')).toBe(true);
+    expect(isUrgentAnswer('No source found for this claim.')).toBe(true);
+    expect(isUrgentAnswer('This is well-corroborated by three sources.')).toBe(false);
+  });
+
+  it('queues an urgent answer into research_queue with the default dispatch mode', () => {
+    fs.writeFileSync(
+      path.join(root, 'config.json'),
+      JSON.stringify({
+        default_scoring_adapter: 'stub',
+        promotion_threshold: 80,
+        actor_source: 'env',
+        time_source: 'system',
+        dispatch_limits: { default_mode: 'fast' },
+      })
+    );
+    (nlmCli.queryNotebook as jest.Mock).mockImplementation((_nb: string, question: string) => ({
+      ok: true,
+      data: question.includes('contradictions') ? 'No source found for the 1943 production date.' : 'Some other answer.',
+    }));
+
+    runMineNotebooklm(root, 'nb-1', {});
+
+    const entry = findNotebook(readRegistry(root), 'nb-1')!;
+    const queued = Object.values(entry.research_queue!);
+    expect(queued).toHaveLength(1);
+    expect(queued[0].question_id).toBe('open-contradictions');
+    expect(queued[0].mode).toBe('fast');
+    expect(queued[0].status).toBe('PENDING');
+  });
+
+  it('does not re-queue or reset an already-queued gap on a repeat mining run', () => {
+    fs.writeFileSync(
+      path.join(root, 'config.json'),
+      JSON.stringify({
+        default_scoring_adapter: 'stub', promotion_threshold: 80, actor_source: 'env', time_source: 'system',
+      })
+    );
+    (nlmCli.queryNotebook as jest.Mock).mockImplementation((_nb: string, question: string) => ({
+      ok: true,
+      data: question.includes('contradictions') ? 'No source found for the 1943 production date.' : 'Some other answer.',
+    }));
+
+    runMineNotebooklm(root, 'nb-1', {});
+    const registry = readRegistry(root);
+    const entry = findNotebook(registry, 'nb-1')!;
+    const hash = Object.keys(entry.research_queue!)[0];
+    entry.research_queue![hash].attempt_count = 2;
+    fs.writeFileSync(registryPath(root), JSON.stringify(registry, null, 2));
+
+    // Same answer again, plus a second question that changes to also be urgent
+    (nlmCli.queryNotebook as jest.Mock).mockImplementation((_nb: string, question: string) => ({
+      ok: true,
+      data: question.includes('contradictions') ? 'No source found for the 1943 production date.' : 'Some other answer.',
+    }));
+    runMineNotebooklm(root, 'nb-1', {});
+
+    const afterEntry = findNotebook(readRegistry(root), 'nb-1')!;
+    expect(afterEntry.research_queue![hash].attempt_count).toBe(2); // untouched, not reset to 0
+  });
+
+  it('appendStalledTodo appends a [STALLED] line once and is idempotent on the same gap_key', () => {
+    fs.writeFileSync(path.join(root, 'TODOS.md'), '# TODOS\n\n## Open\n\n## Completed\n');
+
+    appendStalledTodo(root, 'What open questions exist?', 'nb-1:open-contradictions:abc');
+    appendStalledTodo(root, 'What open questions exist?', 'nb-1:open-contradictions:abc');
+
+    const todos = fs.readFileSync(path.join(root, 'TODOS.md'), 'utf-8');
+    const occurrences = todos.split('nb-1:open-contradictions:abc').length - 1;
+    expect(occurrences).toBe(1);
+    expect(todos).toContain('[STALLED]');
   });
 });

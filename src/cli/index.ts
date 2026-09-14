@@ -15,6 +15,7 @@ import { runTriageIntake } from './commands/triageIntake';
 import { runRouteIntake } from './commands/routeIntake';
 import { runIngestNotebooklm } from './commands/ingestNotebooklm';
 import { runMineNotebooklm } from './commands/mineNotebooklm';
+import { runResearchNotebooklm } from './commands/researchNotebooklm';
 import { runReingestUrls } from './commands/reingestUrls';
 import { runEvalWhichllm } from './commands/evalWhichllm';
 import { assertSafeRoot } from '../core/rootSafety';
@@ -246,6 +247,22 @@ program
   .action((notebookId) => {
     const result = runMineNotebooklm(root, notebookId, {});
     console.log(JSON.stringify(result, null, 2));
+  });
+
+program
+  .command('research-notebooklm [notebook-id]')
+  .option('--force-research', 'bypass cooldown for eligible entries (does not bypass STALLED/BLOCKED status)')
+  .action((notebookId, opts) => {
+    try {
+      if (opts.forceResearch && !notebookId) {
+        throw new Error('--force-research requires an explicit notebook-id (refusing to bypass cooldown across an unbounded sweep)');
+      }
+      const result = runResearchNotebooklm(root, notebookId, { forceResearch: !!opts.forceResearch });
+      console.log(JSON.stringify(result, null, 2));
+    } catch (err) {
+      console.error((err as Error).message);
+      process.exitCode = 1;
+    }
   });
 
 program

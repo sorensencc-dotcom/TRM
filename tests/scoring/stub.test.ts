@@ -1,12 +1,13 @@
 import { stubAdapter } from '../../src/scoring/adapters/stub';
 import { TopicMeta, TrmConfig } from '../../src/core/types';
+import { DEFAULT_DISPATCH_LIMITS } from '../../src/core/config';
 
 const topic: TopicMeta = {
   topic: 'cuba', path: 'cuba', parent: null, children: [], version: '1.0.0',
   created_at: 't', updated_at: 't', actors: ['ACTOR-001'], description: '', tags: [],
   status: 'active', node_type: 'project',
 };
-const config: TrmConfig = { default_scoring_adapter: 'stub', promotion_threshold: 80, actor_source: 'env', time_source: 'system' };
+const config: TrmConfig = { default_scoring_adapter: 'stub', promotion_threshold: 80, actor_source: 'env', time_source: 'system', dispatch_limits: DEFAULT_DISPATCH_LIMITS };
 
 describe('stubAdapter', () => {
   it('scores a fact deterministically', () => {

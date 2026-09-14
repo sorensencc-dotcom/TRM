@@ -11,6 +11,9 @@ import {
   flushPulledHash,
   flushQuarantine,
   flushIngestedAt,
+  questionHash,
+  upsertResearchQueueEntry,
+  flushResearchQueueEntry,
   RegistryFile,
 } from './registry';
 
@@ -141,5 +144,113 @@ describe('registry', () => {
 
     const entry = findNotebook(readRegistry(root), 'nb-1')!;
     expect(entry.last_ingested_at).toBe('2026-08-12T00:00:00.000Z');
+  });
+
+  it('readRegistry normalizes a missing research_queue to an empty object', () => {
+    seedRegistry(root, {
+      version: 1,
+      notebooks: [
+        {
+          notebook_id: 'nb-1', title: 'T', url: 'https://x',
+          last_pulled_hashes: {}, quarantined: {},
+          last_ingested_at: null, last_mined_at: null, last_mined_answer_keys: [],
+        },
+      ],
+    });
+
+    const entry = findNotebook(readRegistry(root), 'nb-1')!;
+    expect(entry.research_queue).toEqual({});
+  });
+
+  it('questionHash is stable for identical text and differs for different text', () => {
+    expect(questionHash('What open questions exist?')).toBe(questionHash('What open questions exist?'));
+    expect(questionHash('What open questions exist?')).not.toBe(questionHash('Something else?'));
+  });
+
+  it('upsertResearchQueueEntry creates a PENDING entry with zeroed counters', () => {
+    seedRegistry(root, {
+      version: 1,
+      notebooks: [
+        {
+          notebook_id: 'nb-1', title: 'T', url: 'https://x',
+          last_pulled_hashes: {}, quarantined: {},
+          last_ingested_at: null, last_mined_at: null, last_mined_answer_keys: [],
+        },
+      ],
+    });
+
+    upsertResearchQueueEntry(root, 'nb-1', { id: 'open-contradictions', text: 'What open questions?' }, 'nb-1:open-contradictions:hash', 'fast');
+
+    const entry = findNotebook(readRegistry(root), 'nb-1')!;
+    const hash = questionHash('What open questions?');
+    expect(entry.research_queue![hash]).toEqual({
+      question_hash: hash,
+      question_text: 'What open questions?',
+      question_id: 'open-contradictions',
+      gap_key: 'nb-1:open-contradictions:hash',
+      mode: 'fast',
+      attempt_count: 0,
+      consecutive_dispatch_failures: 0,
+      last_researched_at: null,
+      last_dispatch_error: null,
+      status: 'PENDING',
+    });
+  });
+
+  it('upsertResearchQueueEntry leaves an existing entry untouched', () => {
+    seedRegistry(root, {
+      version: 1,
+      notebooks: [
+        {
+          notebook_id: 'nb-1', title: 'T', url: 'https://x',
+          last_pulled_hashes: {}, quarantined: {},
+          last_ingested_at: null, last_mined_at: null, last_mined_answer_keys: [],
+        },
+      ],
+    });
+
+    upsertResearchQueueEntry(root, 'nb-1', { id: 'q1', text: 'Q' }, 'gap-1', 'fast');
+    flushResearchQueueEntry(root, 'nb-1', questionHash('Q'), { attempt_count: 2, status: 'EXECUTED' });
+    upsertResearchQueueEntry(root, 'nb-1', { id: 'q1', text: 'Q' }, 'gap-1', 'fast');
+
+    const entry = findNotebook(readRegistry(root), 'nb-1')!;
+    expect(entry.research_queue![questionHash('Q')].attempt_count).toBe(2);
+    expect(entry.research_queue![questionHash('Q')].status).toBe('EXECUTED');
+  });
+
+  it('flushResearchQueueEntry patches only the given fields', () => {
+    seedRegistry(root, {
+      version: 1,
+      notebooks: [
+        {
+          notebook_id: 'nb-1', title: 'T', url: 'https://x',
+          last_pulled_hashes: {}, quarantined: {},
+          last_ingested_at: null, last_mined_at: null, last_mined_answer_keys: [],
+        },
+      ],
+    });
+    upsertResearchQueueEntry(root, 'nb-1', { id: 'q1', text: 'Q' }, 'gap-1', 'fast');
+
+    flushResearchQueueEntry(root, 'nb-1', questionHash('Q'), { consecutive_dispatch_failures: 1, last_dispatch_error: 'timeout' });
+
+    const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![questionHash('Q')];
+    expect(entry.consecutive_dispatch_failures).toBe(1);
+    expect(entry.last_dispatch_error).toBe('timeout');
+    expect(entry.status).toBe('PENDING'); // untouched fields survive the patch
+  });
+
+  it('flushResearchQueueEntry throws for an unknown question_hash', () => {
+    seedRegistry(root, {
+      version: 1,
+      notebooks: [
+        {
+          notebook_id: 'nb-1', title: 'T', url: 'https://x',
+          last_pulled_hashes: {}, quarantined: {},
+          last_ingested_at: null, last_mined_at: null, last_mined_answer_keys: [],
+        },
+      ],
+    });
+
+    expect(() => flushResearchQueueEntry(root, 'nb-1', 'no-such-hash', { status: 'EXECUTED' })).toThrow(/no entry for question_hash/);
   });
 });
