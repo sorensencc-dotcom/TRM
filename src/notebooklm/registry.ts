@@ -1,3 +1,4 @@
+import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { writeFileAtomic } from '../core/atomicWrite';
@@ -10,6 +11,19 @@ export interface QuarantineEntry {
   attempts: number;
 }
 
+export interface ResearchQueueEntry {
+  question_hash: string;
+  question_text: string;
+  question_id: string;
+  gap_key: string;
+  mode: 'fast' | 'deep';
+  attempt_count: number;
+  consecutive_dispatch_failures: number;
+  last_researched_at: string | null;
+  last_dispatch_error: string | null;
+  status: 'PENDING' | 'EXECUTED' | 'STALLED_NEEDS_HUMAN' | 'INFRASTRUCTURE_BLOCKED';
+}
+
 export interface NotebookRegistryEntry {
   notebook_id: string;
   title: string;
@@ -19,6 +33,7 @@ export interface NotebookRegistryEntry {
   last_ingested_at: string | null;
   last_mined_at: string | null;
   last_mined_answer_keys: string[];
+  research_queue?: Record<string, ResearchQueueEntry>;
 }
 
 export interface RegistryFile {
@@ -35,7 +50,11 @@ export function registryPath(root: string): string {
 export function readRegistry(root: string): RegistryFile {
   const file = registryPath(root);
   if (!fs.existsSync(file)) return { version: 1, notebooks: [] };
-  return JSON.parse(fs.readFileSync(file, 'utf-8'));
+  const parsed = JSON.parse(fs.readFileSync(file, 'utf-8')) as RegistryFile;
+  for (const notebook of parsed.notebooks) {
+    if (!notebook.research_queue) notebook.research_queue = {};
+  }
+  return parsed;
 }
 
 function writeRegistry(root: string, registry: RegistryFile): void {
@@ -114,5 +133,51 @@ export function flushMinedState(root: string, notebookId: string, keys: string[]
   mutateNotebook(root, notebookId, (entry) => {
     entry.last_mined_answer_keys = keys;
     entry.last_mined_at = timestamp;
+  });
+}
+
+export function questionHash(text: string): string {
+  return crypto.createHash('sha256').update(text, 'utf-8').digest('hex');
+}
+
+export function upsertResearchQueueEntry(
+  root: string,
+  notebookId: string,
+  question: { id: string; text: string },
+  gapKey: string,
+  mode: 'fast' | 'deep'
+): void {
+  mutateNotebook(root, notebookId, (entry) => {
+    if (!entry.research_queue) entry.research_queue = {};
+    const hash = questionHash(question.text);
+    if (entry.research_queue[hash]) return; // gap already queued -- never reset progress/cooldown
+    entry.research_queue[hash] = {
+      question_hash: hash,
+      question_text: question.text,
+      question_id: question.id,
+      gap_key: gapKey,
+      mode,
+      attempt_count: 0,
+      consecutive_dispatch_failures: 0,
+      last_researched_at: null,
+      last_dispatch_error: null,
+      status: 'PENDING',
+    };
+  });
+}
+
+export function flushResearchQueueEntry(
+  root: string,
+  notebookId: string,
+  questionHashValue: string,
+  patch: Partial<ResearchQueueEntry>
+): void {
+  mutateNotebook(root, notebookId, (entry) => {
+    if (!entry.research_queue) entry.research_queue = {};
+    const existing = entry.research_queue[questionHashValue];
+    if (!existing) {
+      throw new Error(`research_queue has no entry for question_hash "${questionHashValue}" in notebook "${notebookId}"`);
+    }
+    entry.research_queue[questionHashValue] = { ...existing, ...patch };
   });
 }
