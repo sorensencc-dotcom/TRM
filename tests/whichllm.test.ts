@@ -1,3 +1,4 @@
+import * as child_process from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -104,6 +105,9 @@ describe('WhichLLM BFCL Evaluator & Cascade Engine', () => {
           host: 'http://127.0.0.1:59999',
           timeoutMs: 500,
           allowCliFallback: true,
+          execFn: () => {
+            throw new Error('ollama: command not found');
+          },
         }),
       ).rejects.toThrow(/Failed to discover models via both HTTP endpoint and CLI fallback/);
     });

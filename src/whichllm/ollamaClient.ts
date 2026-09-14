@@ -5,6 +5,7 @@ export interface OllamaDiscoveryOptions {
   host?: string;
   timeoutMs?: number;
   allowCliFallback?: boolean;
+  execFn?: (command: string, options: any) => string;
 }
 
 export interface OllamaDiscoveryResult {
@@ -49,11 +50,14 @@ export async function discoverOllamaModels(
 
     // Degraded CLI fallback mode
     try {
-      const stdout = execSync('ollama list', {
-        encoding: 'utf8',
-        stdio: ['pipe', 'pipe', 'pipe'],
-        timeout: timeoutMs,
-      });
+      const exec = options.execFn ?? execSync;
+      const stdout = String(
+        exec('ollama list', {
+          encoding: 'utf8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+          timeout: timeoutMs,
+        }),
+      );
 
       const lines = stdout.split(/\r?\n/).filter((l) => l.trim().length > 0);
       // Skip header line (NAME ID SIZE MODIFIED)
