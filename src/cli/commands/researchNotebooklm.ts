@@ -23,10 +23,19 @@ function cooldownMs(entry: ResearchQueueEntry, limits: DispatchLimits): number {
 }
 
 function isEligible(entry: ResearchQueueEntry, limits: DispatchLimits, forceResearch: boolean, now: Date): boolean {
-  if (entry.status === 'STALLED_NEEDS_HUMAN' || entry.status === 'INFRASTRUCTURE_BLOCKED') return false;
+  // EXECUTED is terminal: the loop closes once a gap is resolved. A resolved
+  // gap does not get automatically re-researched -- if the gap reopens, a
+  // fresh mining run creates a new queue entry. force-research bypasses
+  // cooldown, not resolved status.
+  if (entry.status !== 'PENDING') return false;
   if (forceResearch) return true;
   if (!entry.last_researched_at) return true;
-  return now.getTime() - new Date(entry.last_researched_at).getTime() >= cooldownMs(entry, limits);
+  const lastResearchedMs = new Date(entry.last_researched_at).getTime();
+  // A malformed timestamp must fail open (treated as never-researched), not
+  // permanently ineligible: `now - NaN` is always NaN, and `NaN >= cooldownMs`
+  // is always false, which would otherwise wedge the entry in cooldown forever.
+  if (Number.isNaN(lastResearchedMs)) return true;
+  return now.getTime() - lastResearchedMs >= cooldownMs(entry, limits);
 }
 
 function orderedEligibleEntries(entry: NotebookRegistryEntry, limits: DispatchLimits, forceResearch: boolean, now: Date): ResearchQueueEntry[] {
@@ -51,6 +60,13 @@ function candidateNotebooksInOrder(registry: RegistryFile): NotebookRegistryEntr
       if (!Number.isNaN(diff) && diff !== 0) return diff;
       return a.notebook_id.localeCompare(b.notebook_id);
     });
+}
+
+function countAllEligible(registry: RegistryFile, notebookId: string | undefined, limits: DispatchLimits, forceResearch: boolean, now: Date): number {
+  const notebooks = notebookId
+    ? [findNotebook(registry, notebookId)].filter((n): n is NotebookRegistryEntry => n !== null)
+    : candidateNotebooksInOrder(registry);
+  return notebooks.reduce((sum, notebook) => sum + orderedEligibleEntries(notebook, limits, forceResearch, now).length, 0);
 }
 
 export function selectDispatchPlan(
@@ -157,19 +173,20 @@ function dispatchCandidate(root: string, candidate: DispatchCandidate, limits: D
 }
 
 export function runResearchNotebooklm(root: string, notebookId: string | undefined, opts: { forceResearch: boolean }): ResearchNotebooklmResult {
-  if (notebookId) {
-    const registry = readRegistry(root);
-    if (!findNotebook(registry, notebookId)) {
-      throw new Error(`notebooklm-registry.json has no entry for notebook "${notebookId}"`);
-    }
-  }
-
   const config = loadConfig(root);
   const registry = readRegistry(root);
-  const plan = selectDispatchPlan(registry, notebookId, config.dispatch_limits, opts.forceResearch, new Date());
-  const nowIso = new Date().toISOString();
+  if (notebookId && !findNotebook(registry, notebookId)) {
+    throw new Error(`notebooklm-registry.json has no entry for notebook "${notebookId}"`);
+  }
+
+  const now = new Date();
+  const plan = selectDispatchPlan(registry, notebookId, config.dispatch_limits, opts.forceResearch, now);
+  const nowIso = now.toISOString();
 
   const result: ResearchNotebooklmResult = { dispatched: 0, succeeded: 0, transientFailures: 0, stalled: 0, infrastructureBlocked: 0, skipped: 0 };
+  // Eligible-but-not-dispatched: entries that passed isEligible but were
+  // excluded by max_jobs_per_notebook / max_jobs_per_run_global cap enforcement.
+  result.skipped = countAllEligible(registry, notebookId, config.dispatch_limits, opts.forceResearch, now) - plan.length;
 
   for (const candidate of plan) {
     result.dispatched++;

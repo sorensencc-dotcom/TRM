@@ -204,6 +204,8 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
   if (!entry) {
     throw new Error(`notebooklm-registry.json has no entry for notebook "${notebookId}"`);
   }
+  // loadConfig requires config.json to exist in the vault root (root) -- see
+  // src/core/config.ts loadConfig; there is no fallback/default when it's missing.
   const config = loadConfig(root);
 
   const questions = loadMiningQuestions();

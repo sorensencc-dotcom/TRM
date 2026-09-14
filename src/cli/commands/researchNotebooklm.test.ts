@@ -108,6 +108,14 @@ describe('selectDispatchPlan', () => {
     expect(plan.map((c) => c.notebookId)).toEqual(['nb-a', 'nb-b']); // both null last_researched_at, tie-broken a<b; nb-c excluded by global cap
   });
 
+  it('never dispatches an EXECUTED entry, even with forceResearch: true (the loop closes once)', () => {
+    const registry = registryWith([
+      { id: 'nb-1', queue: { h1: entry({ status: 'EXECUTED', last_researched_at: '2020-01-01T00:00:00.000Z' }) } },
+    ]);
+    expect(selectDispatchPlan(registry, 'nb-1', DEFAULT_DISPATCH_LIMITS, false, now)).toHaveLength(0);
+    expect(selectDispatchPlan(registry, 'nb-1', DEFAULT_DISPATCH_LIMITS, true, now)).toHaveLength(0);
+  });
+
   it('excludes notebooks with no eligible PENDING entries from the omitted-id sweep', () => {
     const registry = registryWith([
       { id: 'nb-1', queue: { h1: entry({ status: 'EXECUTED' }) } },
@@ -230,6 +238,23 @@ describe('runResearchNotebooklm', () => {
     const todos = fs.readFileSync(path.join(root, 'TODOS.md'), 'utf-8');
     expect(todos).toContain('[STALLED]');
     expect(todos).toContain('nb-1:open-contradictions:x');
+  });
+
+  it('on success and no longer urgent, transitions to EXECUTED even when attempt_count is about to hit max_attempts_before_stall', () => {
+    // stillUrgent is checked before the attempt-cap/stall check: a resolved
+    // gap must not be marked STALLED_NEEDS_HUMAN just because this attempt
+    // happened to be the one that would have hit the cap.
+    seedRunRegistry(root, baseEntry({ attempt_count: 2 })); // default max_attempts_before_stall is 3
+    (nlmResearch.researchStart as jest.Mock).mockReturnValue({ ok: true, data: { taskId: 'rt-1' } });
+    (nlmResearch.researchStatus as jest.Mock).mockReturnValue({ ok: true, data: { completed: true } });
+    (nlmResearch.researchImport as jest.Mock).mockReturnValue({ ok: true, data: undefined });
+    (nlmCli.queryNotebook as jest.Mock).mockReturnValue({ ok: true, data: 'Fully resolved, well-sourced now.' });
+
+    runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
+
+    const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
+    expect(entry.status).toBe('EXECUTED');
+    expect(entry.attempt_count).toBe(3);
   });
 
   it('a transient researchStart failure leaves attempt_count/cooldown untouched and increments consecutive_dispatch_failures', () => {

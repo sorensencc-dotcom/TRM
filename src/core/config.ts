@@ -28,8 +28,9 @@ function resolveDispatchLimits(raw: unknown): DispatchLimits {
     'max_consecutive_dispatch_failures',
   ];
   for (const field of numericFields) {
-    if (typeof merged[field] !== 'number') {
-      throw new Error(`config.json dispatch_limits.${field} must be a number, got ${JSON.stringify(merged[field])}`);
+    const value = merged[field];
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+      throw new Error(`config.json dispatch_limits.${field} must be a non-negative integer, got ${JSON.stringify(value)}`);
     }
   }
   return merged;

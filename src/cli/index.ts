@@ -254,6 +254,9 @@ program
   .option('--force-research', 'bypass cooldown for eligible entries (does not bypass STALLED/BLOCKED status)')
   .action((notebookId, opts) => {
     try {
+      if (opts.forceResearch && !notebookId) {
+        throw new Error('--force-research requires an explicit notebook-id (refusing to bypass cooldown across an unbounded sweep)');
+      }
       const result = runResearchNotebooklm(root, notebookId, { forceResearch: !!opts.forceResearch });
       console.log(JSON.stringify(result, null, 2));
     } catch (err) {

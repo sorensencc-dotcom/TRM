@@ -13,8 +13,16 @@ interface RawSpawnResult {
 // nlm research start/status/import have no --json output (confirmed via
 // `nlm research start/status/import --help`, 2026-09-13) unlike source/query
 // subcommands. Patterns below are live-calibrated against real CLI stdout
-// (Task 1, Step 1, 2026-09-13, notebook a77247be-7685-4072-a676-bd43f5db69dc)
-// -- see task-1-report.md for the raw captured output.
+// (Task 1, Step 1, 2026-09-13, notebook a77247be-7685-4072-a676-bd43f5db69dc).
+// Raw captured `nlm research status` output (in_progress and completed):
+//   Research Status:
+//     Status: in_progress
+//     Task ID: 61a34873-b709-47c1-8575-1ee225e4cf82
+//     Sources found: 0
+//   Research Status:
+//     Status: completed
+//     Task ID: 61a34873-b709-47c1-8575-1ee225e4cf82
+//     Sources found: 10
 //
 // Live-calibration finding that changed the plan: `status` never emits
 // "timed out"/"times out" text. On both an immediate check (--max-wait 0)
@@ -31,13 +39,22 @@ function stripAnsi(text: string): string {
   return text.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
 }
 
-function runNlm(args: string[]): RawSpawnResult {
+// question_text is sourced from config/mining-questions.json and reaches this
+// cmd.exe /d /s /c wrapper unescaped -- it must not contain shell
+// metacharacters (&, |, ^, >), matching the same latent-risk convention used
+// in mineNotebooklm.ts's nlm invocations.
+function runNlm(args: string[], timeoutMs: number): RawSpawnResult {
   const result =
     process.platform === 'win32'
-      ? spawnSync('cmd.exe', ['/d', '/s', '/c', 'nlm', ...args], { encoding: 'utf-8' })
-      : spawnSync('nlm', args, { encoding: 'utf-8' });
+      ? spawnSync('cmd.exe', ['/d', '/s', '/c', 'nlm', ...args], { encoding: 'utf-8', timeout: timeoutMs })
+      : spawnSync('nlm', args, { encoding: 'utf-8', timeout: timeoutMs });
   return result as unknown as RawSpawnResult;
 }
+
+// Fixed timeout for start/import: these calls don't wait on the research task
+// itself (only status polling does), so a bounded ceiling is enough to stop a
+// wedged `nlm` binary from blocking the nightly scheduled task indefinitely.
+const FIXED_CALL_TIMEOUT_MS = 120_000;
 
 function failureFrom(result: RawSpawnResult, fallback: string): { ok: false; error: string } {
   if (result.error) return { ok: false, error: result.error.message };
@@ -54,7 +71,7 @@ export function researchStart(
   const args = ['research', 'start', query, '--notebook-id', notebookId, '--source', 'web', '--mode', mode];
   if (force) args.push('--force');
 
-  const result = runNlm(args);
+  const result = runNlm(args, FIXED_CALL_TIMEOUT_MS);
   if (result.error || result.status !== 0) {
     return failureFrom(result, `nlm research start exited with status ${result.status}`);
   }
@@ -73,7 +90,7 @@ export function researchStatus(
 ): ResearchCallResult<{ completed: boolean }> {
   const args = ['research', 'status', notebookId, '--task-id', taskId, '--max-wait', String(maxWaitSeconds)];
 
-  const result = runNlm(args);
+  const result = runNlm(args, (maxWaitSeconds + 60) * 1000);
   if (result.error || result.status !== 0) {
     return failureFrom(result, `nlm research status exited with status ${result.status}`);
   }
@@ -85,7 +102,7 @@ export function researchStatus(
 export function researchImport(notebookId: string, taskId: string): ResearchCallResult<void> {
   const args = ['research', 'import', notebookId, taskId, '--cited-only'];
 
-  const result = runNlm(args);
+  const result = runNlm(args, FIXED_CALL_TIMEOUT_MS);
   if (result.error || result.status !== 0) {
     return failureFrom(result, `nlm research import exited with status ${result.status}`);
   }
