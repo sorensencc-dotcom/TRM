@@ -1,6 +1,15 @@
-import { selectDispatchPlan } from './researchNotebooklm';
+import { selectDispatchPlan, runResearchNotebooklm } from './researchNotebooklm';
 import { RegistryFile, ResearchQueueEntry } from '../../notebooklm/registry';
 import { DEFAULT_DISPATCH_LIMITS } from '../../core/config';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { registryPath, readRegistry, findNotebook, questionHash } from '../../notebooklm/registry';
+import * as nlmResearch from '../../notebooklm/nlmResearch';
+import * as nlmCli from '../../notebooklm/nlmCli';
+
+jest.mock('../../notebooklm/nlmResearch');
+jest.mock('../../notebooklm/nlmCli');
 
 function entry(overrides: Partial<ResearchQueueEntry> = {}): ResearchQueueEntry {
   return {
@@ -117,5 +126,177 @@ describe('selectDispatchPlan', () => {
     ]);
     const plan = selectDispatchPlan(registry, undefined, DEFAULT_DISPATCH_LIMITS, false, now);
     expect(plan.map((c) => c.notebookId)).toEqual(['nb-zzz', 'nb-aaa']);
+  });
+});
+
+function seedRunRegistry(root: string, queueEntry: object): void {
+  fs.writeFileSync(
+    registryPath(root),
+    JSON.stringify({
+      version: 1,
+      notebooks: [
+        {
+          notebook_id: 'nb-1',
+          title: 'T',
+          url: 'https://x',
+          last_pulled_hashes: {},
+          quarantined: {},
+          last_ingested_at: null,
+          last_mined_at: null,
+          last_mined_answer_keys: [],
+          research_queue: { [questionHash('What open questions or unresolved contradictions exist across these sources?')]: queueEntry },
+        },
+      ],
+    })
+  );
+}
+
+function baseEntry(overrides: object = {}) {
+  return {
+    question_hash: questionHash('What open questions or unresolved contradictions exist across these sources?'),
+    question_text: 'What open questions or unresolved contradictions exist across these sources?',
+    question_id: 'open-contradictions',
+    gap_key: 'nb-1:open-contradictions:x',
+    mode: 'fast',
+    attempt_count: 0,
+    consecutive_dispatch_failures: 0,
+    last_researched_at: null,
+    last_dispatch_error: null,
+    status: 'PENDING',
+    ...overrides,
+  };
+}
+
+describe('runResearchNotebooklm', () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'trm-nlmresearch-'));
+    fs.writeFileSync(
+      path.join(root, 'config.json'),
+      JSON.stringify({ default_scoring_adapter: 'stub', promotion_threshold: 80, actor_source: 'env', time_source: 'system' })
+    );
+    jest.resetAllMocks();
+  });
+
+  afterEach(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it('on full success with a resolved gap, marks EXECUTED and starts the cooldown', () => {
+    seedRunRegistry(root, baseEntry());
+    (nlmResearch.researchStart as jest.Mock).mockReturnValue({ ok: true, data: { taskId: 'rt-1' } });
+    (nlmResearch.researchStatus as jest.Mock).mockReturnValue({ ok: true, data: { completed: true } });
+    (nlmResearch.researchImport as jest.Mock).mockReturnValue({ ok: true, data: undefined });
+    (nlmCli.queryNotebook as jest.Mock).mockReturnValue({ ok: true, data: 'Fully resolved, well-sourced now.' });
+
+    const result = runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
+
+    expect(result.succeeded).toBe(1);
+    const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
+    expect(entry.status).toBe('EXECUTED');
+    expect(entry.attempt_count).toBe(1);
+    expect(entry.last_researched_at).not.toBeNull();
+    expect(entry.consecutive_dispatch_failures).toBe(0);
+  });
+
+  it('on success but still urgent, with attempts remaining, stays PENDING', () => {
+    seedRunRegistry(root, baseEntry({ attempt_count: 0 }));
+    (nlmResearch.researchStart as jest.Mock).mockReturnValue({ ok: true, data: { taskId: 'rt-1' } });
+    (nlmResearch.researchStatus as jest.Mock).mockReturnValue({ ok: true, data: { completed: true } });
+    (nlmResearch.researchImport as jest.Mock).mockReturnValue({ ok: true, data: undefined });
+    (nlmCli.queryNotebook as jest.Mock).mockReturnValue({ ok: true, data: 'Still no source found for this.' });
+
+    runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
+
+    const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
+    expect(entry.status).toBe('PENDING');
+    expect(entry.attempt_count).toBe(1);
+  });
+
+  it('on success but still urgent, at max_attempts_before_stall, transitions to STALLED_NEEDS_HUMAN and appends a TODOS.md line', () => {
+    fs.writeFileSync(path.join(root, 'TODOS.md'), '# TODOS\n\n## Open\n\n## Completed\n');
+    seedRunRegistry(root, baseEntry({ attempt_count: 2 })); // default max_attempts_before_stall is 3
+    (nlmResearch.researchStart as jest.Mock).mockReturnValue({ ok: true, data: { taskId: 'rt-1' } });
+    (nlmResearch.researchStatus as jest.Mock).mockReturnValue({ ok: true, data: { completed: true } });
+    (nlmResearch.researchImport as jest.Mock).mockReturnValue({ ok: true, data: undefined });
+    (nlmCli.queryNotebook as jest.Mock).mockReturnValue({ ok: true, data: 'Still no source found for this.' });
+
+    runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
+
+    const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
+    expect(entry.status).toBe('STALLED_NEEDS_HUMAN');
+    expect(entry.attempt_count).toBe(3);
+    const todos = fs.readFileSync(path.join(root, 'TODOS.md'), 'utf-8');
+    expect(todos).toContain('[STALLED]');
+    expect(todos).toContain('nb-1:open-contradictions:x');
+  });
+
+  it('a transient researchStart failure leaves attempt_count/cooldown untouched and increments consecutive_dispatch_failures', () => {
+    seedRunRegistry(root, baseEntry());
+    (nlmResearch.researchStart as jest.Mock).mockReturnValue({ ok: false, error: 'network blip' });
+
+    runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
+
+    const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
+    expect(entry.status).toBe('PENDING');
+    expect(entry.attempt_count).toBe(0);
+    expect(entry.last_researched_at).toBeNull();
+    expect(entry.consecutive_dispatch_failures).toBe(1);
+    expect(entry.last_dispatch_error).toBe('network blip');
+  });
+
+  it('a status timeout on exit 0 is treated as a transient failure, not a success', () => {
+    seedRunRegistry(root, baseEntry());
+    (nlmResearch.researchStart as jest.Mock).mockReturnValue({ ok: true, data: { taskId: 'rt-1' } });
+    (nlmResearch.researchStatus as jest.Mock).mockReturnValue({ ok: true, data: { completed: false } });
+
+    runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
+
+    const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
+    expect(entry.status).toBe('PENDING');
+    expect(entry.attempt_count).toBe(0);
+    expect(entry.consecutive_dispatch_failures).toBe(1);
+    expect(nlmResearch.researchImport).not.toHaveBeenCalled();
+  });
+
+  it('reaching max_consecutive_dispatch_failures transitions to INFRASTRUCTURE_BLOCKED', () => {
+    seedRunRegistry(root, baseEntry({ consecutive_dispatch_failures: 4 })); // default max is 5
+    (nlmResearch.researchStart as jest.Mock).mockReturnValue({ ok: false, error: 'still failing' });
+
+    runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
+
+    const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
+    expect(entry.status).toBe('INFRASTRUCTURE_BLOCKED');
+    expect(entry.consecutive_dispatch_failures).toBe(5);
+  });
+
+  it('a query failure on the post-success re-query keeps the entry PENDING rather than marking EXECUTED', () => {
+    seedRunRegistry(root, baseEntry());
+    (nlmResearch.researchStart as jest.Mock).mockReturnValue({ ok: true, data: { taskId: 'rt-1' } });
+    (nlmResearch.researchStatus as jest.Mock).mockReturnValue({ ok: true, data: { completed: true } });
+    (nlmResearch.researchImport as jest.Mock).mockReturnValue({ ok: true, data: undefined });
+    (nlmCli.queryNotebook as jest.Mock).mockReturnValue({ ok: false, error: 'timeout' });
+
+    runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
+
+    const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
+    expect(entry.status).toBe('PENDING');
+    expect(entry.attempt_count).toBe(1); // the dispatch itself still counts as a completed attempt
+  });
+
+  it('throws when an explicit notebookId is not present in the registry', () => {
+    fs.writeFileSync(registryPath(root), JSON.stringify({ version: 1, notebooks: [] }));
+    expect(() => runResearchNotebooklm(root, 'no-such-notebook', { forceResearch: false })).toThrow(
+      /notebooklm-registry\.json has no entry for notebook "no-such-notebook"/
+    );
+  });
+
+  it('a --force-research bypasses cooldown but does not dispatch a STALLED or BLOCKED entry', () => {
+    seedRunRegistry(root, baseEntry({ status: 'STALLED_NEEDS_HUMAN', last_researched_at: '2026-09-12T00:00:00.000Z' }));
+
+    runResearchNotebooklm(root, 'nb-1', { forceResearch: true });
+
+    expect(nlmResearch.researchStart).not.toHaveBeenCalled();
   });
 });
