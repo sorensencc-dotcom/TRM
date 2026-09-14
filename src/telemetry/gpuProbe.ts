@@ -27,6 +27,44 @@ export interface GpuProbeFailure {
 
 export type GpuProbeResult = GpuProbeSuccess | GpuProbeFailure;
 
+type WindowsGraphicsRow = { Name?: string; AdapterRAM?: number };
+
+function parseWindowsGraphics(stdout: string): GpuProbeResult {
+  const parsed = JSON.parse(stdout) as WindowsGraphicsRow | WindowsGraphicsRow[];
+  const rows = Array.isArray(parsed) ? parsed : [parsed];
+  const valid = rows.filter((row) => typeof row.Name === 'string' && row.Name.length > 0);
+  if (!valid.length) throw new Error('No Windows display adapters found');
+  const totalBytes = valid.reduce((sum, row) => sum + (typeof row.AdapterRAM === 'number' ? row.AdapterRAM : 0), 0);
+  return { available: true, gpu_count: valid.length, gpu_name: valid.map((row) => row.Name).join(', '), vram_gb: totalBytes / (1024 ** 3), vram_free_gb: 0, vram_used_gb: 0 };
+}
+
+export async function probeWindowsGraphics(
+  options: GpuProbeOptions = {},
+): Promise<GpuProbeResult> {
+  const timeoutMs = options.timeoutMs ?? 1500;
+  const execute = options.executor ?? ((cmd, args, opts) => new Promise<string>((resolve, reject) => {
+    execFile(cmd, args, { timeout: opts.timeoutMs, encoding: 'utf8' }, (error, stdout) => error ? reject(error) : resolve(stdout));
+  }));
+  if (process.platform !== 'win32' && !options.executor) return { available: false, gpu_count: 0, gpu_name: 'None', vram_gb: 0, vram_free_gb: 0, vram_used_gb: 0, error: 'Windows graphics probe is only available on Windows' };
+  try {
+    const stdout = await execute('powershell.exe', ['-NoProfile', '-Command', 'Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM | ConvertTo-Json -Compress'], { timeoutMs });
+    return parseWindowsGraphics(stdout);
+  } catch (error) {
+    return { available: false, gpu_count: 0, gpu_name: 'None', vram_gb: 0, vram_free_gb: 0, vram_used_gb: 0, error: (error as Error).message };
+  }
+}
+
+export function probeWindowsGraphicsSync(options: GpuProbeOptionsSync = {}): GpuProbeResult {
+  const timeoutMs = options.timeoutMs ?? 1500;
+  const execute = options.executorSync ?? ((cmd: string, args: string[], opts: { timeoutMs: number }) => execFileSync(cmd, args, { timeout: opts.timeoutMs, encoding: 'utf8' }));
+  if (process.platform !== 'win32' && !options.executorSync) return { available: false, gpu_count: 0, gpu_name: 'None', vram_gb: 0, vram_free_gb: 0, vram_used_gb: 0, error: 'Windows graphics probe is only available on Windows' };
+  try {
+    return parseWindowsGraphics(execute('powershell.exe', ['-NoProfile', '-Command', 'Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM | ConvertTo-Json -Compress'], { timeoutMs }));
+  } catch (error) {
+    return { available: false, gpu_count: 0, gpu_name: 'None', vram_gb: 0, vram_free_gb: 0, vram_used_gb: 0, error: (error as Error).message };
+  }
+}
+
 export interface GpuProbeOptions {
   timeoutMs?: number;
   executor?: (

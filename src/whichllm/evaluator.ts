@@ -6,6 +6,8 @@ import { reportIcfEvent } from '../telemetry/icfReporter';
 import {
   probeNvidiaGpu,
   probeNvidiaGpuSync,
+  probeWindowsGraphics,
+  probeWindowsGraphicsSync,
   type GpuProbeOptions,
   type GpuProbeOptionsSync,
 } from '../telemetry/gpuProbe';
@@ -102,18 +104,20 @@ export async function resolveHardwareProfile(
   const probedRamGb = systemRamGb > 0 ? systemRamGb : DEFAULT_HARDWARE_PROFILE.ram_gb;
 
   const gpuResult = await probeNvidiaGpu(gpuProbeOptions);
-  if (gpuResult.available) {
+  const graphicsResult = gpuResult.available ? gpuResult : await probeWindowsGraphics(gpuProbeOptions);
+  if (graphicsResult.available) {
     return {
       hardware: {
-        gpu_count: gpuResult.gpu_count,
-        gpu_name: gpuResult.gpu_name,
-        vram_gb: gpuResult.vram_gb,
+        gpu_count: graphicsResult.gpu_count,
+        gpu_name: graphicsResult.gpu_name,
+        vram_gb: graphicsResult.vram_gb,
         ram_gb: probedRamGb,
-        vram_free_gb: gpuResult.vram_free_gb,
-        vram_used_gb: gpuResult.vram_used_gb,
+        vram_free_gb: graphicsResult.vram_free_gb,
+        vram_used_gb: graphicsResult.vram_used_gb,
+        memory_kind: graphicsResult === gpuResult ? 'dedicated' : 'shared',
       },
       source: 'probed_gpu_and_ram_telemetry',
-      provenanceFlag: 'probed_gpu_telemetry',
+      provenanceFlag: graphicsResult === gpuResult ? 'probed_gpu_telemetry' : 'probed_windows_graphics_telemetry',
     };
   }
 
@@ -171,22 +175,24 @@ export function resolveHardwareProfileSync(
   const probedRamGb = systemRamGb > 0 ? systemRamGb : DEFAULT_HARDWARE_PROFILE.ram_gb;
 
   const gpuResult = probeNvidiaGpuSync(gpuProbeOptions);
-  if (gpuResult.available) {
+  const graphicsResult = gpuResult.available ? gpuResult : probeWindowsGraphicsSync(gpuProbeOptions);
+  if (graphicsResult.available) {
     return {
       hardware: {
-        gpu_count: gpuResult.gpu_count,
-        gpu_name: gpuResult.gpu_name,
-        vram_gb: gpuResult.vram_gb,
+        gpu_count: graphicsResult.gpu_count,
+        gpu_name: graphicsResult.gpu_name,
+        vram_gb: graphicsResult.vram_gb,
         ram_gb: probedRamGb,
-        vram_free_gb: gpuResult.vram_free_gb,
-        vram_used_gb: gpuResult.vram_used_gb,
+        vram_free_gb: graphicsResult.vram_free_gb,
+        vram_used_gb: graphicsResult.vram_used_gb,
+        memory_kind: graphicsResult === gpuResult ? 'dedicated' : 'shared',
       },
       source: 'probed_gpu_and_ram_telemetry',
-      provenanceFlag: 'probed_gpu_telemetry',
+      provenanceFlag: graphicsResult === gpuResult ? 'probed_gpu_telemetry' : 'probed_windows_graphics_telemetry',
     };
   }
 
-  return {
+    return {
     hardware: {
       ...DEFAULT_HARDWARE_PROFILE,
       ram_gb: probedRamGb,
@@ -497,8 +503,9 @@ export async function runWhichLlmEvaluator(
     fitReasoning =
       'Warning: Model parameter size exceeds physical VRAM. Inference will experience degradation.';
   } else {
-    fitReasoning =
-      'Model fits cleanly in VRAM with comfortable overhead. Maximum tokens/sec unlocked.';
+    fitReasoning = selectedLocal && hardware.memory_kind === 'shared'
+      ? 'Model fits within the measured shared system-memory budget for the integrated GPU.'
+      : 'Model fits cleanly in dedicated VRAM with comfortable overhead.';
   }
 
   if (
@@ -572,4 +579,3 @@ export async function runWhichLlmEvaluator(
     hardwareSource,
   };
 }
-

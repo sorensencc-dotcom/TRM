@@ -5,6 +5,8 @@ import {
   parseNvidiaSmiCsv,
   probeNvidiaGpu,
   probeNvidiaGpuSync,
+  probeWindowsGraphics,
+  probeWindowsGraphicsSync,
   tokenizeCsvLine,
 } from '../../src/telemetry/gpuProbe';
 import {
@@ -144,6 +146,20 @@ describe('TRM GPU Hardware Telemetry & VRAM Probe', () => {
     });
   });
 
+  describe('Windows graphics fallback', () => {
+    const amdWmi = JSON.stringify({ Name: 'AMD Radeon 780M Graphics', AdapterRAM: 536870912 });
+
+    it('parses integrated AMD adapter telemetry', async () => {
+      const result = await probeWindowsGraphics({ executor: async () => amdWmi });
+      expect(result).toMatchObject({ available: true, gpu_count: 1, gpu_name: 'AMD Radeon 780M Graphics', vram_gb: 0.5 });
+    });
+
+    it('supports the synchronous CLI probe path', () => {
+      const result = probeWindowsGraphicsSync({ executorSync: () => amdWmi });
+      expect(result).toMatchObject({ available: true, gpu_count: 1, gpu_name: 'AMD Radeon 780M Graphics', vram_gb: 0.5 });
+    });
+  });
+
   describe('resolveHardwareProfile 4-Tier Precedence & Provenance', () => {
     it('Tier 1: Prioritizes injectedHardware override above all', async () => {
       const injected = { gpu_count: 8, gpu_name: 'H100', vram_gb: 80, ram_gb: 512 };
@@ -232,6 +248,14 @@ describe('TRM GPU Hardware Telemetry & VRAM Probe', () => {
       expect(res.source).toBe('probed_gpu_and_ram_telemetry');
       expect(res.provenanceFlag).toBe('probed_gpu_telemetry');
       expect(res.hardware.vram_gb).toBe(24);
+    });
+
+    it('uses Windows graphics fallback when NVIDIA probe is unavailable', () => {
+      const result = resolveHardwareProfileSync(undefined, undefined, {
+        executorSync: (cmd) => cmd === 'nvidia-smi' ? (() => { throw new Error('not found'); })() : JSON.stringify({ Name: 'AMD Radeon 780M Graphics', AdapterRAM: 536870912 }),
+      });
+      expect(result.provenanceFlag).toBe('probed_windows_graphics_telemetry');
+      expect(result.hardware.memory_kind).toBe('shared');
     });
   });
 });

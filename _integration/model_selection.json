@@ -1,9 +1,9 @@
 {
-  "evaluated_at": "2026-09-13T17:49:08.639Z",
+  "evaluated_at": "2026-09-14T00:29:28.840Z",
   "hardware_profile": {
-    "gpu_count": 1,
-    "gpu_name": "NVIDIA RTX 4090",
-    "vram_gb": 24,
+    "gpu_count": 0,
+    "gpu_name": "none",
+    "vram_gb": 0,
     "ram_gb": 31
   },
   "test_suite_coverage": {
@@ -29,8 +29,8 @@
   },
   "recommendations": {
     "frontier_judgment_anchor": "claude-3-5-sonnet-20241022",
-    "local_muscle_anchor": null,
-    "local_fit_reasoning": "No local candidate met the minimum tool-safety threshold (negative relevance rejection >= 50%). All candidate models exhibited 0% accuracy on non-tool queries (hallucinating tool calls). Local muscle anchor suppressed to prevent unsafe automatic selection of a model whose tool-call proposals fail relevance safety. Pass --allow-unsafe-relevance for explicit operator override."
+    "local_muscle_anchor": "gemma4:26b",
+    "local_fit_reasoning": "Warning: Model parameter size exceeds physical VRAM. Inference will experience degradation."
   },
   "ranked_candidates": [
     {
@@ -56,86 +56,23 @@
       }
     },
     {
-      "model_name": "llama3.1:8b",
+      "model_name": "gemma4:26b",
       "tier": "Tier 2 (Muscle)",
-      "vram_fit_status": "fits_easily",
+      "vram_fit_status": "out_of_vram_degraded",
       "benchmark_matrix": {
-        "evaluation_mode": "empirical",
-        "bfcl_composite_score": 0.667,
+        "evaluation_mode": "heuristic",
+        "bfcl_composite_score": 0.87,
         "heuristic_metrics": {
-          "simple_tool_call_accuracy": 0.77,
-          "parallel_tool_call_accuracy": 0.7,
-          "nested_tool_call_accuracy": 0.59,
-          "relevance_rejection_rate": 0.72
-        },
-        "empirical_metrics": {
-          "samples_per_scenario": 3,
-          "total_attempts": 12,
-          "successful_attempts": 8,
-          "composite_pass_rate": 0.667,
-          "discipline_scores": {
-            "simple_tool_call_accuracy": 0.67,
-            "parallel_tool_call_accuracy": 1,
-            "nested_tool_call_accuracy": 1,
-            "relevance_rejection_rate": 0
-          },
-          "discipline_variances": {
-            "simple_tool_variance": 0.2222,
-            "parallel_tool_variance": 0,
-            "nested_tool_variance": 0,
-            "relevance_rejection_variance": 0
-          },
-          "parser_breakdown": {
-            "native_tool_call_count": 11,
-            "fenced_json_count": 0,
-            "plain_text_count": 0,
-            "malformed_count": 0,
-            "timeout_count": 1
-          },
-          "scenario_breakdown": [
-            {
-              "scenario_id": "bfcl-cic-001-simple-read",
-              "discipline": "simple_tools",
-              "attempts_count": 3,
-              "passed_count": 2,
-              "pass_rate": 0.67,
-              "timeouts_count": 1,
-              "malformed_count": 0
-            },
-            {
-              "scenario_id": "bfcl-cic-002-parallel-dispatch",
-              "discipline": "parallel_tools",
-              "attempts_count": 3,
-              "passed_count": 3,
-              "pass_rate": 1,
-              "timeouts_count": 0,
-              "malformed_count": 0
-            },
-            {
-              "scenario_id": "bfcl-cic-003-nested-resolver",
-              "discipline": "nested_tools",
-              "attempts_count": 3,
-              "passed_count": 3,
-              "pass_rate": 1,
-              "timeouts_count": 0,
-              "malformed_count": 0
-            },
-            {
-              "scenario_id": "bfcl-cic-004-relevance-rejection",
-              "discipline": "relevance_rejection",
-              "attempts_count": 3,
-              "passed_count": 0,
-              "pass_rate": 0,
-              "timeouts_count": 0,
-              "malformed_count": 0
-            }
-          ]
+          "simple_tool_call_accuracy": 0.92,
+          "parallel_tool_call_accuracy": 0.88,
+          "nested_tool_call_accuracy": 0.81,
+          "relevance_rejection_rate": 0.87
         },
         "metrics": {
-          "simple_tool_call_accuracy": 0.67,
-          "parallel_tool_call_accuracy": 1,
-          "nested_tool_call_accuracy": 1,
-          "relevance_rejection_rate": 0
+          "simple_tool_call_accuracy": 0.92,
+          "parallel_tool_call_accuracy": 0.88,
+          "nested_tool_call_accuracy": 0.81,
+          "relevance_rejection_rate": 0.87
         },
         "quantization_overhead_penalty": 0
       }
@@ -143,341 +80,89 @@
     {
       "model_name": "qwen2.5:7b",
       "tier": "Tier 2 (Muscle)",
-      "vram_fit_status": "fits_easily",
+      "vram_fit_status": "out_of_vram_degraded",
       "benchmark_matrix": {
-        "evaluation_mode": "empirical",
-        "bfcl_composite_score": 0.417,
+        "evaluation_mode": "heuristic",
+        "bfcl_composite_score": 0.694,
         "heuristic_metrics": {
           "simple_tool_call_accuracy": 0.77,
           "parallel_tool_call_accuracy": 0.7,
           "nested_tool_call_accuracy": 0.59,
           "relevance_rejection_rate": 0.72
         },
-        "empirical_metrics": {
-          "samples_per_scenario": 3,
-          "total_attempts": 12,
-          "successful_attempts": 5,
-          "composite_pass_rate": 0.417,
-          "discipline_scores": {
-            "simple_tool_call_accuracy": 0.67,
-            "parallel_tool_call_accuracy": 1,
-            "nested_tool_call_accuracy": 0,
-            "relevance_rejection_rate": 0
-          },
-          "discipline_variances": {
-            "simple_tool_variance": 0.2222,
-            "parallel_tool_variance": 0,
-            "nested_tool_variance": 0,
-            "relevance_rejection_variance": 0
-          },
-          "parser_breakdown": {
-            "native_tool_call_count": 5,
-            "fenced_json_count": 0,
-            "plain_text_count": 3,
-            "malformed_count": 0,
-            "timeout_count": 4
-          },
-          "scenario_breakdown": [
-            {
-              "scenario_id": "bfcl-cic-001-simple-read",
-              "discipline": "simple_tools",
-              "attempts_count": 3,
-              "passed_count": 2,
-              "pass_rate": 0.67,
-              "timeouts_count": 1,
-              "malformed_count": 0
-            },
-            {
-              "scenario_id": "bfcl-cic-002-parallel-dispatch",
-              "discipline": "parallel_tools",
-              "attempts_count": 3,
-              "passed_count": 3,
-              "pass_rate": 1,
-              "timeouts_count": 0,
-              "malformed_count": 0
-            },
-            {
-              "scenario_id": "bfcl-cic-003-nested-resolver",
-              "discipline": "nested_tools",
-              "attempts_count": 3,
-              "passed_count": 0,
-              "pass_rate": 0,
-              "timeouts_count": 0,
-              "malformed_count": 0
-            },
-            {
-              "scenario_id": "bfcl-cic-004-relevance-rejection",
-              "discipline": "relevance_rejection",
-              "attempts_count": 3,
-              "passed_count": 0,
-              "pass_rate": 0,
-              "timeouts_count": 3,
-              "malformed_count": 0
-            }
-          ]
+        "metrics": {
+          "simple_tool_call_accuracy": 0.77,
+          "parallel_tool_call_accuracy": 0.7,
+          "nested_tool_call_accuracy": 0.59,
+          "relevance_rejection_rate": 0.72
+        },
+        "quantization_overhead_penalty": 0.15
+      }
+    },
+    {
+      "model_name": "llama3.1:8b",
+      "tier": "Tier 2 (Muscle)",
+      "vram_fit_status": "out_of_vram_degraded",
+      "benchmark_matrix": {
+        "evaluation_mode": "heuristic",
+        "bfcl_composite_score": 0.694,
+        "heuristic_metrics": {
+          "simple_tool_call_accuracy": 0.77,
+          "parallel_tool_call_accuracy": 0.7,
+          "nested_tool_call_accuracy": 0.59,
+          "relevance_rejection_rate": 0.72
         },
         "metrics": {
-          "simple_tool_call_accuracy": 0.67,
-          "parallel_tool_call_accuracy": 1,
-          "nested_tool_call_accuracy": 0,
-          "relevance_rejection_rate": 0
+          "simple_tool_call_accuracy": 0.77,
+          "parallel_tool_call_accuracy": 0.7,
+          "nested_tool_call_accuracy": 0.59,
+          "relevance_rejection_rate": 0.72
         },
-        "quantization_overhead_penalty": 0
+        "quantization_overhead_penalty": 0.15
       }
     },
     {
       "model_name": "llama3.2:latest",
       "tier": "Tier 2 (Muscle)",
-      "vram_fit_status": "fits_easily",
+      "vram_fit_status": "out_of_vram_degraded",
       "benchmark_matrix": {
-        "evaluation_mode": "empirical",
-        "bfcl_composite_score": 0.417,
+        "evaluation_mode": "heuristic",
+        "bfcl_composite_score": 0.694,
         "heuristic_metrics": {
           "simple_tool_call_accuracy": 0.77,
           "parallel_tool_call_accuracy": 0.7,
           "nested_tool_call_accuracy": 0.59,
           "relevance_rejection_rate": 0.72
         },
-        "empirical_metrics": {
-          "samples_per_scenario": 3,
-          "total_attempts": 12,
-          "successful_attempts": 5,
-          "composite_pass_rate": 0.417,
-          "discipline_scores": {
-            "simple_tool_call_accuracy": 1,
-            "parallel_tool_call_accuracy": 0.67,
-            "nested_tool_call_accuracy": 0,
-            "relevance_rejection_rate": 0
-          },
-          "discipline_variances": {
-            "simple_tool_variance": 0,
-            "parallel_tool_variance": 0.2222,
-            "nested_tool_variance": 0,
-            "relevance_rejection_variance": 0
-          },
-          "parser_breakdown": {
-            "native_tool_call_count": 12,
-            "fenced_json_count": 0,
-            "plain_text_count": 0,
-            "malformed_count": 0,
-            "timeout_count": 0
-          },
-          "scenario_breakdown": [
-            {
-              "scenario_id": "bfcl-cic-001-simple-read",
-              "discipline": "simple_tools",
-              "attempts_count": 3,
-              "passed_count": 3,
-              "pass_rate": 1,
-              "timeouts_count": 0,
-              "malformed_count": 0
-            },
-            {
-              "scenario_id": "bfcl-cic-002-parallel-dispatch",
-              "discipline": "parallel_tools",
-              "attempts_count": 3,
-              "passed_count": 2,
-              "pass_rate": 0.67,
-              "timeouts_count": 0,
-              "malformed_count": 0
-            },
-            {
-              "scenario_id": "bfcl-cic-003-nested-resolver",
-              "discipline": "nested_tools",
-              "attempts_count": 3,
-              "passed_count": 0,
-              "pass_rate": 0,
-              "timeouts_count": 0,
-              "malformed_count": 0
-            },
-            {
-              "scenario_id": "bfcl-cic-004-relevance-rejection",
-              "discipline": "relevance_rejection",
-              "attempts_count": 3,
-              "passed_count": 0,
-              "pass_rate": 0,
-              "timeouts_count": 0,
-              "malformed_count": 0
-            }
-          ]
-        },
         "metrics": {
-          "simple_tool_call_accuracy": 1,
-          "parallel_tool_call_accuracy": 0.67,
-          "nested_tool_call_accuracy": 0,
-          "relevance_rejection_rate": 0
+          "simple_tool_call_accuracy": 0.77,
+          "parallel_tool_call_accuracy": 0.7,
+          "nested_tool_call_accuracy": 0.59,
+          "relevance_rejection_rate": 0.72
         },
-        "quantization_overhead_penalty": 0
-      }
-    },
-    {
-      "model_name": "gemma4:26b",
-      "tier": "Tier 2 (Muscle)",
-      "vram_fit_status": "tight_vram_warning",
-      "benchmark_matrix": {
-        "evaluation_mode": "empirical",
-        "bfcl_composite_score": 0,
-        "heuristic_metrics": {
-          "simple_tool_call_accuracy": 0.92,
-          "parallel_tool_call_accuracy": 0.88,
-          "nested_tool_call_accuracy": 0.81,
-          "relevance_rejection_rate": 0.87
-        },
-        "empirical_metrics": {
-          "samples_per_scenario": 3,
-          "total_attempts": 12,
-          "successful_attempts": 0,
-          "composite_pass_rate": 0,
-          "discipline_scores": {
-            "simple_tool_call_accuracy": 0,
-            "parallel_tool_call_accuracy": 0,
-            "nested_tool_call_accuracy": 0,
-            "relevance_rejection_rate": 0
-          },
-          "discipline_variances": {
-            "simple_tool_variance": 0,
-            "parallel_tool_variance": 0,
-            "nested_tool_variance": 0,
-            "relevance_rejection_variance": 0
-          },
-          "parser_breakdown": {
-            "native_tool_call_count": 0,
-            "fenced_json_count": 0,
-            "plain_text_count": 0,
-            "malformed_count": 0,
-            "timeout_count": 12
-          },
-          "scenario_breakdown": [
-            {
-              "scenario_id": "bfcl-cic-001-simple-read",
-              "discipline": "simple_tools",
-              "attempts_count": 3,
-              "passed_count": 0,
-              "pass_rate": 0,
-              "timeouts_count": 3,
-              "malformed_count": 0
-            },
-            {
-              "scenario_id": "bfcl-cic-002-parallel-dispatch",
-              "discipline": "parallel_tools",
-              "attempts_count": 3,
-              "passed_count": 0,
-              "pass_rate": 0,
-              "timeouts_count": 3,
-              "malformed_count": 0
-            },
-            {
-              "scenario_id": "bfcl-cic-003-nested-resolver",
-              "discipline": "nested_tools",
-              "attempts_count": 3,
-              "passed_count": 0,
-              "pass_rate": 0,
-              "timeouts_count": 3,
-              "malformed_count": 0
-            },
-            {
-              "scenario_id": "bfcl-cic-004-relevance-rejection",
-              "discipline": "relevance_rejection",
-              "attempts_count": 3,
-              "passed_count": 0,
-              "pass_rate": 0,
-              "timeouts_count": 3,
-              "malformed_count": 0
-            }
-          ]
-        },
-        "metrics": {
-          "simple_tool_call_accuracy": 0,
-          "parallel_tool_call_accuracy": 0,
-          "nested_tool_call_accuracy": 0,
-          "relevance_rejection_rate": 0
-        },
-        "quantization_overhead_penalty": 0
+        "quantization_overhead_penalty": 0.15
       }
     },
     {
       "model_name": "llama3.3:latest",
       "tier": "Tier 2 (Muscle)",
-      "vram_fit_status": "fits_easily",
+      "vram_fit_status": "out_of_vram_degraded",
       "benchmark_matrix": {
-        "evaluation_mode": "empirical",
-        "bfcl_composite_score": 0,
+        "evaluation_mode": "heuristic",
+        "bfcl_composite_score": 0.694,
         "heuristic_metrics": {
           "simple_tool_call_accuracy": 0.77,
           "parallel_tool_call_accuracy": 0.7,
           "nested_tool_call_accuracy": 0.59,
           "relevance_rejection_rate": 0.72
         },
-        "empirical_metrics": {
-          "samples_per_scenario": 3,
-          "total_attempts": 12,
-          "successful_attempts": 0,
-          "composite_pass_rate": 0,
-          "discipline_scores": {
-            "simple_tool_call_accuracy": 0,
-            "parallel_tool_call_accuracy": 0,
-            "nested_tool_call_accuracy": 0,
-            "relevance_rejection_rate": 0
-          },
-          "discipline_variances": {
-            "simple_tool_variance": 0,
-            "parallel_tool_variance": 0,
-            "nested_tool_variance": 0,
-            "relevance_rejection_variance": 0
-          },
-          "parser_breakdown": {
-            "native_tool_call_count": 0,
-            "fenced_json_count": 0,
-            "plain_text_count": 0,
-            "malformed_count": 12,
-            "timeout_count": 0
-          },
-          "scenario_breakdown": [
-            {
-              "scenario_id": "bfcl-cic-001-simple-read",
-              "discipline": "simple_tools",
-              "attempts_count": 3,
-              "passed_count": 0,
-              "pass_rate": 0,
-              "timeouts_count": 0,
-              "malformed_count": 3
-            },
-            {
-              "scenario_id": "bfcl-cic-002-parallel-dispatch",
-              "discipline": "parallel_tools",
-              "attempts_count": 3,
-              "passed_count": 0,
-              "pass_rate": 0,
-              "timeouts_count": 0,
-              "malformed_count": 3
-            },
-            {
-              "scenario_id": "bfcl-cic-003-nested-resolver",
-              "discipline": "nested_tools",
-              "attempts_count": 3,
-              "passed_count": 0,
-              "pass_rate": 0,
-              "timeouts_count": 0,
-              "malformed_count": 3
-            },
-            {
-              "scenario_id": "bfcl-cic-004-relevance-rejection",
-              "discipline": "relevance_rejection",
-              "attempts_count": 3,
-              "passed_count": 0,
-              "pass_rate": 0,
-              "timeouts_count": 0,
-              "malformed_count": 3
-            }
-          ]
-        },
         "metrics": {
-          "simple_tool_call_accuracy": 0,
-          "parallel_tool_call_accuracy": 0,
-          "nested_tool_call_accuracy": 0,
-          "relevance_rejection_rate": 0
+          "simple_tool_call_accuracy": 0.77,
+          "parallel_tool_call_accuracy": 0.7,
+          "nested_tool_call_accuracy": 0.59,
+          "relevance_rejection_rate": 0.72
         },
-        "quantization_overhead_penalty": 0
+        "quantization_overhead_penalty": 0.15
       }
     }
   ],
@@ -487,20 +172,14 @@
     "provenance_flags": [
       "bfcl_v2_automated",
       "hardware_aware_compaction",
-      "live_bfcl_inference",
+      "preset_hardware_profile",
+      "heuristic_bfcl_estimate",
       "live_ollama_discovery"
     ],
-    "evaluation_mode": "empirical",
+    "evaluation_mode": "heuristic",
     "ollama_endpoint": "http://127.0.0.1:11434",
-    "evaluated_at": "2026-09-13T17:49:08.639Z",
-    "scenario_attempt_counts": 3,
-    "parser_breakdown": {
-      "native_tool_call_count": 28,
-      "fenced_json_count": 0,
-      "plain_text_count": 3,
-      "malformed_count": 12,
-      "timeout_count": 17
-    }
+    "evaluated_at": "2026-09-14T00:29:28.840Z",
+    "scenario_attempt_counts": 1
   },
-  "hash_chain_self": "d696bb3c821baca0a28d94641c878366ab494d76d3e145eb666725b49f63ec6c"
+  "hash_chain_self": "d1a5b4201b7ed14a86f1f7f700942cf72d78a0fa35c988989d435af1d014b578"
 }

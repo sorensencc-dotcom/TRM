@@ -5,6 +5,7 @@ export interface HardwareProfile {
   ram_gb: number;
   vram_free_gb?: number;
   vram_used_gb?: number;
+  memory_kind?: 'dedicated' | 'shared' | 'unknown';
 }
 
 export type VramFitStatus = 'fits_easily' | 'tight_vram_warning' | 'out_of_vram_degraded';
@@ -184,4 +185,3 @@ export interface OllamaModelTag {
 export interface OllamaTagsResponse {
   models: OllamaModelTag[];
 }
-

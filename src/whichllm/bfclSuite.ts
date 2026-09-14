@@ -80,12 +80,19 @@ export function calculateVramFit(
 
   const sizeB = estimateParameterSizeB(modelName) ?? 8;
   // Estimated VRAM requirement formula: (parameters_in_B * 0.7) + 4 GB overhead buffer
+  // AMD integrated graphics expose a small reserved AdapterRAM value while
+  // Ollama actually uses shared system memory. Bound that shared budget to
+  // half of host RAM rather than treating the adapter as NVIDIA VRAM.
+  const sharedMemoryHost = hardware.memory_kind === 'shared' || hardware.gpu_count === 0;
+  const effectiveMemoryGB = sharedMemoryHost
+    ? Math.max(hardware.vram_gb, hardware.ram_gb * 0.5)
+    : hardware.vram_gb;
   const estimatedVramRequiredGB = sizeB * 0.7 + 4;
 
-  if (estimatedVramRequiredGB > hardware.vram_gb) {
+  if (estimatedVramRequiredGB > effectiveMemoryGB) {
     return { fitStatus: 'out_of_vram_degraded', sizeB };
   }
-  if (estimatedVramRequiredGB > hardware.vram_gb - 4) {
+  if (estimatedVramRequiredGB > effectiveMemoryGB - 4) {
     return { fitStatus: 'tight_vram_warning', sizeB };
   }
   return { fitStatus: 'fits_easily', sizeB };
@@ -155,4 +162,3 @@ export function evaluateModelBfcl(
       accuracyPenalty > 0 ? parseFloat(accuracyPenalty.toFixed(2)) : 0.0,
   };
 }
-
