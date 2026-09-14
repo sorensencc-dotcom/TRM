@@ -1,6 +1,39 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { TrmConfig } from './types';
+import { TrmConfig, DispatchLimits } from './types';
+
+export const DEFAULT_DISPATCH_LIMITS: DispatchLimits = {
+  max_jobs_per_notebook: 3,
+  max_jobs_per_run_global: 5,
+  default_mode: 'fast',
+  cooldown_days_fast: 14,
+  cooldown_days_deep: 30,
+  max_attempts_before_stall: 3,
+  max_consecutive_dispatch_failures: 5,
+};
+
+function resolveDispatchLimits(raw: unknown): DispatchLimits {
+  const input = (raw ?? {}) as Partial<DispatchLimits>;
+  const merged: DispatchLimits = { ...DEFAULT_DISPATCH_LIMITS, ...input };
+
+  if (merged.default_mode !== 'fast' && merged.default_mode !== 'deep') {
+    throw new Error(`config.json dispatch_limits.default_mode must be "fast" or "deep", got "${merged.default_mode}"`);
+  }
+  const numericFields: (keyof DispatchLimits)[] = [
+    'max_jobs_per_notebook',
+    'max_jobs_per_run_global',
+    'cooldown_days_fast',
+    'cooldown_days_deep',
+    'max_attempts_before_stall',
+    'max_consecutive_dispatch_failures',
+  ];
+  for (const field of numericFields) {
+    if (typeof merged[field] !== 'number') {
+      throw new Error(`config.json dispatch_limits.${field} must be a number, got ${JSON.stringify(merged[field])}`);
+    }
+  }
+  return merged;
+}
 
 export function loadConfig(root: string): TrmConfig {
   const configPath = path.join(root, 'config.json');
@@ -20,5 +53,5 @@ export function loadConfig(root: string): TrmConfig {
   if (typeof raw.default_scoring_adapter !== 'string') {
     throw new Error('config.json default_scoring_adapter must be a string');
   }
-  return raw as TrmConfig;
+  return { ...raw, dispatch_limits: resolveDispatchLimits(raw.dispatch_limits) } as TrmConfig;
 }
