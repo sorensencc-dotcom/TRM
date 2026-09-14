@@ -72,3 +72,9 @@ export function queryNotebook(notebookId: string, question: string, timeoutSecon
   if (!result.ok) return result;
   return { ok: true, data: (result.data as { answer: string }).answer };
 }
+
+export function addSource(notebookId: string, filePath: string, title: string): NlmResult<undefined> {
+  const result = runNlm(['source', 'add', notebookId, '--file', filePath, '--title', title, '--wait']);
+  if (!result.ok) return result;
+  return { ok: true, data: undefined };
+}

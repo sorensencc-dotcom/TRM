@@ -10,7 +10,9 @@ import { DispatchLimits } from '../../core/types';
 import { loadConfig } from '../../core/config';
 import { loadMiningQuestions, isUrgentAnswer, appendStalledTodo } from './mineNotebooklm';
 import { researchStart, researchStatus, researchImport } from '../../notebooklm/nlmResearch';
-import { queryNotebook } from '../../notebooklm/nlmCli';
+import { queryNotebook, addSource } from '../../notebooklm/nlmCli';
+import { searchWeb } from '../../research/webSearch';
+import { writeEvidenceMarkdown } from '../../research/evidenceWriter';
 
 export interface DispatchCandidate {
   notebookId: string;
@@ -120,35 +122,110 @@ function recordTransientFailure(root: string, notebookId: string, entry: Researc
   return status;
 }
 
-function recordSuccess(root: string, notebookId: string, entry: ResearchQueueEntry, limits: DispatchLimits, nowIso: string): 'EXECUTED' | 'PENDING' | 'STALLED_NEEDS_HUMAN' {
+async function runWebFallback(
+  root: string,
+  notebookId: string,
+  entry: ResearchQueueEntry,
+  nowIso: string
+): Promise<'EVIDENCE_IMPORTED' | 'FAILED'> {
+  try {
+    const result = await searchWeb(entry.question_text);
+    if (result.hits.length === 0) {
+      throw new Error('Parallel search returned zero hits');
+    }
+    const evidencePath = writeEvidenceMarkdown(root, entry.question_id, entry.question_text, result);
+    const uploadResult = addSource(notebookId, evidencePath, `TRM Evidence: ${entry.question_id}`);
+    if (!uploadResult.ok) {
+      throw new Error(uploadResult.error);
+    }
+    flushResearchQueueEntry(root, notebookId, entry.question_hash, {
+      status: 'EVIDENCE_IMPORTED',
+      imported_source: evidencePath,
+      last_updated_at: nowIso,
+      consecutive_dispatch_failures: 0,
+      last_dispatch_error: null,
+    });
+    return 'EVIDENCE_IMPORTED';
+  } catch (err) {
+    return 'FAILED';
+  }
+}
+
+async function recordSuccess(
+  root: string,
+  notebookId: string,
+  entry: ResearchQueueEntry,
+  limits: DispatchLimits,
+  nowIso: string
+): Promise<'EXECUTED' | 'PENDING' | 'STALLED_NEEDS_HUMAN' | 'EVIDENCE_IMPORTED'> {
   const attemptCount = entry.attempt_count + 1;
   const requery = queryNotebook(notebookId, entry.question_text);
   // A failed re-query must not be mistaken for "resolved" -- stay urgent so the
   // gap is retried next eligible run instead of silently going quiet.
   const stillUrgent = requery.ok ? isUrgentAnswer(requery.data) : true;
 
-  let status: 'EXECUTED' | 'PENDING' | 'STALLED_NEEDS_HUMAN';
   if (!stillUrgent) {
-    status = 'EXECUTED';
-  } else if (attemptCount >= limits.max_attempts_before_stall) {
-    status = 'STALLED_NEEDS_HUMAN';
-    appendStalledTodo(root, entry.question_text, entry.gap_key);
-  } else {
-    status = 'PENDING';
+    flushResearchQueueEntry(root, notebookId, entry.question_hash, {
+      attempt_count: attemptCount,
+      last_researched_at: nowIso,
+      consecutive_dispatch_failures: 0,
+      last_dispatch_error: null,
+      status: 'EXECUTED',
+    });
+    return 'EXECUTED';
   }
 
+  if (attemptCount < limits.max_attempts_before_stall) {
+    flushResearchQueueEntry(root, notebookId, entry.question_hash, {
+      attempt_count: attemptCount,
+      last_researched_at: nowIso,
+      consecutive_dispatch_failures: 0,
+      last_dispatch_error: null,
+      status: 'PENDING',
+    });
+    return 'PENDING';
+  }
+
+  // Last resort: about to stall, try the web fallback first -- unless the
+  // entry is pinned to notebook-only research, in which case it must go
+  // straight to STALLED_NEEDS_HUMAN without ever calling searchWeb.
+  if (entry.web_strategy !== 'notebook') {
+    const fallbackEntry = { ...entry, attempt_count: attemptCount };
+    const fallbackOutcome = await runWebFallback(root, notebookId, fallbackEntry, nowIso);
+    if (fallbackOutcome === 'EVIDENCE_IMPORTED') {
+      return 'EVIDENCE_IMPORTED';
+    }
+  }
+
+  appendStalledTodo(root, entry.question_text, entry.gap_key);
   flushResearchQueueEntry(root, notebookId, entry.question_hash, {
     attempt_count: attemptCount,
     last_researched_at: nowIso,
     consecutive_dispatch_failures: 0,
     last_dispatch_error: null,
-    status,
+    status: 'STALLED_NEEDS_HUMAN',
   });
-  return status;
+  return 'STALLED_NEEDS_HUMAN';
 }
 
-function dispatchCandidate(root: string, candidate: DispatchCandidate, limits: DispatchLimits, forceResearch: boolean, nowIso: string): 'succeeded' | 'transientFailure' | 'stalled' | 'infrastructureBlocked' {
+async function dispatchCandidate(
+  root: string,
+  candidate: DispatchCandidate,
+  limits: DispatchLimits,
+  forceResearch: boolean,
+  nowIso: string
+): Promise<'succeeded' | 'transientFailure' | 'stalled' | 'infrastructureBlocked'> {
   const { notebookId, entry } = candidate;
+
+  if (entry.web_strategy === 'web') {
+    const outcome = await runWebFallback(root, notebookId, entry, nowIso);
+    if (outcome === 'EVIDENCE_IMPORTED') {
+      return 'succeeded';
+    }
+    return recordTransientFailure(root, notebookId, entry, limits, 'web search fallback failed') === 'INFRASTRUCTURE_BLOCKED'
+      ? 'infrastructureBlocked'
+      : 'transientFailure';
+  }
 
   const startResult = researchStart(notebookId, entry.question_text, entry.mode, forceResearch);
   if (!startResult.ok) {
@@ -168,11 +245,15 @@ function dispatchCandidate(root: string, candidate: DispatchCandidate, limits: D
     return recordTransientFailure(root, notebookId, entry, limits, importResult.error) === 'INFRASTRUCTURE_BLOCKED' ? 'infrastructureBlocked' : 'transientFailure';
   }
 
-  const finalStatus = recordSuccess(root, notebookId, entry, limits, nowIso);
+  const finalStatus = await recordSuccess(root, notebookId, entry, limits, nowIso);
   return finalStatus === 'STALLED_NEEDS_HUMAN' ? 'stalled' : 'succeeded';
 }
 
-export function runResearchNotebooklm(root: string, notebookId: string | undefined, opts: { forceResearch: boolean }): ResearchNotebooklmResult {
+export async function runResearchNotebooklm(
+  root: string,
+  notebookId: string | undefined,
+  opts: { forceResearch: boolean }
+): Promise<ResearchNotebooklmResult> {
   const config = loadConfig(root);
   const registry = readRegistry(root);
   if (notebookId && !findNotebook(registry, notebookId)) {
@@ -190,7 +271,7 @@ export function runResearchNotebooklm(root: string, notebookId: string | undefin
 
   for (const candidate of plan) {
     result.dispatched++;
-    const outcome = dispatchCandidate(root, candidate, config.dispatch_limits, opts.forceResearch, nowIso);
+    const outcome = await dispatchCandidate(root, candidate, config.dispatch_limits, opts.forceResearch, nowIso);
     if (outcome === 'succeeded') result.succeeded++;
     else if (outcome === 'stalled') result.stalled++;
     else if (outcome === 'infrastructureBlocked') result.infrastructureBlocked++;

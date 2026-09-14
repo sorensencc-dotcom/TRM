@@ -7,9 +7,13 @@ import * as path from 'node:path';
 import { registryPath, readRegistry, findNotebook, questionHash } from '../../notebooklm/registry';
 import * as nlmResearch from '../../notebooklm/nlmResearch';
 import * as nlmCli from '../../notebooklm/nlmCli';
+import * as webSearch from '../../research/webSearch';
+import * as evidenceWriter from '../../research/evidenceWriter';
 
 jest.mock('../../notebooklm/nlmResearch');
 jest.mock('../../notebooklm/nlmCli');
+jest.mock('../../research/webSearch');
+jest.mock('../../research/evidenceWriter');
 
 function entry(overrides: Partial<ResearchQueueEntry> = {}): ResearchQueueEntry {
   return {
@@ -191,14 +195,14 @@ describe('runResearchNotebooklm', () => {
     fs.rmSync(root, { recursive: true, force: true });
   });
 
-  it('on full success with a resolved gap, marks EXECUTED and starts the cooldown', () => {
+  it('on full success with a resolved gap, marks EXECUTED and starts the cooldown', async () => {
     seedRunRegistry(root, baseEntry());
     (nlmResearch.researchStart as jest.Mock).mockReturnValue({ ok: true, data: { taskId: 'rt-1' } });
     (nlmResearch.researchStatus as jest.Mock).mockReturnValue({ ok: true, data: { completed: true } });
     (nlmResearch.researchImport as jest.Mock).mockReturnValue({ ok: true, data: undefined });
     (nlmCli.queryNotebook as jest.Mock).mockReturnValue({ ok: true, data: 'Fully resolved, well-sourced now.' });
 
-    const result = runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
+    const result = await runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
 
     expect(result.succeeded).toBe(1);
     const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
@@ -208,29 +212,30 @@ describe('runResearchNotebooklm', () => {
     expect(entry.consecutive_dispatch_failures).toBe(0);
   });
 
-  it('on success but still urgent, with attempts remaining, stays PENDING', () => {
+  it('on success but still urgent, with attempts remaining, stays PENDING', async () => {
     seedRunRegistry(root, baseEntry({ attempt_count: 0 }));
     (nlmResearch.researchStart as jest.Mock).mockReturnValue({ ok: true, data: { taskId: 'rt-1' } });
     (nlmResearch.researchStatus as jest.Mock).mockReturnValue({ ok: true, data: { completed: true } });
     (nlmResearch.researchImport as jest.Mock).mockReturnValue({ ok: true, data: undefined });
     (nlmCli.queryNotebook as jest.Mock).mockReturnValue({ ok: true, data: 'Still no source found for this.' });
 
-    runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
+    await runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
 
     const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
     expect(entry.status).toBe('PENDING');
     expect(entry.attempt_count).toBe(1);
   });
 
-  it('on success but still urgent, at max_attempts_before_stall, transitions to STALLED_NEEDS_HUMAN and appends a TODOS.md line', () => {
+  it('on success but still urgent, at max_attempts_before_stall, transitions to STALLED_NEEDS_HUMAN and appends a TODOS.md line', async () => {
     fs.writeFileSync(path.join(root, 'TODOS.md'), '# TODOS\n\n## Open\n\n## Completed\n');
     seedRunRegistry(root, baseEntry({ attempt_count: 2 })); // default max_attempts_before_stall is 3
     (nlmResearch.researchStart as jest.Mock).mockReturnValue({ ok: true, data: { taskId: 'rt-1' } });
     (nlmResearch.researchStatus as jest.Mock).mockReturnValue({ ok: true, data: { completed: true } });
     (nlmResearch.researchImport as jest.Mock).mockReturnValue({ ok: true, data: undefined });
     (nlmCli.queryNotebook as jest.Mock).mockReturnValue({ ok: true, data: 'Still no source found for this.' });
+    (webSearch.searchWeb as jest.Mock).mockRejectedValue(new Error('Parallel search request failed with status 500'));
 
-    runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
+    await runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
 
     const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
     expect(entry.status).toBe('STALLED_NEEDS_HUMAN');
@@ -240,7 +245,7 @@ describe('runResearchNotebooklm', () => {
     expect(todos).toContain('nb-1:open-contradictions:x');
   });
 
-  it('on success and no longer urgent, transitions to EXECUTED even when attempt_count is about to hit max_attempts_before_stall', () => {
+  it('on success and no longer urgent, transitions to EXECUTED even when attempt_count is about to hit max_attempts_before_stall', async () => {
     // stillUrgent is checked before the attempt-cap/stall check: a resolved
     // gap must not be marked STALLED_NEEDS_HUMAN just because this attempt
     // happened to be the one that would have hit the cap.
@@ -250,18 +255,18 @@ describe('runResearchNotebooklm', () => {
     (nlmResearch.researchImport as jest.Mock).mockReturnValue({ ok: true, data: undefined });
     (nlmCli.queryNotebook as jest.Mock).mockReturnValue({ ok: true, data: 'Fully resolved, well-sourced now.' });
 
-    runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
+    await runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
 
     const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
     expect(entry.status).toBe('EXECUTED');
     expect(entry.attempt_count).toBe(3);
   });
 
-  it('a transient researchStart failure leaves attempt_count/cooldown untouched and increments consecutive_dispatch_failures', () => {
+  it('a transient researchStart failure leaves attempt_count/cooldown untouched and increments consecutive_dispatch_failures', async () => {
     seedRunRegistry(root, baseEntry());
     (nlmResearch.researchStart as jest.Mock).mockReturnValue({ ok: false, error: 'network blip' });
 
-    runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
+    await runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
 
     const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
     expect(entry.status).toBe('PENDING');
@@ -271,12 +276,12 @@ describe('runResearchNotebooklm', () => {
     expect(entry.last_dispatch_error).toBe('network blip');
   });
 
-  it('a status timeout on exit 0 is treated as a transient failure, not a success', () => {
+  it('a status timeout on exit 0 is treated as a transient failure, not a success', async () => {
     seedRunRegistry(root, baseEntry());
     (nlmResearch.researchStart as jest.Mock).mockReturnValue({ ok: true, data: { taskId: 'rt-1' } });
     (nlmResearch.researchStatus as jest.Mock).mockReturnValue({ ok: true, data: { completed: false } });
 
-    runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
+    await runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
 
     const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
     expect(entry.status).toBe('PENDING');
@@ -285,43 +290,154 @@ describe('runResearchNotebooklm', () => {
     expect(nlmResearch.researchImport).not.toHaveBeenCalled();
   });
 
-  it('reaching max_consecutive_dispatch_failures transitions to INFRASTRUCTURE_BLOCKED', () => {
+  it('reaching max_consecutive_dispatch_failures transitions to INFRASTRUCTURE_BLOCKED', async () => {
     seedRunRegistry(root, baseEntry({ consecutive_dispatch_failures: 4 })); // default max is 5
     (nlmResearch.researchStart as jest.Mock).mockReturnValue({ ok: false, error: 'still failing' });
 
-    runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
+    await runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
 
     const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
     expect(entry.status).toBe('INFRASTRUCTURE_BLOCKED');
     expect(entry.consecutive_dispatch_failures).toBe(5);
   });
 
-  it('a query failure on the post-success re-query keeps the entry PENDING rather than marking EXECUTED', () => {
+  it('a query failure on the post-success re-query keeps the entry PENDING rather than marking EXECUTED', async () => {
     seedRunRegistry(root, baseEntry());
     (nlmResearch.researchStart as jest.Mock).mockReturnValue({ ok: true, data: { taskId: 'rt-1' } });
     (nlmResearch.researchStatus as jest.Mock).mockReturnValue({ ok: true, data: { completed: true } });
     (nlmResearch.researchImport as jest.Mock).mockReturnValue({ ok: true, data: undefined });
     (nlmCli.queryNotebook as jest.Mock).mockReturnValue({ ok: false, error: 'timeout' });
 
-    runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
+    await runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
 
     const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
     expect(entry.status).toBe('PENDING');
     expect(entry.attempt_count).toBe(1); // the dispatch itself still counts as a completed attempt
   });
 
-  it('throws when an explicit notebookId is not present in the registry', () => {
+  it('throws when an explicit notebookId is not present in the registry', async () => {
     fs.writeFileSync(registryPath(root), JSON.stringify({ version: 1, notebooks: [] }));
-    expect(() => runResearchNotebooklm(root, 'no-such-notebook', { forceResearch: false })).toThrow(
+    await expect(runResearchNotebooklm(root, 'no-such-notebook', { forceResearch: false })).rejects.toThrow(
       /notebooklm-registry\.json has no entry for notebook "no-such-notebook"/
     );
   });
 
-  it('a --force-research bypasses cooldown but does not dispatch a STALLED or BLOCKED entry', () => {
+  it('a --force-research bypasses cooldown but does not dispatch a STALLED or BLOCKED entry', async () => {
     seedRunRegistry(root, baseEntry({ status: 'STALLED_NEEDS_HUMAN', last_researched_at: '2026-09-12T00:00:00.000Z' }));
 
-    runResearchNotebooklm(root, 'nb-1', { forceResearch: true });
+    await runResearchNotebooklm(root, 'nb-1', { forceResearch: true });
 
+    expect(nlmResearch.researchStart).not.toHaveBeenCalled();
+  });
+});
+
+describe('runResearchNotebooklm — web search fallback', () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'trm-nlmresearch-web-'));
+    fs.writeFileSync(
+      path.join(root, 'config.json'),
+      JSON.stringify({ default_scoring_adapter: 'stub', promotion_threshold: 80, actor_source: 'env', time_source: 'system' })
+    );
+    fs.writeFileSync(path.join(root, 'TODOS.md'), '# TODOS\n\n## Open\n\n## Completed\n');
+    jest.resetAllMocks();
+  });
+
+  afterEach(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it('web_strategy "web" bypasses nlm research and calls searchWeb directly', async () => {
+    seedRunRegistry(root, baseEntry({ web_strategy: 'web' }));
+    (webSearch.searchWeb as jest.Mock).mockResolvedValue({
+      query: 'q',
+      hits: [{ title: 'T', url: 'https://x', snippet: 'S' }],
+    });
+    (evidenceWriter.writeEvidenceMarkdown as jest.Mock).mockReturnValue('/tmp/evidence.md');
+    (nlmCli.addSource as jest.Mock).mockReturnValue({ ok: true, data: undefined });
+
+    await runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
+
+    expect(nlmResearch.researchStart).not.toHaveBeenCalled();
+    expect(webSearch.searchWeb).toHaveBeenCalledWith('What open questions or unresolved contradictions exist across these sources?');
+    const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
+    expect(entry.status).toBe('EVIDENCE_IMPORTED');
+    expect(entry.imported_source).toBe('/tmp/evidence.md');
+  });
+
+  it('web_strategy "auto" below stall threshold never calls searchWeb', async () => {
+    seedRunRegistry(root, baseEntry({ web_strategy: 'auto', attempt_count: 0 }));
+    (nlmResearch.researchStart as jest.Mock).mockReturnValue({ ok: true, data: { taskId: 'rt-1' } });
+    (nlmResearch.researchStatus as jest.Mock).mockReturnValue({ ok: true, data: { completed: true } });
+    (nlmResearch.researchImport as jest.Mock).mockReturnValue({ ok: true, data: undefined });
+    (nlmCli.queryNotebook as jest.Mock).mockReturnValue({ ok: true, data: 'Still no source found for this.' });
+
+    await runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
+
+    expect(webSearch.searchWeb).not.toHaveBeenCalled();
+    const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
+    expect(entry.status).toBe('PENDING');
+  });
+
+  it('web_strategy "auto" at stall threshold falls back to web search instead of stalling immediately', async () => {
+    seedRunRegistry(root, baseEntry({ web_strategy: 'auto', attempt_count: 2 })); // default max_attempts_before_stall is 3
+    (nlmResearch.researchStart as jest.Mock).mockReturnValue({ ok: true, data: { taskId: 'rt-1' } });
+    (nlmResearch.researchStatus as jest.Mock).mockReturnValue({ ok: true, data: { completed: true } });
+    (nlmResearch.researchImport as jest.Mock).mockReturnValue({ ok: true, data: undefined });
+    (nlmCli.queryNotebook as jest.Mock).mockReturnValue({ ok: true, data: 'Still no source found for this.' });
+    (webSearch.searchWeb as jest.Mock).mockResolvedValue({ query: 'q', hits: [{ title: 'T', url: 'https://x', snippet: 'S' }] });
+    (evidenceWriter.writeEvidenceMarkdown as jest.Mock).mockReturnValue('/tmp/evidence.md');
+    (nlmCli.addSource as jest.Mock).mockReturnValue({ ok: true, data: undefined });
+
+    await runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
+
+    expect(webSearch.searchWeb).toHaveBeenCalledTimes(1);
+    const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
+    expect(entry.status).toBe('EVIDENCE_IMPORTED');
+    const todos = fs.readFileSync(path.join(root, 'TODOS.md'), 'utf-8');
+    expect(todos).not.toContain('[STALLED]');
+  });
+
+  it('web_strategy "notebook" never calls searchWeb even at the stall point', async () => {
+    seedRunRegistry(root, baseEntry({ web_strategy: 'notebook', attempt_count: 2 }));
+    (nlmResearch.researchStart as jest.Mock).mockReturnValue({ ok: true, data: { taskId: 'rt-1' } });
+    (nlmResearch.researchStatus as jest.Mock).mockReturnValue({ ok: true, data: { completed: true } });
+    (nlmResearch.researchImport as jest.Mock).mockReturnValue({ ok: true, data: undefined });
+    (nlmCli.queryNotebook as jest.Mock).mockReturnValue({ ok: true, data: 'Still no source found for this.' });
+
+    await runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
+
+    expect(webSearch.searchWeb).not.toHaveBeenCalled();
+    const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
+    expect(entry.status).toBe('STALLED_NEEDS_HUMAN');
+  });
+
+  it('a failed web fallback at the stall point falls through to STALLED_NEEDS_HUMAN', async () => {
+    seedRunRegistry(root, baseEntry({ web_strategy: 'auto', attempt_count: 2 }));
+    (nlmResearch.researchStart as jest.Mock).mockReturnValue({ ok: true, data: { taskId: 'rt-1' } });
+    (nlmResearch.researchStatus as jest.Mock).mockReturnValue({ ok: true, data: { completed: true } });
+    (nlmResearch.researchImport as jest.Mock).mockReturnValue({ ok: true, data: undefined });
+    (nlmCli.queryNotebook as jest.Mock).mockReturnValue({ ok: true, data: 'Still no source found for this.' });
+    (webSearch.searchWeb as jest.Mock).mockRejectedValue(new Error('Parallel search request failed with status 500'));
+
+    await runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
+
+    const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
+    expect(entry.status).toBe('STALLED_NEEDS_HUMAN');
+    const todos = fs.readFileSync(path.join(root, 'TODOS.md'), 'utf-8');
+    expect(todos).toContain('[STALLED]');
+  });
+
+  it('a failed web_strategy "web" dispatch (searchWeb throws) is treated as a transient failure, not a stall', async () => {
+    seedRunRegistry(root, baseEntry({ web_strategy: 'web', consecutive_dispatch_failures: 0 }));
+    (webSearch.searchWeb as jest.Mock).mockRejectedValue(new Error('Parallel search request failed with status 500'));
+
+    await runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
+
+    const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
+    expect(entry.status).toBe('PENDING');
+    expect(entry.consecutive_dispatch_failures).toBe(1);
     expect(nlmResearch.researchStart).not.toHaveBeenCalled();
   });
 });
