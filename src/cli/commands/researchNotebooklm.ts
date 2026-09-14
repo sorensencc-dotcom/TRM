@@ -122,12 +122,14 @@ function recordTransientFailure(root: string, notebookId: string, entry: Researc
   return status;
 }
 
+type WebFallbackOutcome = { status: 'EVIDENCE_IMPORTED' } | { status: 'FAILED'; error: string };
+
 async function runWebFallback(
   root: string,
   notebookId: string,
   entry: ResearchQueueEntry,
   nowIso: string
-): Promise<'EVIDENCE_IMPORTED' | 'FAILED'> {
+): Promise<WebFallbackOutcome> {
   try {
     const result = await searchWeb(entry.question_text);
     if (result.hits.length === 0) {
@@ -145,9 +147,9 @@ async function runWebFallback(
       consecutive_dispatch_failures: 0,
       last_dispatch_error: null,
     });
-    return 'EVIDENCE_IMPORTED';
+    return { status: 'EVIDENCE_IMPORTED' };
   } catch (err) {
-    return 'FAILED';
+    return { status: 'FAILED', error: (err as Error).message };
   }
 }
 
@@ -192,9 +194,12 @@ async function recordSuccess(
   if (entry.web_strategy !== 'notebook') {
     const fallbackEntry = { ...entry, attempt_count: attemptCount };
     const fallbackOutcome = await runWebFallback(root, notebookId, fallbackEntry, nowIso);
-    if (fallbackOutcome === 'EVIDENCE_IMPORTED') {
+    if (fallbackOutcome.status === 'EVIDENCE_IMPORTED') {
       return 'EVIDENCE_IMPORTED';
     }
+    console.error(
+      `research-notebooklm: notebook "${notebookId}" question "${entry.question_id}" web fallback failed before stalling: ${fallbackOutcome.error}`
+    );
   }
 
   appendStalledTodo(root, entry.question_text, entry.gap_key);
@@ -219,10 +224,10 @@ async function dispatchCandidate(
 
   if (entry.web_strategy === 'web') {
     const outcome = await runWebFallback(root, notebookId, entry, nowIso);
-    if (outcome === 'EVIDENCE_IMPORTED') {
+    if (outcome.status === 'EVIDENCE_IMPORTED') {
       return 'succeeded';
     }
-    return recordTransientFailure(root, notebookId, entry, limits, 'web search fallback failed') === 'INFRASTRUCTURE_BLOCKED'
+    return recordTransientFailure(root, notebookId, entry, limits, outcome.error) === 'INFRASTRUCTURE_BLOCKED'
       ? 'infrastructureBlocked'
       : 'transientFailure';
   }

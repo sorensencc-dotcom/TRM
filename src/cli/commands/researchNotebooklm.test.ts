@@ -413,13 +413,14 @@ describe('runResearchNotebooklm — web search fallback', () => {
     expect(entry.status).toBe('STALLED_NEEDS_HUMAN');
   });
 
-  it('a failed web fallback at the stall point falls through to STALLED_NEEDS_HUMAN', async () => {
+  it('a failed web fallback at the stall point falls through to STALLED_NEEDS_HUMAN and logs the real cause', async () => {
     seedRunRegistry(root, baseEntry({ web_strategy: 'auto', attempt_count: 2 }));
     (nlmResearch.researchStart as jest.Mock).mockReturnValue({ ok: true, data: { taskId: 'rt-1' } });
     (nlmResearch.researchStatus as jest.Mock).mockReturnValue({ ok: true, data: { completed: true } });
     (nlmResearch.researchImport as jest.Mock).mockReturnValue({ ok: true, data: undefined });
     (nlmCli.queryNotebook as jest.Mock).mockReturnValue({ ok: true, data: 'Still no source found for this.' });
     (webSearch.searchWeb as jest.Mock).mockRejectedValue(new Error('Parallel search request failed with status 500'));
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
     await runResearchNotebooklm(root, 'nb-1', { forceResearch: false });
 
@@ -427,9 +428,14 @@ describe('runResearchNotebooklm — web search fallback', () => {
     expect(entry.status).toBe('STALLED_NEEDS_HUMAN');
     const todos = fs.readFileSync(path.join(root, 'TODOS.md'), 'utf-8');
     expect(todos).toContain('[STALLED]');
+    // The real failure reason must survive the stall transition -- not just a
+    // generic message -- even though the registry's last_dispatch_error is
+    // cleared on the stall flush (see recordSuccess).
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Parallel search request failed with status 500'));
+    errorSpy.mockRestore();
   });
 
-  it('a failed web_strategy "web" dispatch (searchWeb throws) is treated as a transient failure, not a stall', async () => {
+  it('a failed web_strategy "web" dispatch (searchWeb throws) is treated as a transient failure, not a stall, and preserves the real error', async () => {
     seedRunRegistry(root, baseEntry({ web_strategy: 'web', consecutive_dispatch_failures: 0 }));
     (webSearch.searchWeb as jest.Mock).mockRejectedValue(new Error('Parallel search request failed with status 500'));
 
@@ -438,6 +444,7 @@ describe('runResearchNotebooklm — web search fallback', () => {
     const entry = findNotebook(readRegistry(root), 'nb-1')!.research_queue![baseEntry().question_hash];
     expect(entry.status).toBe('PENDING');
     expect(entry.consecutive_dispatch_failures).toBe(1);
+    expect(entry.last_dispatch_error).toBe('Parallel search request failed with status 500');
     expect(nlmResearch.researchStart).not.toHaveBeenCalled();
   });
 });
