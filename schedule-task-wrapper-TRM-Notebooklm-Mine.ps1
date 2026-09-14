@@ -1,7 +1,10 @@
 # schedule-task-wrapper-TRM-Notebooklm-Mine.ps1
 # Weekly sweep: runs `trm mine-notebooklm <id>` for every notebook in
-# notebooklm-registry.json. Registered in Windows Task Scheduler, weekly
-# trigger -- see docs/superpowers/specs/2026-08-12-notebooklm-cic-ingest-mining-design.md §5.
+# notebooklm-registry.json, then `trm research-notebooklm` once across all
+# notebooks to dispatch push-research for any urgent gaps mining queued.
+# Registered in Windows Task Scheduler, weekly trigger -- see
+# docs/superpowers/specs/2026-08-12-notebooklm-cic-ingest-mining-design.md §5
+# and docs/superpowers/specs/2026-09-13-notebooklm-push-research-loop-design.md.
 
 $ErrorActionPreference = "Continue"
 $VaultRoot = 'C:\Users\soren\trm-vault'
@@ -54,6 +57,18 @@ foreach ($Notebook in $Registry.notebooks) {
         "mine-notebooklm threw for $($Notebook.notebook_id): $_" | Tee-Object -FilePath $LogFile -Append
         $ExitCode = 1
     }
+}
+
+"=== research-notebooklm (all notebooks) ===" | Tee-Object -FilePath $LogFile -Append
+try {
+    & trm research-notebooklm 2>&1 | Tee-Object -FilePath $LogFile -Append
+    if ($LASTEXITCODE -ne 0) {
+        "research-notebooklm failed with exit code $LASTEXITCODE" | Tee-Object -FilePath $LogFile -Append
+        $ExitCode = 1
+    }
+} catch {
+    "research-notebooklm threw: $_" | Tee-Object -FilePath $LogFile -Append
+    $ExitCode = 1
 }
 
 # Refresh Daily Status Report
