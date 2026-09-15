@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { Command } from 'commander';
+import { Command, InvalidArgumentError } from 'commander';
 import { runCreate } from './commands/create';
 import { runIngest } from './commands/ingest';
 import { runIngestDir } from './commands/ingestDir';
@@ -252,12 +252,24 @@ program
 program
   .command('research-notebooklm [notebook-id]')
   .option('--force-research', 'bypass cooldown for eligible entries (does not bypass STALLED/BLOCKED status)')
+  .option('--limit <n>', 'cap gaps processed this run, on top of config dispatch limits', (value) => {
+    const parsed = parseInt(value, 10);
+    if (Number.isNaN(parsed) || parsed <= 0) {
+      throw new InvalidArgumentError(`--limit must be a positive integer, got "${value}"`);
+    }
+    return parsed;
+  })
+  .option('--dry-run', 'preview the dispatch plan without calling nlm/Parallel or writing the registry')
   .action(async (notebookId, opts) => {
     try {
       if (opts.forceResearch && !notebookId) {
         throw new Error('--force-research requires an explicit notebook-id (refusing to bypass cooldown across an unbounded sweep)');
       }
-      const result = await runResearchNotebooklm(root, notebookId, { forceResearch: !!opts.forceResearch });
+      const result = await runResearchNotebooklm(root, notebookId, {
+        forceResearch: !!opts.forceResearch,
+        limit: opts.limit,
+        dryRun: !!opts.dryRun,
+      });
       console.log(JSON.stringify(result, null, 2));
     } catch (err) {
       console.error((err as Error).message);
