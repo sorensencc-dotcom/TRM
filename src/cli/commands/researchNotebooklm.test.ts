@@ -329,6 +329,52 @@ describe('runResearchNotebooklm', () => {
 
     expect(nlmResearch.researchStart).not.toHaveBeenCalled();
   });
+
+  it('--limit truncates the plan even when more entries are eligible', async () => {
+    fs.writeFileSync(
+      registryPath(root),
+      JSON.stringify({
+        version: 1,
+        notebooks: [
+          {
+            notebook_id: 'nb-1',
+            title: 'T',
+            url: 'https://x',
+            last_pulled_hashes: {},
+            quarantined: {},
+            last_ingested_at: null,
+            last_mined_at: null,
+            last_mined_answer_keys: [],
+            research_queue: {
+              [questionHash('question one')]: baseEntry({
+                question_hash: questionHash('question one'),
+                question_text: 'question one',
+                question_id: 'q1',
+                gap_key: 'nb-1:q1:x',
+              }),
+              [questionHash('question two')]: baseEntry({
+                question_hash: questionHash('question two'),
+                question_text: 'question two',
+                question_id: 'q2',
+                gap_key: 'nb-1:q2:x',
+              }),
+            },
+          },
+        ],
+      })
+    );
+    (nlmResearch.researchStart as jest.Mock).mockReturnValue({ ok: true, data: { taskId: 'rt-1' } });
+    (nlmResearch.researchStatus as jest.Mock).mockReturnValue({ ok: true, data: { completed: true } });
+    (nlmResearch.researchImport as jest.Mock).mockReturnValue({ ok: true, data: undefined });
+    (nlmCli.queryNotebook as jest.Mock).mockReturnValue({ ok: true, data: 'Fully resolved, well-sourced now.' });
+
+    const result = await runResearchNotebooklm(root, 'nb-1', { forceResearch: false, limit: 1 });
+
+    expect(result.dispatched).toBe(1);
+    expect(result.succeeded).toBe(1);
+    expect(result.skipped).toBe(1);
+    expect(nlmResearch.researchStart as jest.Mock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('runResearchNotebooklm — web search fallback', () => {

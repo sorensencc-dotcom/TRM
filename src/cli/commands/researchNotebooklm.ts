@@ -274,7 +274,7 @@ async function dispatchCandidate(
 export async function runResearchNotebooklm(
   root: string,
   notebookId: string | undefined,
-  opts: { forceResearch: boolean }
+  opts: { forceResearch: boolean; limit?: number }
 ): Promise<ResearchNotebooklmResult> {
   const config = loadConfig(root);
   const registry = readRegistry(root);
@@ -284,6 +284,7 @@ export async function runResearchNotebooklm(
 
   const now = new Date();
   const plan = selectDispatchPlan(registry, notebookId, config.dispatch_limits, opts.forceResearch, now);
+  const boundedPlan = opts.limit !== undefined ? plan.slice(0, opts.limit) : plan;
   const nowIso = now.toISOString();
 
   // Checked once per run (not per-candidate): spec requires "one clear error
@@ -300,9 +301,9 @@ export async function runResearchNotebooklm(
   const result: ResearchNotebooklmResult = { dispatched: 0, succeeded: 0, transientFailures: 0, stalled: 0, infrastructureBlocked: 0, skipped: 0 };
   // Eligible-but-not-dispatched: entries that passed isEligible but were
   // excluded by max_jobs_per_notebook / max_jobs_per_run_global cap enforcement.
-  result.skipped = countAllEligible(registry, notebookId, config.dispatch_limits, opts.forceResearch, now) - plan.length;
+  result.skipped = countAllEligible(registry, notebookId, config.dispatch_limits, opts.forceResearch, now) - boundedPlan.length;
 
-  for (const candidate of plan) {
+  for (const candidate of boundedPlan) {
     result.dispatched++;
     const outcome = await dispatchCandidate(root, candidate, config.dispatch_limits, opts.forceResearch, nowIso, parallelKeyMissing);
     if (outcome === 'succeeded') result.succeeded++;
