@@ -375,6 +375,22 @@ describe('runResearchNotebooklm', () => {
     expect(result.skipped).toBe(1);
     expect(nlmResearch.researchStart as jest.Mock).toHaveBeenCalledTimes(1);
   });
+
+  it('--dry-run reports the plan without calling nlm/Parallel or writing the registry', async () => {
+    seedRunRegistry(root, baseEntry());
+    const registryBefore = fs.readFileSync(registryPath(root), 'utf-8');
+
+    const result = await runResearchNotebooklm(root, 'nb-1', { forceResearch: false, dryRun: true });
+
+    expect(result.dispatched).toBe(1);
+    expect(result.succeeded).toBe(0);
+    expect(result.plan).toEqual([
+      { notebookId: 'nb-1', questionId: 'open-contradictions', webStrategy: undefined },
+    ]);
+    expect(nlmResearch.researchStart as jest.Mock).not.toHaveBeenCalled();
+    expect(nlmCli.queryNotebook as jest.Mock).not.toHaveBeenCalled();
+    expect(fs.readFileSync(registryPath(root), 'utf-8')).toBe(registryBefore);
+  });
 });
 
 describe('runResearchNotebooklm — web search fallback', () => {
