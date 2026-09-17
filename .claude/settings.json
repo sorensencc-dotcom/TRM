@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "b=\"$(git symbolic-ref --short HEAD 2>/dev/null)\"; [ -n \"$b\" ] && [ -z \"$(git status --porcelain 2>/dev/null)\" ] && git fetch origin \"$b\" --quiet 2>/dev/null && git merge --ff-only \"origin/$b\" --quiet 2>/dev/null; true",
+            "timeout": 15,
+            "statusMessage": "Syncing with origin..."
+          }
+        ]
+      }
+    ]
+  }
+}
