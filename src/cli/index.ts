@@ -18,6 +18,7 @@ import { runMineNotebooklm } from './commands/mineNotebooklm';
 import { runResearchNotebooklm } from './commands/researchNotebooklm';
 import { runReingestUrls } from './commands/reingestUrls';
 import { runEvalWhichllm } from './commands/evalWhichllm';
+import { runArchiveChats } from './commands/archiveChats';
 import { assertSafeRoot } from '../core/rootSafety';
 import { LockConflictError, LockUnrecoverableError } from '../sync/lock';
 
@@ -271,6 +272,35 @@ program
         dryRun: !!opts.dryRun,
       });
       console.log(JSON.stringify(result, null, 2));
+    } catch (err) {
+      console.error((err as Error).message);
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('archive-chats [notebook-id]')
+  .description('Harvest and synthesize daily NotebookLM chat conversations and pin to Studio panel')
+  .option('--all', 'sweep all approved notebooks in account')
+  .option('--dry-run', 'preview extraction and markdown synthesis without writing notes')
+  .option('--force', 're-synthesize even if a note for today already exists')
+  .option('--date <YYYY-MM-DD>', 'override target date (defaults to today)')
+  .option('--concurrency <n>', 'max concurrent notebooks (default: 2)', (v) => parseInt(v, 10))
+  .option('--kb-vault-root <path>', 'path to kb-sync obsidian vault')
+  .option('--local-vault-root <path>', 'path to local topics vault')
+  .action(async (notebookId, opts) => {
+    try {
+      const result = await runArchiveChats(root, notebookId, {
+        all: !!opts.all,
+        dryRun: !!opts.dryRun,
+        force: !!opts.force,
+        date: opts.date,
+        concurrency: opts.concurrency,
+        kbVaultRoot: opts.kbVaultRoot,
+        localVaultRoot: opts.localVaultRoot,
+      });
+      console.log(JSON.stringify(result, null, 2));
+      if (!result.success) process.exitCode = 1;
     } catch (err) {
       console.error((err as Error).message);
       process.exitCode = 1;
