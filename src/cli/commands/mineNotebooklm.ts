@@ -97,6 +97,98 @@ export function appendStalledTodo(root: string, questionText: string, gapKey: st
   writeFileAtomic(todosPath, updated);
 }
 
+export interface AtomicGapItem {
+  id: string;
+  title: string;
+  text: string;
+  key: string;
+}
+
+export function extractAtomicGaps(
+  notebookId: string,
+  questionId: string,
+  rawAnswer: string
+): AtomicGapItem[] {
+  const lines = rawAnswer.split(/\r?\n/);
+  const items: AtomicGapItem[] = [];
+
+  let currentItemLines: string[] = [];
+
+  function flushCurrent() {
+    if (currentItemLines.length === 0) return;
+    const text = currentItemLines.join('\n').trim();
+    currentItemLines = [];
+    if (text.length < 15) return;
+
+    const normalizedHeader = text.replace(/^[#\d.\s:-]+/, '').trim().toLowerCase();
+    if (/^(?:open\s+contradictions?|unresolved\s+contradictions?|under-?sourced(?:\s+claims|\s+assertions)?|adjacent\s+topics?|adjacent\s+research\s+leads?|follow-?up(?:\s+research|\s+tracks?)?)$/i.test(normalizedHeader)) {
+      return;
+    }
+
+    const boldMatch = text.match(/^\*\*([^*]+)\*\*:?\s*(.*)$/s);
+    let title = '';
+    if (boldMatch) {
+      title = boldMatch[1].trim();
+    } else {
+      const fullBlock = text.replace(/\r?\n/g, ' ').trim();
+      const parts = fullBlock.split(/(?<=[.?!])\s+/);
+      const firstSentence = (parts.length > 0 && parts[0].trim().length > 0) ? parts[0].trim() : fullBlock.slice(0, 50);
+      title = firstSentence.length > 50 ? `${firstSentence.slice(0, 47)}...` : firstSentence;
+    }
+
+    const fullBlock = text.replace(/\r?\n/g, ' ').trim();
+    const itemHash = crypto.createHash('sha256').update(fullBlock, 'utf-8').digest('hex');
+    const slug = title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 40) || 'gap';
+    const key = `${notebookId}:${questionId}:${itemHash}`;
+
+    items.push({
+      id: slug,
+      title,
+      text: fullBlock,
+      key,
+    });
+  }
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const isListItem = /^(?:[-*+]|\d+[.)])\s+/.test(trimmed);
+    const isHeader = /^#{1,6}\s+/.test(trimmed);
+
+    if (isListItem || isHeader) {
+      flushCurrent();
+      const cleanedLine = trimmed.replace(/^(?:[-*+]|\d+[.)]|#{1,6})\s+/, '').trim();
+      currentItemLines.push(cleanedLine);
+    } else if (trimmed.length > 0) {
+      if (currentItemLines.length > 0) {
+        currentItemLines.push(trimmed);
+      }
+    } else {
+      flushCurrent();
+    }
+  }
+  flushCurrent();
+
+  if (items.length === 0 && rawAnswer.trim().length >= 10) {
+    const fullBlock = rawAnswer.replace(/\r?\n/g, ' ').trim();
+    const itemHash = crypto.createHash('sha256').update(fullBlock, 'utf-8').digest('hex');
+    const parts = fullBlock.split(/(?<=[.?!])\s+/);
+    const firstSentence = (parts.length > 0 && parts[0].trim().length > 0) ? parts[0].trim() : fullBlock.slice(0, 50);
+    const title = firstSentence.length > 50 ? `${firstSentence.slice(0, 47)}...` : firstSentence;
+    items.push({
+      id: questionId,
+      title,
+      text: fullBlock,
+      key: `${notebookId}:${questionId}:${itemHash}`,
+    });
+  }
+
+  return items;
+}
+
 function appendResearchGapsMatrix(root: string, question: MiningQuestion, answer: string, notebookTitle: string, key: string): void {
   const candidatePaths = [
     path.join(root, 'trm-research-gaps.md'),
@@ -107,18 +199,29 @@ function appendResearchGapsMatrix(root: string, question: MiningQuestion, answer
   if (!gapsPath) return;
 
   const content = fs.readFileSync(gapsPath, 'utf-8');
-  const gapTarget = `**${notebookTitle} (${question.id})**`;
-  if (content.includes(key) || content.includes(gapTarget) || content.includes(answer.slice(0, 50))) return;
+  const notebookId = key.includes(':') ? key.split(':')[0] : key;
+  const items = extractAtomicGaps(notebookId, question.id, answer);
 
-  const excerpt = answer.replace(/\r?\n/g, ' ').slice(0, 150).trim();
-  const line = `- [ ] ${gapTarget}: ${excerpt}\n`;
+  const linesToAdd: string[] = [];
+  for (const item of items) {
+    const gapTag = `**${notebookTitle} (${question.id} - ${item.title})**`;
+    const itemSnippet = item.text.slice(0, 80).replace(/[[\]()#*]/g, '').trim();
+    if (content.includes(gapTag) || (itemSnippet.length > 30 && content.includes(itemSnippet))) {
+      continue;
+    }
+    const excerpt = item.text.replace(/\r?\n/g, ' ').slice(0, 180).trim();
+    linesToAdd.push(`- [ ] ${gapTag}: ${excerpt}\n`);
+  }
+
+  if (linesToAdd.length === 0) return;
 
   const marker = '## Active Research Gaps\n';
   const idx = content.indexOf(marker);
+  const block = linesToAdd.join('');
   const updated =
     idx === -1
-      ? `${content}\n\n## Active Research Gaps\n\n${line}`
-      : `${content.slice(0, idx + marker.length)}\n${line}${content.slice(idx + marker.length)}`;
+      ? `${content}\n\n## Active Research Gaps\n\n${block}`
+      : `${content.slice(0, idx + marker.length)}\n${block}${content.slice(idx + marker.length)}`;
   writeFileAtomic(gapsPath, updated);
 }
 

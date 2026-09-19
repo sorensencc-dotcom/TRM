@@ -67,6 +67,23 @@ try {
 $ExitCode = 0
 
 foreach ($Notebook in $Registry.notebooks) {
+    "=== syncing & ingesting $($Notebook.title) ($($Notebook.notebook_id)) ===" | Tee-Object -FilePath $LogFile -Append
+    try {
+        $NarrativeRoot = 'C:\dev\charlie-deep-research'
+        if (Test-Path $NarrativeRoot) {
+            & trm ingest-notebooklm $Notebook.notebook_id --narrative-root $NarrativeRoot 2>&1 | Tee-Object -FilePath $LogFile -Append
+        } else {
+            "Narrative root $NarrativeRoot not found, skipping ingestion step" | Tee-Object -FilePath $LogFile -Append
+        }
+        if ($LASTEXITCODE -ne 0) {
+            "ingest-notebooklm failed for $($Notebook.notebook_id) with exit code $LASTEXITCODE" | Tee-Object -FilePath $LogFile -Append
+            $ExitCode = 1
+        }
+    } catch {
+        "ingest-notebooklm threw for $($Notebook.notebook_id): $_" | Tee-Object -FilePath $LogFile -Append
+        $ExitCode = 1
+    }
+
     "=== mining $($Notebook.title) ($($Notebook.notebook_id)) ===" | Tee-Object -FilePath $LogFile -Append
     try {
         & trm mine-notebooklm $Notebook.notebook_id 2>&1 | Tee-Object -FilePath $LogFile -Append

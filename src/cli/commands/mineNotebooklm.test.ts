@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { loadMiningQuestions, answerKey, runMineNotebooklm, isUrgentAnswer, appendStalledTodo } from './mineNotebooklm';
+import { loadMiningQuestions, answerKey, runMineNotebooklm, isUrgentAnswer, appendStalledTodo, extractAtomicGaps } from './mineNotebooklm';
 import * as nlmCli from '../../notebooklm/nlmCli';
 import { registryPath, readRegistry, findNotebook } from '../../notebooklm/registry';
 import { spawnSync } from 'node:child_process';
@@ -45,6 +45,21 @@ describe('mineNotebooklm', () => {
 
   afterEach(() => {
     fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it('extractAtomicGaps decomposes markdown lists and bold headers into atomic items', () => {
+    const rawAnswer = `Across the historical records, several contradictions exist:
+1. **Bennett vs Sorensen**: Direct conflict on board composition and 1943 transition.
+2. **Mental Acuity**: Disputed timeline regarding Henry Ford's operational status.
+* **Cuban Claim Valuation**: FCSC records state $1.2M while personal ledgers state $2.5M.`;
+
+    const items = extractAtomicGaps('nb-1', 'open-contradictions', rawAnswer);
+    expect(items).toHaveLength(3);
+    expect(items[0].title).toBe('Bennett vs Sorensen');
+    expect(items[0].text).toContain('Direct conflict on board composition');
+    expect(items[1].title).toBe('Mental Acuity');
+    expect(items[2].title).toBe('Cuban Claim Valuation');
+    expect(items[0].key).toContain('nb-1:open-contradictions:');
   });
 
   it('loadMiningQuestions returns the 4 fixed questions with stable ids', () => {
