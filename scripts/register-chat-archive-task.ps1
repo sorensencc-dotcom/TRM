@@ -5,10 +5,11 @@
 .DESCRIPTION
     Creates a daily Windows Task Scheduler job that runs at 08:00 PM (ET)
     to archive all approved NotebookLM chat sessions into the knowledge base.
-    Uses a single-instance mutex; will not register a duplicate task.
+    Uses LogonType S4U to run whether the user is logged on or not.
+    Requires administrator elevation to configure S4U / Service principal.
 
 .NOTES
-    Run once. Re-run to update trigger time or wrapper path.
+    Run from an elevated PowerShell prompt (Run as Administrator) to apply S4U logon.
 #>
 
 $TaskName   = "TRM-Notebooklm-Chat-Archive"
@@ -21,6 +22,17 @@ $WorkDir    = "C:\dev\trm"
 if (-not (Test-Path $WrapperPs1)) {
     Write-Error "Wrapper script not found: $WrapperPs1"
     exit 1
+}
+
+# --- Check elevation & define Principal for "Run whether logged on or not" ---
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if ($isAdmin) {
+    $Principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType S4U -RunLevel Highest
+} else {
+    Write-Warning "Not running as Administrator. S4U ('Run whether logged on or not') requires elevation."
+    Write-Host "Attempting fallback to user principal..." -ForegroundColor Yellow
+    $Principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive
 }
 
 # --- Remove stale task if present ---
@@ -53,13 +65,15 @@ Register-ScheduledTask `
     -Action      $Action `
     -Trigger     $Trigger `
     -Settings    $Settings `
+    -Principal   $Principal `
     -Description "Archive all approved NotebookLM chat sessions to obsidian/vault/wiki/conversations/ and sync to knowledge.db. Part of TRM pipeline (08:00 PM ET, before KB-Sync-TRM-Triage at 08:30 PM)." `
     -Force
 
 Write-Host ""
 Write-Host "Task registered successfully:"
-Write-Host "  Name    : $TaskPath$TaskName"
-Write-Host "  Trigger : Daily at $RunAt (local time)"
-Write-Host "  Wrapper : $WrapperPs1"
+Write-Host "  Name       : $TaskPath$TaskName"
+Write-Host "  Trigger    : Daily at $RunAt (local time)"
+Write-Host "  Logon Type : $($Principal.LogonType) (Run whether logged on or not: $(if ($Principal.LogonType -eq 'S4U') {'YES'} else {'NO (Interactive only)'}))"
+Write-Host "  Wrapper    : $WrapperPs1"
 Write-Host ""
 Write-Host "To verify: Get-ScheduledTask -TaskName '$TaskName' -TaskPath '$TaskPath' | Get-ScheduledTaskInfo"
