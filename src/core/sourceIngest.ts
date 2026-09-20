@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { nodeDir } from './paths';
 import { markActive } from './topicNode';
 import { appendOperation } from '../lineage/hasher';
+import { ArchivalProvenance } from './archivalManifest';
 
 export interface SourceEntry {
   id: string;
@@ -13,6 +14,7 @@ export interface SourceEntry {
   added_at: string;
   actor: string;
   contentHash?: string;
+  archival?: ArchivalProvenance;
 }
 
 function metadataPath(root: string, topicPath: string): string {

@@ -44,6 +44,7 @@ import { VideoFailureOptions } from '../../core/failedStore';
 import { normalizeKeywords, computeKeywordWindows, frameInWindows } from '../../ingestion/videoExtract/keywordFilter';
 import { deriveAutoKeywords } from '../../ingestion/videoExtract/autoKeywords';
 import { KeywordFilterOutcome } from '../../core/videoMetricsLog';
+import { ArchivalProvenance } from '../../core/archivalManifest';
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv']);
@@ -110,6 +111,7 @@ export interface IngestDirOptions {
   duration?: string;
   keywords?: string[];
   autoKeywords?: boolean;
+  archival?: ArchivalProvenance;
 }
 
 export interface IngestDirSummary {
@@ -667,6 +669,7 @@ export async function runIngestDir(
             url: cliArgs.url || `local:${path.basename(filePath)}`,
             added_at: new Date().toISOString(),
             actor,
+            archival: cliArgs.archival,
           };
 
           const { facts, summary } = await claudePool(() =>
@@ -680,6 +683,7 @@ export async function runIngestDir(
               origin: cliArgs.origin ?? 'local',
               url: cliArgs.url || `local:${path.basename(filePath)}`,
               contentHash: hash,
+              archival: cliArgs.archival,
             });
 
             const updatedFacts = facts.map((f) => ({ ...f, source_id: entry.id }));
@@ -697,6 +701,7 @@ export async function runIngestDir(
                 keywordSource: perVideoKeywordSource,
                 keywordFilterOutcome,
               },
+              archival: cliArgs.archival,
             };
 
             writeRawEnvelope(root, targetTopicPath, envelope);

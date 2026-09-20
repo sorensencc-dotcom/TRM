@@ -4,6 +4,8 @@ import { nodeDir } from './paths';
 import { Label } from '../ingestion/imageExtract/imageAnalyzer';
 import { KeywordSource } from './videoPartialProgress';
 import { KeywordFilterOutcome } from './videoMetricsLog';
+import { ArchivalProvenance } from './archivalManifest';
+import type { FrameVerification } from './archivalVerification';
 
 export interface VideoProcessingMetadata {
   effectiveStartMs?: number;
@@ -36,6 +38,8 @@ export interface RawSourceEnvelope {
   ocrText?: string;
   frames?: { timestampMs: number; labels: Label[] }[];
   videoProcessing?: VideoProcessingMetadata;
+  archival?: ArchivalProvenance;
+  frameVerification?: FrameVerification;
 }
 
 export function rawSourcePath(root: string, topicPath: string, sourceId: string): string {

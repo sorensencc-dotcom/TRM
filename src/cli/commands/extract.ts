@@ -40,6 +40,10 @@ export function runExtract(
       console.warn(`[extract] skipping ${source.id}: no text content for fact extraction (kind=image)`);
       continue;
     }
+    if (envelope.archival?.claimStatus !== undefined && envelope.archival.claimStatus !== 'frame_verified') {
+      console.warn(`[extract] skipping ${source.id}: archival claims require frame verification before fact extraction`);
+      continue;
+    }
     const sourceMeta = metadata.sources.find((s: any) => s.id === source.id);
     const { facts, summary } = runner.run(sourceMeta as any, envelope.text ?? '');
     collectedFacts.push(...facts);

@@ -169,4 +169,20 @@ describe('runExtract', () => {
     expect(result?.facts[1]?.text).toBe('Speaker B: And this is a response.');
     expect(result?.summary).toContain('2 fact(s) from video');
   });
+
+  it('does not emit facts from catalog-only archival video claims', () => {
+    const root = makeRoot();
+    runCreate(root, 'cuba', { actor: 'ACTOR-001' });
+    runIngest(root, 'cuba', { actor: 'ACTOR-001', type: 'video', title: 'archival', origin: 'archive.org', url: 'x' });
+    const rawDir = path.join(root, 'topics', 'cuba', 'sources', 'raw');
+    fs.mkdirSync(rawDir, { recursive: true });
+    fs.writeFileSync(path.join(rawDir, 'SRC-001.json'), JSON.stringify({
+      sourceId: 'SRC-001', kind: 'video', capturedAt: '2026-07-25T00:00:00.000Z', text: 'unverified claim',
+      archival: { sourceSystem: 'internet_archive', archiveIdentifier: '74182StoryOfWillowRun', canonicalUrl: 'https://archive.org/details/74182StoryOfWillowRun', verificationStatus: 'verified', metadataFetchedAt: '2026-07-25T00:00:00.000Z', metadataSha256: 'meta', claimStatus: 'catalog_only' },
+    }));
+    const runner = { run: jest.fn(() => ({ facts: [{ id: 'FCT-001', text: 'should not emit', source_id: 'SRC-001', confidence: 1, categories: [] }], summary: 'bad' })) };
+    const result = runExtract(root, 'cuba', { actor: 'ACTOR-001' }, runner);
+    expect(result?.facts).toHaveLength(0);
+    expect(runner.run).not.toHaveBeenCalled();
+  });
 });

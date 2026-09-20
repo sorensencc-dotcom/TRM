@@ -3,6 +3,8 @@ import { Command, InvalidArgumentError } from 'commander';
 import { runCreate } from './commands/create';
 import { runIngest } from './commands/ingest';
 import { runIngestDir } from './commands/ingestDir';
+import { runIngestArchive } from './commands/ingestArchive';
+import { promoteArchivalFrameVerification } from '../core/archivalVerification';
 import { runExtract } from './commands/extract';
 import { runScore } from './commands/score';
 import { runCrosslink } from './commands/crosslink';
@@ -75,6 +77,39 @@ program
       if (summary.failureCount > 0) process.exitCode = 1;
     } catch (err) {
       console.error(`[ingest-dir] ${(err as Error).message}`);
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('ingest-archive <topic> <identifier>')
+  .requiredOption('--file <file>', 'locally downloaded media file; admission validates IA metadata before ingest')
+  .option('--actor <actor>')
+  .option('--stub')
+  .action(async (topic, identifier, opts) => {
+    try {
+      console.log(JSON.stringify(await runIngestArchive(root, topic, identifier, opts.file, opts), null, 2));
+    } catch (err) {
+      console.error(`[ingest-archive] ${(err as Error).message}`);
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('verify-cut <topic> <sourceId>')
+  .requiredOption('--tc-in <timecode>')
+  .requiredOption('--tc-out <timecode>')
+  .requiredOption('--attestation <text>')
+  .action((topic, sourceId, opts) => {
+    try {
+      const result = promoteArchivalFrameVerification(root, topic, sourceId, {
+        timecodeIn: opts.tcIn,
+        timecodeOut: opts.tcOut,
+        attestation: opts.attestation,
+      });
+      console.log(JSON.stringify(result, null, 2));
+    } catch (err) {
+      console.error(`[verify-cut] ${(err as Error).message}`);
       process.exitCode = 1;
     }
   });
