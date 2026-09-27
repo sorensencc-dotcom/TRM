@@ -55,10 +55,10 @@ topics/{topic_slug}/
 
 ```mermaid
 flowchart LR
-    classDef inputStyle fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#f8fafc;
-    classDef stageStyle fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
-    classDef gateStyle fill:#312e81,stroke:#a855f7,stroke-width:2px,color:#f8fafc;
-    classDef syncStyle fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc;
+    classDef inputStyle fill:#1A1410,stroke:#B8922A,stroke-width:2px,color:#E8E0D4;
+    classDef stageStyle fill:#2C2420,stroke:#B8922A,stroke-width:2px,color:#E8E0D4;
+    classDef gateStyle fill:#1A1410,stroke:#C4501A,stroke-width:2px,color:#E8E0D4;
+    classDef syncStyle fill:#2C2420,stroke:#B8922A,stroke-width:2px,color:#9A9088;
 
     PIN["1. Source Pinning<br/>(SHA-256 Hashes)"]:::inputStyle --> DEC["2. Task Decomposition<br/>(research.task.v1)"]:::stageStyle
     DEC --> AUD_SYN["3. Audit Synthesis<br/>(Temporal & Entity)"]:::stageStyle

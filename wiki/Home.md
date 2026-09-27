@@ -6,6 +6,21 @@ last-reviewed: 2026-09-26
 brand: cic
 ---
 
+---
+
+## CIC Industrial Design System
+
+Cast Iron Charlie wiki diagrams and treatment visuals follow the **CIC Industrial Design System** (forge black / brass / ember; Playfair Display, Barlow Condensed, Libre Baskerville; no shadows, gradients, or rounded corners).
+
+- Spec (local): `C:\dev\charlie-deep-research\cic_design_system.md`
+- Enforcement checklist (local): `C:\dev\charlie-deep-research\docs\CIC_DESIGN_SYSTEM_ENFORCEMENT.md`
+- GitHub: [cic_design_system.md](https://github.com/sorensencc-dotcom/charlie-deep-research/blob/main/cic_design_system.md) | [CIC_DESIGN_SYSTEM_ENFORCEMENT.md](https://github.com/sorensencc-dotcom/charlie-deep-research/blob/main/docs/CIC_DESIGN_SYSTEM_ENFORCEMENT.md)
+
+When embedding or regenerating diagrams, prefer `node scripts/regenerate-wiki-diagrams-cic.mjs` (tokens from cic_design_system / generate_diagrams.py palette) over ad-hoc styling.
+
+
+---
+
 # Topic Research Module (TRM) Wiki
 
 Welcome to the canonical engineering and operational documentation for the **Topic Research Module (TRM)**.
@@ -40,11 +55,11 @@ TRM is an enterprise-grade CLI and autonomous ingestion system for building hier
 
 ```mermaid
 flowchart TD
-    classDef inputStyle fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#f8fafc;
-    classDef stageStyle fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
-    classDef packStyle fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
-    classDef gateStyle fill:#312e81,stroke:#a855f7,stroke-width:2px,color:#f8fafc;
-    classDef syncStyle fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc;
+    classDef inputStyle fill:#1A1410,stroke:#B8922A,stroke-width:2px,color:#E8E0D4;
+    classDef stageStyle fill:#2C2420,stroke:#B8922A,stroke-width:2px,color:#E8E0D4;
+    classDef packStyle fill:#2C2420,stroke:#C4501A,stroke-width:2px,color:#E8E0D4;
+    classDef gateStyle fill:#1A1410,stroke:#C4501A,stroke-width:2px,color:#E8E0D4;
+    classDef syncStyle fill:#2C2420,stroke:#B8922A,stroke-width:2px,color:#9A9088;
 
     subgraph Sources["1. Source Ingestion & Pinning"]
         S_RAW["Raw Corpora & Transcripts<br/>(PDF, Text, Media, NotebookLM)"]:::inputStyle

@@ -36,10 +36,10 @@ Research topic packs (`topic.pack.v1`) ingest raw primary sources, declassified 
 
 ```mermaid
 flowchart TD
-    classDef initStyle fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#f8fafc;
-    classDef checkStyle fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
-    classDef failStyle fill:#450a0a,stroke:#f87171,stroke-width:2px,color:#f8fafc;
-    classDef passStyle fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc;
+    classDef initStyle fill:#1A1410,stroke:#B8922A,stroke-width:2px,color:#E8E0D4;
+    classDef checkStyle fill:#2C2420,stroke:#B8922A,stroke-width:2px,color:#E8E0D4;
+    classDef failStyle fill:#1A1410,stroke:#C4501A,stroke-width:2px,color:#E8E0D4;
+    classDef passStyle fill:#2C2420,stroke:#B8922A,stroke-width:2px,color:#9A9088;
 
     subgraph Trigger["1. Command Invocation"]
         CMD["TRM Command Invoked<br/>(create, ingest, extract, score)"]:::initStyle
