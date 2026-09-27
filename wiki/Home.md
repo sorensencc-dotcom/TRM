@@ -2,24 +2,9 @@
 title: "Topic Research Module (TRM) Wiki"
 status: active
 owner: chris
-last-reviewed: 2026-09-26
+last-reviewed: 2026-09-27
 brand: cic
 -->
-
----
-
-## CIC Industrial Design System
-
-Cast Iron Charlie wiki diagrams and treatment visuals follow the **CIC Industrial Design System** (forge black / brass / ember; Playfair Display, Barlow Condensed, Libre Baskerville; no shadows, gradients, or rounded corners).
-
-- Spec (local): `C:\dev\charlie-deep-research\cic_design_system.md`
-- Enforcement checklist (local): `C:\dev\charlie-deep-research\docs\CIC_DESIGN_SYSTEM_ENFORCEMENT.md`
-- GitHub: [cic_design_system.md](https://github.com/sorensencc-dotcom/charlie-deep-research/blob/main/cic_design_system.md) | [CIC_DESIGN_SYSTEM_ENFORCEMENT.md](https://github.com/sorensencc-dotcom/charlie-deep-research/blob/main/docs/CIC_DESIGN_SYSTEM_ENFORCEMENT.md)
-
-When embedding or regenerating diagrams, prefer `node scripts/regenerate-wiki-diagrams-cic.mjs` (tokens from cic_design_system / generate_diagrams.py palette) over ad-hoc styling.
-
-
----
 
 # Topic Research Module (TRM) Wiki
 
@@ -27,6 +12,7 @@ Welcome to the canonical engineering and operational documentation for the **Top
 
 TRM is an enterprise-grade CLI and autonomous ingestion system for building hierarchical, lineage-tracked research topic trees on the local filesystem. It powers source ingestion, multimodal media processing, fact extraction, topic scoring/promotion, cross-linking, and closed-loop research gap triage across the federated Cast Iron Charlie (CIC) knowledge ecosystem.
 
+Diagrams follow the **CIC Industrial Design System** ([spec](https://github.com/sorensencc-dotcom/charlie-deep-research/blob/main/cic_design_system.md) · [enforcement](https://github.com/sorensencc-dotcom/charlie-deep-research/blob/main/docs/CIC_DESIGN_SYSTEM_ENFORCEMENT.md)).
 ---
 
 ## 🧭 Navigation & Knowledge Base Index
