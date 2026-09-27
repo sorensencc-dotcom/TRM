@@ -2,6 +2,26 @@
 
 CLI for building hierarchical, lineage-tracked research topic trees on the local filesystem. Ingest sources, extract facts, score/promote topics, crosslink related work — all as versioned JSON+text under a topic-tree root, with an append-only operation log per node.
 
+
+**Status:** Active (v0.1.0) — CLI + NotebookLM mining pipelines  
+**Audience:** CIC research operators and agents that maintain lineage-tracked topic trees outside public remotes.
+
+## Quick start
+
+See [Install](#install) below for clone/build, then:
+
+```bash
+npm run trm -- create charlie/example --description "demo topic"
+```
+
+## Docs & wiki
+
+- In-repo wiki sidebar: [`wiki/_Sidebar.md`](wiki/_Sidebar.md)
+- [Viking VFS & Tiered Compaction](wiki/Viking-VFS-&-Tiered-Compaction.md)
+- Controlled evidence pipeline (published under Toolforge wiki): [ControlledEvidencePipeline.md](https://github.com/sorensencc-dotcom/toolforge/blob/main/wiki/ControlledEvidencePipeline.md)
+- CIC Industrial Design System (diagrams / wiki skins): [`cic_design_system.md`](https://github.com/sorensencc-dotcom/charlie-deep-research/blob/main/cic_design_system.md)
+- Governance / safety: [Safety guardrail](#safety-guardrail); Toolforge lifecycle [`GOVERNANCE.md`](https://github.com/sorensencc-dotcom/toolforge/blob/main/GOVERNANCE.md)
+
 ## Why
 
 Research work (source PDFs, extracted facts, scoring, crosslinks between topics) needs an audit trail and a stable on-disk shape, but doesn't belong committed into a public git repo alongside code. `trm` gives that structure a CLI and enforces, in code, that its data root is never inside a repo with a remote configured.
@@ -50,7 +70,7 @@ Executes a 3-tier coverage audit across research topics:
 python topic_coverage_auditor.py --topics-dir ./tests/pilots --corpus-dir ./tests/pilots/willow-run-1941/corpus
 ```
 
-See [`ControlledEvidencePipeline.md`](file:///c:/dev/wiki/ControlledEvidencePipeline.md) for the complete workflow diagram and architecture specification.
+See [ControlledEvidencePipeline.md](https://github.com/sorensencc-dotcom/toolforge/blob/main/wiki/ControlledEvidencePipeline.md) for the complete workflow diagram and architecture specification.
 
 ## Safety guardrail
 
