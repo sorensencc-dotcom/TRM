@@ -36,10 +36,10 @@ Manual research mining and extraction quickly introduce operational bottlenecks.
 
 ```mermaid
 flowchart TD
-    classDef daemonStyle fill:#1A1410,stroke:#B8922A,stroke-width:2px,color:#E8E0D4;
-    classDef execStyle fill:#2C2420,stroke:#B8922A,stroke-width:2px,color:#E8E0D4;
-    classDef lockStyle fill:#1A1410,stroke:#C4501A,stroke-width:2px,color:#E8E0D4;
-    classDef exportStyle fill:#2C2420,stroke:#B8922A,stroke-width:2px,color:#9A9088;
+    classDef daemonStyle fill:#FAF6F0,stroke:#1A1410,stroke-width:2px,color:#1A1410;
+    classDef execStyle fill:#FAF6F0,stroke:#B8922A,stroke-width:2px,color:#1A1410;
+    classDef lockStyle fill:#FAF6F0,stroke:#C4501A,stroke-width:2px,color:#1A1410;
+    classDef exportStyle fill:#F5F0E6,stroke:#1A1410,stroke-width:2px,color:#5C5349;
 
     subgraph Scheduler["1. Task Scheduling"]
         SCHED["Windows Task Scheduler<br/>(Recurring Cron / Daily 2:00 AM)"]:::daemonStyle

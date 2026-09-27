@@ -36,10 +36,10 @@ Google NotebookLM provides deep grounded query capabilities across large documen
 
 ```mermaid
 flowchart TD
-    classDef clientStyle fill:#1A1410,stroke:#B8922A,stroke-width:2px,color:#E8E0D4;
-    classDef engineStyle fill:#2C2420,stroke:#B8922A,stroke-width:2px,color:#E8E0D4;
-    classDef mcpStyle fill:#2C2420,stroke:#C4501A,stroke-width:2px,color:#E8E0D4;
-    classDef outStyle fill:#2C2420,stroke:#B8922A,stroke-width:2px,color:#9A9088;
+    classDef clientStyle fill:#FAF6F0,stroke:#1A1410,stroke-width:2px,color:#1A1410;
+    classDef engineStyle fill:#FAF6F0,stroke:#B8922A,stroke-width:2px,color:#1A1410;
+    classDef mcpStyle fill:#FAF6F0,stroke:#C4501A,stroke-width:2px,color:#1A1410;
+    classDef outStyle fill:#F5F0E6,stroke:#1A1410,stroke-width:2px,color:#5C5349;
 
     subgraph Client["1. Ingestion & Mining Request"]
         CLI_REQ["CLI / Task Scheduler<br/>(trm mine-notebooklm)"]:::clientStyle

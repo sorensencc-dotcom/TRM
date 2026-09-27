@@ -21,10 +21,10 @@ The `viking://` virtual filesystem provider implements a high-speed SQLite Write
 
 ```mermaid
 flowchart LR
-    classDef inputStyle fill:#1A1410,stroke:#B8922A,stroke-width:2px,color:#E8E0D4;
-    classDef stageStyle fill:#2C2420,stroke:#B8922A,stroke-width:2px,color:#E8E0D4;
-    classDef compStyle fill:#1A1410,stroke:#C4501A,stroke-width:2px,color:#E8E0D4;
-    classDef modeStyle fill:#2C2420,stroke:#B8922A,stroke-width:2px,color:#9A9088;
+    classDef inputStyle fill:#FAF6F0,stroke:#1A1410,stroke-width:2px,color:#1A1410;
+    classDef stageStyle fill:#FAF6F0,stroke:#B8922A,stroke-width:2px,color:#1A1410;
+    classDef compStyle fill:#FAF6F0,stroke:#C4501A,stroke-width:2px,color:#1A1410;
+    classDef modeStyle fill:#F5F0E6,stroke:#1A1410,stroke-width:2px,color:#5C5349;
 
     URI["1. viking:// URI Request<br/>(vfs_read_file / vfs_search)"]:::inputStyle --> WAL["2. SQLite WAL Database<br/>(knowledge.db / FTS5 BM25)"]:::stageStyle
     

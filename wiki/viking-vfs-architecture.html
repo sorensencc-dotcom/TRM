@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <!-- Regenerated from cic_design_system tokens (forge/brass/ember). No gradients, shadows, or rounded corners. -->
+  <!-- Regenerated: CIC readable parchment (#F5F0E6 field, #FAF6F0 nodes, forge ink borders/text, brass/ember accents). No gradients, shadows, or rounded corners. -->
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TRM · Viking VFS & Tiered Compaction Architecture</title>
@@ -9,12 +9,16 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --color-bg:       #1A1410;
+      --color-bg:       #F5F0E6;
+      --color-paper:    #F5F0E6;
+      --color-node:     #FAF6F0;
       --color-grid:     #2C2420;
-      --color-stroke:   #B8922A;
+      --color-stroke:   #1A1410;
+      --color-brass:    #B8922A;
       --color-ember:    #C4501A;
-      --color-text:     #E8E0D4;
-      --color-muted:    #9A9088;
+      --color-text:     #1A1410;
+      --color-ink:      #1A1410;
+      --color-muted:    #5C5349;
       --font-sans:      'Barlow Condensed', system-ui, sans-serif;
       --font-serif:     'Playfair Display', serif;
       --font-sub:       'Libre Baskerville', serif;
@@ -64,7 +68,7 @@
     <svg viewBox="0 0 1200 520" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-          <polygon points="0 0, 8 3, 0 6" fill="#9A9088"/>
+          <polygon points="0 0, 8 3, 0 6" fill="#5C5349"/>
         </marker>
         <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
           <polygon points="0 0, 8 3, 0 6" fill="#C4501A"/>
@@ -72,90 +76,90 @@
       </defs>
 
       <!-- Lane 1: Query & Intercept -->
-      <rect x="20" y="20" width="260" height="470" fill="rgba(44,36,32,0.08)" stroke="rgba(44,36,32,0.1)" stroke-width="0.8"/>
-      <text x="150" y="42" fill="rgba(44,36,32,0.35)" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">1. PROTOCOL INTERCEPT</text>
+      <rect x="20" y="20" width="260" height="470" fill="rgba(26,20,16,0.08)" stroke="rgba(26,20,16,0.1)" stroke-width="0.8"/>
+      <text x="150" y="42" fill="rgba(26,20,16,0.35)" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">1. PROTOCOL INTERCEPT</text>
 
-      <rect x="40" y="70" width="220" height="74" fill="#2C2420" stroke="#2C2420" stroke-width="1"/>
-      <text x="56" y="90" fill="#2C2420" font-size="8" font-family="'Libre Baskerville', monospace">URI</text>
-      <text x="150" y="110" fill="#2C2420" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">viking:// URI Request</text>
-      <text x="150" y="128" fill="#9A9088" font-size="9.5" font-family="'Libre Baskerville', monospace" text-anchor="middle">vfs_read_file / vfs_search</text>
+      <rect x="40" y="70" width="220" height="74" fill="#FAF6F0" stroke="#1A1410" stroke-width="1"/>
+      <text x="56" y="90" fill="#1A1410" font-size="8" font-family="'Libre Baskerville', monospace">URI</text>
+      <text x="150" y="110" fill="#1A1410" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">viking:// URI Request</text>
+      <text x="150" y="128" fill="#5C5349" font-size="9.5" font-family="'Libre Baskerville', monospace" text-anchor="middle">vfs_read_file / vfs_search</text>
 
-      <rect x="40" y="220" width="220" height="74" fill="#2C2420" stroke="#2C2420" stroke-width="1"/>
-      <text x="56" y="240" fill="#2C2420" font-size="8" font-family="'Libre Baskerville', monospace">WAL</text>
-      <text x="150" y="260" fill="#2C2420" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">SQLite WAL Database</text>
-      <text x="150" y="278" fill="#9A9088" font-size="9.5" font-family="'Libre Baskerville', monospace" text-anchor="middle">knowledge.db / FTS5 BM25</text>
+      <rect x="40" y="220" width="220" height="74" fill="#FAF6F0" stroke="#1A1410" stroke-width="1"/>
+      <text x="56" y="240" fill="#1A1410" font-size="8" font-family="'Libre Baskerville', monospace">WAL</text>
+      <text x="150" y="260" fill="#1A1410" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">SQLite WAL Database</text>
+      <text x="150" y="278" fill="#5C5349" font-size="9.5" font-family="'Libre Baskerville', monospace" text-anchor="middle">knowledge.db / FTS5 BM25</text>
 
       <!-- Lane 2: Tier Routing -->
-      <rect x="310" y="20" width="270" height="470" fill="rgba(44,36,32,0.08)" stroke="rgba(44,36,32,0.1)" stroke-width="0.8"/>
-      <text x="445" y="42" fill="rgba(44,36,32,0.35)" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">2. TIER RESOLUTION</text>
+      <rect x="310" y="20" width="270" height="470" fill="rgba(26,20,16,0.08)" stroke="rgba(26,20,16,0.1)" stroke-width="0.8"/>
+      <text x="445" y="42" fill="rgba(26,20,16,0.35)" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">2. TIER RESOLUTION</text>
 
-      <rect x="330" y="70" width="230" height="74" fill="#2C2420" stroke="#2C2420" stroke-width="1"/>
-      <text x="346" y="90" fill="#2C2420" font-size="8" font-family="'Libre Baskerville', monospace">L0</text>
-      <text x="445" y="110" fill="#2C2420" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">L0 Abstract Tier</text>
-      <text x="445" y="128" fill="#9A9088" font-size="9.5" font-family="'Libre Baskerville', monospace" text-anchor="middle">Summary & Purpose (~94.5% cut)</text>
+      <rect x="330" y="70" width="230" height="74" fill="#FAF6F0" stroke="#1A1410" stroke-width="1"/>
+      <text x="346" y="90" fill="#1A1410" font-size="8" font-family="'Libre Baskerville', monospace">L0</text>
+      <text x="445" y="110" fill="#1A1410" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">L0 Abstract Tier</text>
+      <text x="445" y="128" fill="#5C5349" font-size="9.5" font-family="'Libre Baskerville', monospace" text-anchor="middle">Summary & Purpose (~94.5% cut)</text>
 
       <rect x="330" y="220" width="230" height="74" fill="rgba(196,80,26,0.08)" stroke="#C4501A" stroke-width="1.2"/>
       <text x="346" y="240" fill="#C4501A" font-size="8" font-family="'Libre Baskerville', monospace">L1</text>
       <text x="445" y="260" fill="#C4501A" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">L1 Overview & AST Skeleton</text>
-      <text x="445" y="278" fill="#9A9088" font-size="9.5" font-family="'Libre Baskerville', monospace" text-anchor="middle">Contracts / Signatures (48.5%-90%)</text>
+      <text x="445" y="278" fill="#5C5349" font-size="9.5" font-family="'Libre Baskerville', monospace" text-anchor="middle">Contracts / Signatures (48.5%-90%)</text>
 
-      <rect x="330" y="370" width="230" height="74" fill="#2C2420" stroke="#2C2420" stroke-width="1"/>
-      <text x="346" y="390" fill="#2C2420" font-size="8" font-family="'Libre Baskerville', monospace">L2</text>
-      <text x="445" y="410" fill="#2C2420" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">L2 Full Raw Source</text>
-      <text x="445" y="428" fill="#9A9088" font-size="9.5" font-family="'Libre Baskerville', monospace" text-anchor="middle">Bit-for-bit Full Payload (0% cut)</text>
+      <rect x="330" y="370" width="230" height="74" fill="#FAF6F0" stroke="#1A1410" stroke-width="1"/>
+      <text x="346" y="390" fill="#1A1410" font-size="8" font-family="'Libre Baskerville', monospace">L2</text>
+      <text x="445" y="410" fill="#1A1410" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">L2 Full Raw Source</text>
+      <text x="445" y="428" fill="#5C5349" font-size="9.5" font-family="'Libre Baskerville', monospace" text-anchor="middle">Bit-for-bit Full Payload (0% cut)</text>
 
       <!-- Lane 3: AST Fallback Engine -->
-      <rect x="610" y="20" width="290" height="470" fill="rgba(44,36,32,0.08)" stroke="rgba(44,36,32,0.1)" stroke-width="0.8"/>
-      <text x="755" y="42" fill="rgba(44,36,32,0.35)" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">3. THREE-TIER AST FALLBACK</text>
+      <rect x="610" y="20" width="290" height="470" fill="rgba(26,20,16,0.08)" stroke="rgba(26,20,16,0.1)" stroke-width="0.8"/>
+      <text x="755" y="42" fill="rgba(26,20,16,0.35)" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">3. THREE-TIER AST FALLBACK</text>
 
       <rect x="630" y="70" width="250" height="74" fill="rgba(196,80,26,0.08)" stroke="#C4501A" stroke-width="1"/>
       <text x="646" y="90" fill="#C4501A" font-size="8" font-family="'Libre Baskerville', monospace">T1</text>
-      <text x="755" y="110" fill="#2C2420" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Native TypeScript Compiler API</text>
-      <text x="755" y="128" fill="#9A9088" font-size="9.5" font-family="'Libre Baskerville', monospace" text-anchor="middle">AST Compactor: Bodies -> Error Trap</text>
+      <text x="755" y="110" fill="#1A1410" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Native TypeScript Compiler API</text>
+      <text x="755" y="128" fill="#5C5349" font-size="9.5" font-family="'Libre Baskerville', monospace" text-anchor="middle">AST Compactor: Bodies -> Error Trap</text>
 
-      <rect x="630" y="220" width="250" height="74" fill="#2C2420" stroke="#2C2420" stroke-width="1"/>
-      <text x="646" y="240" fill="#2C2420" font-size="8" font-family="'Libre Baskerville', monospace">T2</text>
-      <text x="755" y="260" fill="#2C2420" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Graft CLI Integration</text>
-      <text x="755" y="278" fill="#9A9088" font-size="9.5" font-family="'Libre Baskerville', monospace" text-anchor="middle">npx @nanonets/graft skeleton</text>
+      <rect x="630" y="220" width="250" height="74" fill="#FAF6F0" stroke="#1A1410" stroke-width="1"/>
+      <text x="646" y="240" fill="#1A1410" font-size="8" font-family="'Libre Baskerville', monospace">T2</text>
+      <text x="755" y="260" fill="#1A1410" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Graft CLI Integration</text>
+      <text x="755" y="278" fill="#5C5349" font-size="9.5" font-family="'Libre Baskerville', monospace" text-anchor="middle">npx @nanonets/graft skeleton</text>
 
-      <rect x="630" y="370" width="250" height="74" fill="#2C2420" stroke="#2C2420" stroke-width="1"/>
-      <text x="646" y="390" fill="#2C2420" font-size="8" font-family="'Libre Baskerville', monospace">T3</text>
-      <text x="755" y="410" fill="#2C2420" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Regex Signature Scraper</text>
-      <text x="755" y="428" fill="#9A9088" font-size="9.5" font-family="'Libre Baskerville', monospace" text-anchor="middle">Zero-Dependency Signature Header Scrape</text>
+      <rect x="630" y="370" width="250" height="74" fill="#FAF6F0" stroke="#1A1410" stroke-width="1"/>
+      <text x="646" y="390" fill="#1A1410" font-size="8" font-family="'Libre Baskerville', monospace">T3</text>
+      <text x="755" y="410" fill="#1A1410" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Regex Signature Scraper</text>
+      <text x="755" y="428" fill="#5C5349" font-size="9.5" font-family="'Libre Baskerville', monospace" text-anchor="middle">Zero-Dependency Signature Header Scrape</text>
 
       <!-- Lane 4: Output / Modes -->
-      <rect x="930" y="20" width="250" height="470" fill="rgba(44,36,32,0.08)" stroke="rgba(44,36,32,0.1)" stroke-width="0.8"/>
-      <text x="1055" y="42" fill="rgba(44,36,32,0.35)" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">4. AGENT MODES</text>
+      <rect x="930" y="20" width="250" height="470" fill="rgba(26,20,16,0.08)" stroke="rgba(26,20,16,0.1)" stroke-width="0.8"/>
+      <text x="1055" y="42" fill="rgba(26,20,16,0.35)" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">4. AGENT MODES</text>
 
-      <rect x="950" y="70" width="210" height="85" fill="#2C2420" stroke="#2C2420" stroke-width="1"/>
-      <text x="966" y="90" fill="#2C2420" font-size="8" font-family="'Libre Baskerville', monospace">EXP</text>
-      <text x="1055" y="110" fill="#2C2420" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Exploration Mode</text>
-      <text x="1055" y="128" fill="#9A9088" font-size="9.5" font-family="'Libre Baskerville', monospace" text-anchor="middle">Query L0/L1 Compaction</text>
+      <rect x="950" y="70" width="210" height="85" fill="#FAF6F0" stroke="#1A1410" stroke-width="1"/>
+      <text x="966" y="90" fill="#1A1410" font-size="8" font-family="'Libre Baskerville', monospace">EXP</text>
+      <text x="1055" y="110" fill="#1A1410" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Exploration Mode</text>
+      <text x="1055" y="128" fill="#5C5349" font-size="9.5" font-family="'Libre Baskerville', monospace" text-anchor="middle">Query L0/L1 Compaction</text>
       <text x="1055" y="142" fill="#C4501A" font-size="8" font-family="'Libre Baskerville', monospace" text-anchor="middle">[explore] / .claude-explore.md</text>
 
-      <rect x="950" y="360" width="210" height="85" fill="#2C2420" stroke="#2C2420" stroke-width="1"/>
-      <text x="966" y="380" fill="#2C2420" font-size="8" font-family="'Libre Baskerville', monospace">REF</text>
-      <text x="1055" y="400" fill="#2C2420" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Refactor Mode</text>
-      <text x="1055" y="418" fill="#9A9088" font-size="9.5" font-family="'Libre Baskerville', monospace" text-anchor="middle">Direct L2 Raw Disk Read</text>
+      <rect x="950" y="360" width="210" height="85" fill="#FAF6F0" stroke="#1A1410" stroke-width="1"/>
+      <text x="966" y="380" fill="#1A1410" font-size="8" font-family="'Libre Baskerville', monospace">REF</text>
+      <text x="1055" y="400" fill="#1A1410" font-size="14" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Refactor Mode</text>
+      <text x="1055" y="418" fill="#5C5349" font-size="9.5" font-family="'Libre Baskerville', monospace" text-anchor="middle">Direct L2 Raw Disk Read</text>
       <text x="1055" y="432" fill="#C4501A" font-size="8" font-family="'Libre Baskerville', monospace" text-anchor="middle">[refactor] / .claude-refactor.md</text>
 
       <!-- Connectors -->
       <!-- URI -> WAL -->
-      <line x1="150" y1="144" x2="150" y2="220" stroke="#9A9088" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <line x1="150" y1="144" x2="150" y2="220" stroke="#5C5349" stroke-width="1.2" marker-end="url(#arrow)"/>
 
       <!-- WAL -> Tiers -->
-      <path d="M 260 257 L 295 257 L 295 107 L 330 107" fill="none" stroke="#9A9088" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <path d="M 260 257 L 295 257 L 295 107 L 330 107" fill="#1A1410" stroke="#5C5349" stroke-width="1.2" marker-end="url(#arrow)"/>
       <line x1="260" y1="257" x2="330" y2="257" stroke="#C4501A" stroke-width="1.5" marker-end="url(#arrow-accent)"/>
-      <path d="M 260 257 L 295 257 L 295 407 L 330 407" fill="none" stroke="#9A9088" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <path d="M 260 257 L 295 257 L 295 407 L 330 407" fill="#1A1410" stroke="#5C5349" stroke-width="1.2" marker-end="url(#arrow)"/>
 
       <!-- L1 -> AST Fallback (elbow paths around nodes) -->
-      <path d="M 560 257 L 595 257 L 595 107 L 630 107" fill="none" stroke="#C4501A" stroke-width="1.5" marker-end="url(#arrow-accent)"/>
-      <line x1="560" y1="257" x2="630" y2="257" stroke="#9A9088" stroke-width="1.2" marker-end="url(#arrow)"/>
-      <path d="M 560 257 L 595 257 L 595 407 L 630 407" fill="none" stroke="#9A9088" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <path d="M 560 257 L 595 257 L 595 107 L 630 107" fill="#1A1410" stroke="#C4501A" stroke-width="1.5" marker-end="url(#arrow-accent)"/>
+      <line x1="560" y1="257" x2="630" y2="257" stroke="#5C5349" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <path d="M 560 257 L 595 257 L 595 407 L 630 407" fill="#1A1410" stroke="#5C5349" stroke-width="1.2" marker-end="url(#arrow)"/>
 
       <!-- Outputs -> Modes -->
       <line x1="880" y1="107" x2="950" y2="107" stroke="#C4501A" stroke-width="1.5" marker-end="url(#arrow-accent)"/>
-      <path d="M 560 407 L 595 407 L 595 470 L 920 470 L 920 402 L 950 402" fill="none" stroke="#9A9088" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <path d="M 560 407 L 595 407 L 595 470 L 920 470 L 920 402 L 950 402" fill="#1A1410" stroke="#5C5349" stroke-width="1.2" marker-end="url(#arrow)"/>
 
     </svg>
   </div>

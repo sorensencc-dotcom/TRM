@@ -36,10 +36,10 @@ Primary historical and operational evidence spans diverse media formats beyond r
 
 ```mermaid
 flowchart TD
-    classDef inputStyle fill:#1A1410,stroke:#B8922A,stroke-width:2px,color:#E8E0D4;
-    classDef procStyle fill:#2C2420,stroke:#B8922A,stroke-width:2px,color:#E8E0D4;
-    classDef mediaStyle fill:#2C2420,stroke:#C4501A,stroke-width:2px,color:#E8E0D4;
-    classDef outStyle fill:#2C2420,stroke:#B8922A,stroke-width:2px,color:#9A9088;
+    classDef inputStyle fill:#FAF6F0,stroke:#1A1410,stroke-width:2px,color:#1A1410;
+    classDef procStyle fill:#FAF6F0,stroke:#B8922A,stroke-width:2px,color:#1A1410;
+    classDef mediaStyle fill:#FAF6F0,stroke:#C4501A,stroke-width:2px,color:#1A1410;
+    classDef outStyle fill:#F5F0E6,stroke:#1A1410,stroke-width:2px,color:#5C5349;
 
     subgraph Inputs["1. Unstructured Media Ingestion"]
         IN_FILE["Input Media File<br/>(Text, PDF, Image, Video, Audio)"]:::inputStyle

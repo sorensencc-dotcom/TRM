@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <!-- Regenerated from cic_design_system tokens (forge/brass/ember). No gradients, shadows, or rounded corners. -->
+  <!-- Regenerated: CIC readable parchment (#F5F0E6 field, #FAF6F0 nodes, forge ink borders/text, brass/ember accents). No gradients, shadows, or rounded corners. -->
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TRM · Topic Pack Architecture (topic.pack.v1)</title>
@@ -9,12 +9,16 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --color-bg:       #1A1410;
+      --color-bg:       #F5F0E6;
+      --color-paper:    #F5F0E6;
+      --color-node:     #FAF6F0;
       --color-grid:     #2C2420;
-      --color-stroke:   #B8922A;
+      --color-stroke:   #1A1410;
+      --color-brass:    #B8922A;
       --color-ember:    #C4501A;
-      --color-text:     #E8E0D4;
-      --color-muted:    #9A9088;
+      --color-text:     #1A1410;
+      --color-ink:      #1A1410;
+      --color-muted:    #5C5349;
       --font-sans:      'Barlow Condensed', system-ui, sans-serif;
       --font-serif:     'Playfair Display', serif;
       --font-sub:       'Libre Baskerville', serif;
@@ -65,141 +69,141 @@
       <title id="trm-title">TRM: source pinning to canonical knowledge</title>
       <desc id="trm-desc">Cathryn Lavery diagram design showing source ingestion, task decomposition, topic pack layout, operator approval gate, and staging sync.</desc>
       <defs>
-        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#9A9088"/></marker>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#5C5349"/></marker>
         <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#C4501A"/></marker>
       </defs>
 
-      <rect width="100%" height="100%" fill="#1A1410"/>
+      <rect width="100%" height="100%" fill="#F5F0E6"/>
 
       <!-- ============ ZONES ============ -->
-      <rect x="60" y="128" width="360" height="288" fill="rgba(44,36,32,0.08)" stroke="rgba(44,36,32,0.1)" stroke-width="0.8"/>
-      <rect x="140" y="132" width="200" height="12" fill="#1A1410"/>
-      <text x="240" y="141" fill="rgba(44,36,32,0.35)" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">1. SOURCE INGESTION &amp; PINNING</text>
+      <rect x="60" y="128" width="360" height="288" fill="rgba(26,20,16,0.08)" stroke="rgba(26,20,16,0.1)" stroke-width="0.8"/>
+      <rect x="140" y="132" width="200" height="12" fill="#F5F0E6"/>
+      <text x="240" y="141" fill="rgba(26,20,16,0.35)" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">1. SOURCE INGESTION &amp; PINNING</text>
 
-      <rect x="460" y="128" width="360" height="288" fill="rgba(44,36,32,0.08)" stroke="rgba(44,36,32,0.1)" stroke-width="0.8"/>
-      <rect x="520" y="132" width="240" height="12" fill="#1A1410"/>
-      <text x="640" y="141" fill="rgba(44,36,32,0.35)" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">2. TOPIC PACK LAYOUT (topic.pack.v1)</text>
+      <rect x="460" y="128" width="360" height="288" fill="rgba(26,20,16,0.08)" stroke="rgba(26,20,16,0.1)" stroke-width="0.8"/>
+      <rect x="520" y="132" width="240" height="12" fill="#F5F0E6"/>
+      <text x="640" y="141" fill="rgba(26,20,16,0.35)" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">2. TOPIC PACK LAYOUT (topic.pack.v1)</text>
 
-      <rect x="860" y="128" width="360" height="544" fill="rgba(44,36,32,0.08)" stroke="rgba(44,36,32,0.1)" stroke-width="0.8"/>
-      <rect x="940" y="132" width="200" height="12" fill="#1A1410"/>
-      <text x="1040" y="141" fill="rgba(44,36,32,0.35)" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">3. AUDIT GATE &amp; STAGING SYNC</text>
+      <rect x="860" y="128" width="360" height="544" fill="rgba(26,20,16,0.08)" stroke="rgba(26,20,16,0.1)" stroke-width="0.8"/>
+      <rect x="940" y="132" width="200" height="12" fill="#F5F0E6"/>
+      <text x="1040" y="141" fill="rgba(26,20,16,0.35)" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">3. AUDIT GATE &amp; STAGING SYNC</text>
 
       <!-- ============ ARROWS ============ -->
-      <line x1="240" y1="224" x2="240" y2="272" stroke="#9A9088" stroke-width="1.2" marker-end="url(#arrow)"/>
-      <line x1="240" y1="336" x2="480" y2="336" stroke="#9A9088" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <line x1="240" y1="224" x2="240" y2="272" stroke="#5C5349" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <line x1="240" y1="336" x2="480" y2="336" stroke="#5C5349" stroke-width="1.2" marker-end="url(#arrow)"/>
 
       <line x1="640" y1="224" x2="640" y2="248" stroke="#C4501A" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
       <line x1="640" y1="312" x2="640" y2="336" stroke="#C4501A" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
 
-      <line x1="720" y1="368" x2="880" y2="368" stroke="#9A9088" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <line x1="720" y1="368" x2="880" y2="368" stroke="#5C5349" stroke-width="1.2" marker-end="url(#arrow)"/>
 
-      <line x1="1040" y1="224" x2="1040" y2="272" stroke="#9A9088" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <line x1="1040" y1="224" x2="1040" y2="272" stroke="#5C5349" stroke-width="1.2" marker-end="url(#arrow)"/>
       <line x1="1040" y1="336" x2="1040" y2="384" stroke="#C4501A" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
       <line x1="1040" y1="448" x2="1040" y2="496" stroke="#C4501A" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
-      <line x1="1040" y1="560" x2="1040" y2="608" stroke="#9A9088" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <line x1="1040" y1="560" x2="1040" y2="608" stroke="#5C5349" stroke-width="1.2" marker-end="url(#arrow)"/>
 
       <!-- ============ NODES ============ -->
 
       <!-- Raw Corpora -->
-      <rect x="80" y="160" width="320" height="64" fill="#1A1410"/>
-      <rect x="80" y="160" width="320" height="64" fill="rgba(44,36,32,0.08)" stroke="rgba(44,36,32,0.3)" stroke-width="1"/>
-      <rect x="88" y="168" width="28" height="12" fill="transparent" stroke="rgba(44,36,32,0.22)" stroke-width="0.8"/>
-      <text x="102" y="177" fill="#9A9088" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.08em">EXT</text>
-      <text x="240" y="196" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Raw Unstructured Corpora</text>
-      <text x="240" y="212" fill="#9A9088" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle">PDF · Text · Video · Audio · NotebookLM</text>
+      <rect x="80" y="160" width="320" height="64" fill="#F5F0E6"/>
+      <rect x="80" y="160" width="320" height="64" fill="rgba(26,20,16,0.08)" stroke="rgba(26,20,16,0.3)" stroke-width="1"/>
+      <rect x="88" y="168" width="28" height="12" fill="transparent" stroke="rgba(26,20,16,0.22)" stroke-width="0.8"/>
+      <text x="102" y="177" fill="#5C5349" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.08em">EXT</text>
+      <text x="240" y="196" fill="#1A1410" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Raw Unstructured Corpora</text>
+      <text x="240" y="212" fill="#5C5349" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle">PDF · Text · Video · Audio · NotebookLM</text>
 
       <!-- Source Pinning Engine -->
-      <rect x="80" y="272" width="320" height="64" fill="#1A1410"/>
-      <rect x="80" y="272" width="320" height="64" fill="#2C2420" stroke="#2C2420" stroke-width="1"/>
-      <rect x="88" y="280" width="28" height="12" fill="transparent" stroke="rgba(44,36,32,0.35)" stroke-width="0.8"/>
-      <text x="102" y="289" fill="#2C2420" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.08em">SVC</text>
-      <text x="240" y="308" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">TRM Source Pinning</text>
-      <text x="240" y="324" fill="#9A9088" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle">SHA-256 Digest &amp; Byte Length</text>
+      <rect x="80" y="272" width="320" height="64" fill="#F5F0E6"/>
+      <rect x="80" y="272" width="320" height="64" fill="#FAF6F0" stroke="#1A1410" stroke-width="1"/>
+      <rect x="88" y="280" width="28" height="12" fill="transparent" stroke="rgba(26,20,16,0.35)" stroke-width="0.8"/>
+      <text x="102" y="289" fill="#1A1410" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.08em">SVC</text>
+      <text x="240" y="308" fill="#1A1410" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">TRM Source Pinning</text>
+      <text x="240" y="324" fill="#5C5349" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle">SHA-256 Digest &amp; Byte Length</text>
 
       <!-- Manifest -->
-      <rect x="480" y="160" width="320" height="64" fill="#1A1410"/>
+      <rect x="480" y="160" width="320" height="64" fill="#F5F0E6"/>
       <rect x="480" y="160" width="320" height="64" fill="rgba(196,80,26,0.08)" stroke="#C4501A" stroke-width="1"/>
       <rect x="488" y="168" width="32" height="12" fill="transparent" stroke="rgba(196,80,26,0.35)" stroke-width="0.8"/>
       <text x="504" y="177" fill="#C4501A" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.08em">MAN</text>
-      <text x="640" y="196" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">topic.manifest.json</text>
-      <text x="640" y="212" fill="#9A9088" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle">Domain ontology &amp; time horizon</text>
+      <text x="640" y="196" fill="#1A1410" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">topic.manifest.json</text>
+      <text x="640" y="212" fill="#5C5349" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle">Domain ontology &amp; time horizon</text>
 
       <!-- Task Specs -->
-      <rect x="480" y="248" width="320" height="64" fill="#1A1410"/>
-      <rect x="480" y="248" width="320" height="64" fill="#2C2420" stroke="#2C2420" stroke-width="1"/>
-      <rect x="488" y="256" width="32" height="12" fill="transparent" stroke="rgba(44,36,32,0.35)" stroke-width="0.8"/>
-      <text x="504" y="265" fill="#2C2420" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.08em">TSK</text>
-      <text x="640" y="284" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">specs/task-*.json</text>
-      <text x="640" y="300" fill="#9A9088" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle">research.task.v1 byte targets</text>
+      <rect x="480" y="248" width="320" height="64" fill="#F5F0E6"/>
+      <rect x="480" y="248" width="320" height="64" fill="#FAF6F0" stroke="#1A1410" stroke-width="1"/>
+      <rect x="488" y="256" width="32" height="12" fill="transparent" stroke="rgba(26,20,16,0.35)" stroke-width="0.8"/>
+      <text x="504" y="265" fill="#1A1410" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.08em">TSK</text>
+      <text x="640" y="284" fill="#1A1410" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">specs/task-*.json</text>
+      <text x="640" y="300" fill="#5C5349" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle">research.task.v1 byte targets</text>
 
       <!-- Audit Rules -->
-      <rect x="480" y="336" width="320" height="64" fill="#1A1410"/>
+      <rect x="480" y="336" width="320" height="64" fill="#F5F0E6"/>
       <rect x="480" y="336" width="320" height="64" fill="rgba(196,80,26,0.08)" stroke="#C4501A" stroke-width="1"/>
       <rect x="488" y="344" width="32" height="12" fill="transparent" stroke="rgba(196,80,26,0.35)" stroke-width="0.8"/>
       <text x="504" y="353" fill="#C4501A" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.08em">AUD</text>
-      <text x="640" y="372" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">config/audit_rules.json</text>
-      <text x="640" y="388" fill="#9A9088" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle">Temporal bounds &amp; over-claim triggers</text>
+      <text x="640" y="372" fill="#1A1410" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">config/audit_rules.json</text>
+      <text x="640" y="388" fill="#5C5349" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle">Temporal bounds &amp; over-claim triggers</text>
 
       <!-- Operator Gate -->
-      <rect x="880" y="160" width="320" height="64" fill="#1A1410"/>
-      <rect x="880" y="160" width="320" height="64" fill="rgba(154,144,136,0.1)" stroke="#9A9088" stroke-width="1"/>
-      <rect x="888" y="168" width="28" height="12" fill="transparent" stroke="rgba(154,144,136,0.35)" stroke-width="0.8"/>
-      <text x="902" y="177" fill="#9A9088" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.08em">HUM</text>
-      <text x="1040" y="196" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Operator Approval Gate</text>
-      <text x="1040" y="212" fill="#9A9088" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle">Human boundary verification</text>
+      <rect x="880" y="160" width="320" height="64" fill="#F5F0E6"/>
+      <rect x="880" y="160" width="320" height="64" fill="rgba(92,83,73,0.1)" stroke="#5C5349" stroke-width="1"/>
+      <rect x="888" y="168" width="28" height="12" fill="transparent" stroke="rgba(92,83,73,0.35)" stroke-width="0.8"/>
+      <text x="902" y="177" fill="#5C5349" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.08em">HUM</text>
+      <text x="1040" y="196" fill="#1A1410" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Operator Approval Gate</text>
+      <text x="1040" y="212" fill="#5C5349" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle">Human boundary verification</text>
 
       <!-- Workers -->
-      <rect x="880" y="272" width="320" height="64" fill="#1A1410"/>
-      <rect x="880" y="272" width="320" height="64" fill="#2C2420" stroke="#2C2420" stroke-width="1"/>
-      <rect x="888" y="280" width="28" height="12" fill="transparent" stroke="rgba(44,36,32,0.35)" stroke-width="0.8"/>
-      <text x="902" y="289" fill="#2C2420" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.08em">WRK</text>
-      <text x="1040" y="308" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Extraction Workers</text>
-      <text x="1040" y="324" fill="#9A9088" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle">Ollama / Claude LLM Fact Extractors</text>
+      <rect x="880" y="272" width="320" height="64" fill="#F5F0E6"/>
+      <rect x="880" y="272" width="320" height="64" fill="#FAF6F0" stroke="#1A1410" stroke-width="1"/>
+      <rect x="888" y="280" width="28" height="12" fill="transparent" stroke="rgba(26,20,16,0.35)" stroke-width="0.8"/>
+      <text x="902" y="289" fill="#1A1410" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.08em">WRK</text>
+      <text x="1040" y="308" fill="#1A1410" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Extraction Workers</text>
+      <text x="1040" y="324" fill="#5C5349" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle">Ollama / Claude LLM Fact Extractors</text>
 
       <!-- Audit Engine API -->
-      <rect x="880" y="384" width="320" height="64" fill="#1A1410"/>
+      <rect x="880" y="384" width="320" height="64" fill="#F5F0E6"/>
       <rect x="880" y="384" width="320" height="64" fill="rgba(196,80,26,0.08)" stroke="#C4501A" stroke-width="1"/>
       <rect x="888" y="392" width="28" height="12" fill="transparent" stroke="rgba(196,80,26,0.35)" stroke-width="0.8"/>
       <text x="902" y="401" fill="#C4501A" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.08em">AUD</text>
-      <text x="1040" y="420" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Adversarial /api/audit Engine</text>
-      <text x="1040" y="436" fill="#9A9088" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle">Entity resolution &amp; flag verification</text>
+      <text x="1040" y="420" fill="#1A1410" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Adversarial /api/audit Engine</text>
+      <text x="1040" y="436" fill="#5C5349" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle">Entity resolution &amp; flag verification</text>
 
       <!-- Staging Area -->
-      <rect x="880" y="496" width="320" height="64" fill="#1A1410"/>
-      <rect x="880" y="496" width="320" height="64" fill="#2C2420" stroke="#2C2420" stroke-width="1"/>
-      <rect x="888" y="504" width="28" height="12" fill="transparent" stroke="rgba(44,36,32,0.35)" stroke-width="0.8"/>
-      <text x="902" y="513" fill="#2C2420" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.08em">STG</text>
-      <text x="1040" y="532" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">_kb-sync-staging/</text>
-      <text x="1040" y="548" fill="#9A9088" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle">Staged review queue &amp; audit log</text>
+      <rect x="880" y="496" width="320" height="64" fill="#F5F0E6"/>
+      <rect x="880" y="496" width="320" height="64" fill="#FAF6F0" stroke="#1A1410" stroke-width="1"/>
+      <rect x="888" y="504" width="28" height="12" fill="transparent" stroke="rgba(26,20,16,0.35)" stroke-width="0.8"/>
+      <text x="902" y="513" fill="#1A1410" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.08em">STG</text>
+      <text x="1040" y="532" fill="#1A1410" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">_kb-sync-staging/</text>
+      <text x="1040" y="548" fill="#5C5349" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle">Staged review queue &amp; audit log</text>
 
       <!-- Canonical Knowledge Base -->
-      <rect x="880" y="608" width="320" height="52" fill="#1A1410"/>
+      <rect x="880" y="608" width="320" height="52" fill="#F5F0E6"/>
       <rect x="880" y="608" width="320" height="52" fill="rgba(184,146,42,0.08)" stroke="#B8922A" stroke-width="1"/>
       <rect x="888" y="614" width="24" height="12" fill="transparent" stroke="rgba(184,146,42,0.35)" stroke-width="0.8"/>
       <text x="900" y="623" fill="#B8922A" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.08em">DB</text>
-      <text x="1040" y="636" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Canonical Knowledge Base</text>
+      <text x="1040" y="636" fill="#1A1410" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Canonical Knowledge Base</text>
 
       <!-- ============ LEGEND ============ -->
-      <line x1="40" y1="688" x2="1240" y2="688" stroke="rgba(44,36,32,0.1)" stroke-width="0.8"/>
-      <text x="40" y="700" fill="#9A9088" font-size="8" font-family="'Libre Baskerville', monospace" letter-spacing="0.18em">LEGEND</text>
+      <line x1="40" y1="688" x2="1240" y2="688" stroke="rgba(26,20,16,0.1)" stroke-width="0.8"/>
+      <text x="40" y="700" fill="#5C5349" font-size="8" font-family="'Libre Baskerville', monospace" letter-spacing="0.18em">LEGEND</text>
 
       <rect x="40" y="706" width="14" height="10" fill="rgba(196,80,26,0.08)" stroke="#C4501A" stroke-width="1"/>
-      <text x="60" y="714" fill="#9A9088" font-size="8.5" font-family="'Barlow Condensed', sans-serif">Focal / manifest &amp; audit rules</text>
+      <text x="60" y="714" fill="#5C5349" font-size="8.5" font-family="'Barlow Condensed', sans-serif">Focal / manifest &amp; audit rules</text>
 
-      <rect x="230" y="706" width="14" height="10" fill="#2C2420" stroke="#2C2420" stroke-width="1"/>
-      <text x="250" y="714" fill="#9A9088" font-size="8.5" font-family="'Barlow Condensed', sans-serif">TRM service / task spec</text>
+      <rect x="230" y="706" width="14" height="10" fill="#FAF6F0" stroke="#1A1410" stroke-width="1"/>
+      <text x="250" y="714" fill="#5C5349" font-size="8.5" font-family="'Barlow Condensed', sans-serif">TRM service / task spec</text>
 
-      <rect x="400" y="706" width="14" height="10" fill="rgba(44,36,32,0.08)" stroke="rgba(44,36,32,0.3)" stroke-width="1"/>
-      <text x="420" y="714" fill="#9A9088" font-size="8.5" font-family="'Barlow Condensed', sans-serif">External corpora</text>
+      <rect x="400" y="706" width="14" height="10" fill="rgba(26,20,16,0.08)" stroke="rgba(26,20,16,0.3)" stroke-width="1"/>
+      <text x="420" y="714" fill="#5C5349" font-size="8.5" font-family="'Barlow Condensed', sans-serif">External corpora</text>
 
-      <rect x="600" y="706" width="14" height="10" fill="rgba(154,144,136,0.1)" stroke="#9A9088" stroke-width="1"/>
-      <text x="620" y="714" fill="#9A9088" font-size="8.5" font-family="'Barlow Condensed', sans-serif">Human operator gate</text>
+      <rect x="600" y="706" width="14" height="10" fill="rgba(92,83,73,0.1)" stroke="#5C5349" stroke-width="1"/>
+      <text x="620" y="714" fill="#5C5349" font-size="8.5" font-family="'Barlow Condensed', sans-serif">Human operator gate</text>
 
       <rect x="770" y="706" width="14" height="10" fill="rgba(184,146,42,0.08)" stroke="#B8922A" stroke-width="1"/>
-      <text x="790" y="714" fill="#9A9088" font-size="8.5" font-family="'Barlow Condensed', sans-serif">Canonical knowledge store</text>
+      <text x="790" y="714" fill="#5C5349" font-size="8.5" font-family="'Barlow Condensed', sans-serif">Canonical knowledge store</text>
 
       <line x1="960" y1="712" x2="988" y2="712" stroke="#C4501A" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
-      <text x="996" y="714" fill="#9A9088" font-size="8.5" font-family="'Barlow Condensed', sans-serif">Audit-gated flow</text>
+      <text x="996" y="714" fill="#5C5349" font-size="8.5" font-family="'Barlow Condensed', sans-serif">Audit-gated flow</text>
     </svg>
   </div>
 </body>

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <!-- Regenerated from cic_design_system tokens (forge/brass/ember). No gradients, shadows, or rounded corners. -->
+  <!-- Regenerated: CIC readable parchment (#F5F0E6 field, #FAF6F0 nodes, forge ink borders/text, brass/ember accents). No gradients, shadows, or rounded corners. -->
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TRM · Security Guardrails & Root Safety</title>
@@ -9,12 +9,16 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --color-bg:       #1A1410;
+      --color-bg:       #F5F0E6;
+      --color-paper:    #F5F0E6;
+      --color-node:     #FAF6F0;
       --color-grid:     #2C2420;
-      --color-stroke:   #B8922A;
+      --color-stroke:   #1A1410;
+      --color-brass:    #B8922A;
       --color-ember:    #C4501A;
-      --color-text:     #E8E0D4;
-      --color-muted:    #9A9088;
+      --color-text:     #1A1410;
+      --color-ink:      #1A1410;
+      --color-muted:    #5C5349;
       --font-sans:      'Barlow Condensed', system-ui, sans-serif;
       --font-serif:     'Playfair Display', serif;
       --font-sub:       'Libre Baskerville', serif;
@@ -32,40 +36,40 @@
     <h1>TRM: assertSafeRoot zero-trust execution gate</h1>
     <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#9A9088"/></marker>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#5C5349"/></marker>
         <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#C4501A"/></marker>
       </defs>
-      <rect width="100%" height="100%" fill="#1A1410"/>
+      <rect width="100%" height="100%" fill="#F5F0E6"/>
 
-      <rect x="60" y="128" width="340" height="544" fill="rgba(44,36,32,0.08)" stroke="rgba(44,36,32,0.1)" stroke-width="0.8"/>
-      <text x="230" y="141" fill="rgba(44,36,32,0.35)" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">1. COMMAND INVOCATION</text>
+      <rect x="60" y="128" width="340" height="544" fill="rgba(26,20,16,0.08)" stroke="rgba(26,20,16,0.1)" stroke-width="0.8"/>
+      <text x="230" y="141" fill="rgba(26,20,16,0.35)" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">1. COMMAND INVOCATION</text>
 
-      <rect x="440" y="128" width="400" height="544" fill="rgba(44,36,32,0.08)" stroke="rgba(44,36,32,0.1)" stroke-width="0.8"/>
-      <text x="640" y="141" fill="rgba(44,36,32,0.35)" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">2. GIT CONFIG &amp; REMOTE INSPECTION</text>
+      <rect x="440" y="128" width="400" height="544" fill="rgba(26,20,16,0.08)" stroke="rgba(26,20,16,0.1)" stroke-width="0.8"/>
+      <text x="640" y="141" fill="rgba(26,20,16,0.35)" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">2. GIT CONFIG &amp; REMOTE INSPECTION</text>
 
-      <rect x="880" y="128" width="340" height="544" fill="rgba(44,36,32,0.08)" stroke="rgba(44,36,32,0.1)" stroke-width="0.8"/>
-      <text x="1050" y="141" fill="rgba(44,36,32,0.35)" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">3. ZERO-TRUST GATE DECISION</text>
+      <rect x="880" y="128" width="340" height="544" fill="rgba(26,20,16,0.08)" stroke="rgba(26,20,16,0.1)" stroke-width="0.8"/>
+      <text x="1050" y="141" fill="rgba(26,20,16,0.35)" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">3. ZERO-TRUST GATE DECISION</text>
 
       <!-- Nodes -->
-      <rect x="80" y="240" width="300" height="64" fill="#2C2420" stroke="#2C2420" stroke-width="1"/>
-      <text x="96" y="257" fill="#2C2420" font-size="7" font-family="'Libre Baskerville', monospace">CMD</text>
-      <text x="230" y="276" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">TRM Filesystem Command</text>
+      <rect x="80" y="240" width="300" height="64" fill="#FAF6F0" stroke="#1A1410" stroke-width="1"/>
+      <text x="96" y="257" fill="#1A1410" font-size="7" font-family="'Libre Baskerville', monospace">CMD</text>
+      <text x="230" y="276" fill="#1A1410" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">TRM Filesystem Command</text>
 
       <rect x="480" y="240" width="320" height="64" fill="rgba(196,80,26,0.08)" stroke="#C4501A" stroke-width="1"/>
       <text x="496" y="257" fill="#C4501A" font-size="7" font-family="'Libre Baskerville', monospace">SEC</text>
-      <text x="640" y="276" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">assertSafeRoot(process.cwd())</text>
-      <text x="640" y="292" fill="#9A9088" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle">Walk .git tree &amp; parse [remote]</text>
+      <text x="640" y="276" fill="#1A1410" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">assertSafeRoot(process.cwd())</text>
+      <text x="640" y="292" fill="#5C5349" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle">Walk .git tree &amp; parse [remote]</text>
 
       <rect x="900" y="200" width="300" height="64" fill="rgba(196,80,26,0.08)" stroke="#C4501A" stroke-width="1"/>
       <text x="916" y="217" fill="#C4501A" font-size="7" font-family="'Libre Baskerville', monospace">ERR</text>
-      <text x="1050" y="236" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">TERMINATE EXECUTION (Remote Found)</text>
+      <text x="1050" y="236" fill="#1A1410" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">TERMINATE EXECUTION (Remote Found)</text>
 
       <rect x="900" y="320" width="300" height="64" fill="rgba(184,146,42,0.08)" stroke="#B8922A" stroke-width="1"/>
       <text x="916" y="337" fill="#B8922A" font-size="7" font-family="'Libre Baskerville', monospace">OK</text>
-      <text x="1050" y="356" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">ALLOW EXECUTION (Local Vault)</text>
+      <text x="1050" y="356" fill="#1A1410" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">ALLOW EXECUTION (Local Vault)</text>
 
       <!-- Connectors -->
-      <line x1="380" y1="272" x2="480" y2="272" stroke="#9A9088" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <line x1="380" y1="272" x2="480" y2="272" stroke="#5C5349" stroke-width="1.2" marker-end="url(#arrow)"/>
       <line x1="800" y1="272" x2="900" y2="232" stroke="#C4501A" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
       <line x1="800" y1="272" x2="900" y2="352" stroke="#B8922A" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
     </svg>

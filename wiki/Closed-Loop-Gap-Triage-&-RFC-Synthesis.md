@@ -36,11 +36,11 @@ Unstructured research notes frequently accumulate ambiguous claims and unverifie
 
 ```mermaid
 flowchart TD
-    classDef inputStyle fill:#1A1410,stroke:#B8922A,stroke-width:2px,color:#E8E0D4;
-    classDef stageStyle fill:#2C2420,stroke:#B8922A,stroke-width:2px,color:#E8E0D4;
-    classDef cacheStyle fill:#2C2420,stroke:#C4501A,stroke-width:2px,color:#E8E0D4;
-    classDef gateStyle fill:#1A1410,stroke:#C4501A,stroke-width:2px,color:#E8E0D4;
-    classDef syncStyle fill:#2C2420,stroke:#B8922A,stroke-width:2px,color:#9A9088;
+    classDef inputStyle fill:#FAF6F0,stroke:#1A1410,stroke-width:2px,color:#1A1410;
+    classDef stageStyle fill:#FAF6F0,stroke:#B8922A,stroke-width:2px,color:#1A1410;
+    classDef cacheStyle fill:#FAF6F0,stroke:#C4501A,stroke-width:2px,color:#1A1410;
+    classDef gateStyle fill:#FAF6F0,stroke:#C4501A,stroke-width:2px,color:#1A1410;
+    classDef syncStyle fill:#F5F0E6,stroke:#1A1410,stroke-width:2px,color:#5C5349;
 
     subgraph Discovery["1. Gap Discovery"]
         G_INPUT["Research Gap Matrix<br/>(trm-research-gaps.md)"]:::inputStyle

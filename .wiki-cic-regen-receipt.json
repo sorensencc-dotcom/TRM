@@ -1,5 +1,6 @@
 {
-  "at": "2026-09-27T03:38:31.977Z",
+  "at": "2026-09-27T07:56:27.786Z",
+  "mode": "readable-parchment",
   "tokenSource": "C:\\dev\\charlie-deep-research\\cic_design_system.md",
   "allowlist": [
     "#1A1410",
@@ -7,9 +8,20 @@
     "#B8922A",
     "#C4501A",
     "#E8E0D4",
-    "#9A9088"
+    "#9A9088",
+    "#F5F0E6",
+    "#FAF6F0",
+    "#5C5349"
   ],
-  "mdChanged": 9,
+  "fills": {
+    "paper": "#F5F0E6",
+    "node": "#FAF6F0",
+    "ink": "#1A1410",
+    "ember": "#C4501A",
+    "brass": "#B8922A",
+    "muted_ink": "#5C5349"
+  },
+  "mdChanged": 8,
   "htmlChanged": 7,
   "pngChanged": 7,
   "remainingDrift": []
