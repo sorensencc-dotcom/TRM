@@ -1,3 +1,11 @@
+---
+title: "Viking Virtual File System (VFS) & Tiered Compaction"
+status: active
+owner: chris
+last-reviewed: 2026-09-26
+brand: cic
+---
+
 # Viking Virtual File System (VFS) & Tiered Compaction
 
 The `viking://` virtual filesystem provider implements a high-speed SQLite Write-Ahead Logging (WAL) state machine and AST skeletonizer designed to reduce agent token overhead by up to 94.5% during codebase exploration and knowledge synthesis.
@@ -13,10 +21,10 @@ The `viking://` virtual filesystem provider implements a high-speed SQLite Write
 
 ```mermaid
 flowchart LR
-    classDef inputStyle fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#f8fafc;
-    classDef stageStyle fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
-    classDef compStyle fill:#312e81,stroke:#a855f7,stroke-width:2px,color:#f8fafc;
-    classDef modeStyle fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc;
+    classDef inputStyle fill:#1A1410,stroke:#B8922A,stroke-width:2px,color:#E8E0D4;
+    classDef stageStyle fill:#2C2420,stroke:#B8922A,stroke-width:2px,color:#E8E0D4;
+    classDef compStyle fill:#1A1410,stroke:#C4501A,stroke-width:2px,color:#E8E0D4;
+    classDef modeStyle fill:#2C2420,stroke:#B8922A,stroke-width:2px,color:#9A9088;
 
     URI["1. viking:// URI Request<br/>(vfs_read_file / vfs_search)"]:::inputStyle --> WAL["2. SQLite WAL Database<br/>(knowledge.db / FTS5 BM25)"]:::stageStyle
     

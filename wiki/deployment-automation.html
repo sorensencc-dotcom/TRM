@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- Regenerated from cic_design_system tokens (forge/brass/ember). No gradients, shadows, or rounded corners. -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TRM · Deployment & Automation</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Barlow+Condensed:wght@400;600;700&family=Libre+Baskerville:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-bg:       #1A1410;
+      --color-grid:     #2C2420;
+      --color-stroke:   #B8922A;
+      --color-ember:    #C4501A;
+      --color-text:     #E8E0D4;
+      --color-muted:    #9A9088;
+      --font-sans:      'Barlow Condensed', system-ui, sans-serif;
+      --font-serif:     'Playfair Display', serif;
+      --font-sub:       'Libre Baskerville', serif;
+    }
+    body { font-family: var(--font-sans); background: var(--color-bg); color: var(--color-text); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 3rem 2rem; }
+    .frame { max-width: 1280px; width: 100%; }
+    .eyebrow { font-family: var(--font-sub); font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.15; color: var(--color-text); margin-bottom: 1.5rem; }
+    svg { width: 100%; min-width: 900px; display: block; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">TRM Deployment &amp; Automation · Cathryn Lavery Diagram Design</p>
+    <h1>TRM: background daemons to staging sync</h1>
+    <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#9A9088"/></marker>
+        <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#C4501A"/></marker>
+      </defs>
+      <rect width="100%" height="100%" fill="#1A1410"/>
+
+      <rect x="60" y="128" width="340" height="544" fill="rgba(44,36,32,0.08)" stroke="rgba(44,36,32,0.1)" stroke-width="0.8"/>
+      <text x="230" y="141" fill="rgba(44,36,32,0.35)" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">1. TASK SCHEDULER</text>
+
+      <rect x="440" y="128" width="400" height="544" fill="rgba(44,36,32,0.08)" stroke="rgba(44,36,32,0.1)" stroke-width="0.8"/>
+      <text x="640" y="141" fill="rgba(44,36,32,0.35)" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">2. CONCURRENCY-LOCKED MINING ENGINE</text>
+
+      <rect x="880" y="128" width="340" height="544" fill="rgba(44,36,32,0.08)" stroke="rgba(44,36,32,0.1)" stroke-width="0.8"/>
+      <text x="1050" y="141" fill="rgba(44,36,32,0.35)" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">3. STAGING EXPORT &amp; KB SYNC</text>
+
+      <rect x="80" y="240" width="300" height="64" fill="#2C2420" stroke="#2C2420" stroke-width="1"/>
+      <text x="96" y="257" fill="#2C2420" font-size="7" font-family="'Libre Baskerville', monospace">SCH</text>
+      <text x="230" y="276" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Windows Task Scheduler (Daily 2 AM)</text>
+
+      <rect x="480" y="240" width="320" height="64" fill="rgba(196,80,26,0.08)" stroke="#C4501A" stroke-width="1"/>
+      <text x="496" y="257" fill="#C4501A" font-size="7" font-family="'Libre Baskerville', monospace">LCK</text>
+      <text x="640" y="276" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Concurrency Lock (.sync-treatment.lock)</text>
+
+      <rect x="480" y="360" width="320" height="64" fill="#2C2420" stroke="#2C2420" stroke-width="1"/>
+      <text x="496" y="377" fill="#2C2420" font-size="7" font-family="'Libre Baskerville', monospace">MNE</text>
+      <text x="640" y="396" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">trm mine-notebooklm</text>
+
+      <rect x="900" y="300" width="300" height="64" fill="rgba(196,80,26,0.08)" stroke="#C4501A" stroke-width="1"/>
+      <text x="916" y="317" fill="#C4501A" font-size="7" font-family="'Libre Baskerville', monospace">EXP</text>
+      <text x="1050" y="336" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">triage:export:staging Script</text>
+
+      <rect x="900" y="420" width="300" height="64" fill="rgba(184,146,42,0.08)" stroke="#B8922A" stroke-width="1"/>
+      <text x="916" y="437" fill="#B8922A" font-size="7" font-family="'Libre Baskerville', monospace">DB</text>
+      <text x="1050" y="456" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">kb-sync Context Cache (knowledge.db)</text>
+
+      <line x1="380" y1="272" x2="480" y2="272" stroke="#9A9088" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <line x1="640" y1="304" x2="640" y2="360" stroke="#C4501A" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+      <line x1="800" y1="392" x2="900" y2="332" stroke="#C4501A" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+      <line x1="1050" y1="364" x2="1050" y2="420" stroke="#B8922A" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+    </svg>
+  </div>
+</body>
+</html>

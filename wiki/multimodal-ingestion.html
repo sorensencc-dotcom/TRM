@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- Regenerated from cic_design_system tokens (forge/brass/ember). No gradients, shadows, or rounded corners. -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TRM · Multimodal Ingestion & Media Pipeline</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Barlow+Condensed:wght@400;600;700&family=Libre+Baskerville:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-bg:       #1A1410;
+      --color-grid:     #2C2420;
+      --color-stroke:   #B8922A;
+      --color-ember:    #C4501A;
+      --color-text:     #E8E0D4;
+      --color-muted:    #9A9088;
+      --font-sans:      'Barlow Condensed', system-ui, sans-serif;
+      --font-serif:     'Playfair Display', serif;
+      --font-sub:       'Libre Baskerville', serif;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-bg);
+      color: var(--color-text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+
+    .frame { max-width: 1280px; width: 100%; }
+
+    .eyebrow {
+      font-family: var(--font-sub);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-text);
+      margin-bottom: 1.5rem;
+    }
+
+    svg { width: 100%; min-width: 900px; display: block; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">TRM Multimodal Ingestion · Cathryn Lavery Diagram Design</p>
+    <h1>TRM: media extraction &amp; corpus pinning</h1>
+
+    <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="multi-title multi-desc">
+      <title id="multi-title">TRM: media extraction and corpus pinning</title>
+      <desc id="multi-desc">Multimodal ingestion pipeline processing text, PDF, images, video keyframes, and audio into SHA-256 corpus catalogs.</desc>
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#9A9088"/></marker>
+        <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#C4501A"/></marker>
+      </defs>
+
+      <rect width="100%" height="100%" fill="#1A1410"/>
+
+      <!-- ZONES -->
+      <rect x="60" y="128" width="340" height="544" fill="rgba(44,36,32,0.08)" stroke="rgba(44,36,32,0.1)" stroke-width="0.8"/>
+      <text x="230" y="141" fill="rgba(44,36,32,0.35)" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">1. UNSTRUCTURED MEDIA INPUTS</text>
+
+      <rect x="440" y="128" width="400" height="544" fill="rgba(44,36,32,0.08)" stroke="rgba(44,36,32,0.1)" stroke-width="0.8"/>
+      <text x="640" y="141" fill="rgba(44,36,32,0.35)" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">2. PARALLEL TRANSFORMATION ENGINES</text>
+
+      <rect x="880" y="128" width="340" height="544" fill="rgba(44,36,32,0.08)" stroke="rgba(44,36,32,0.1)" stroke-width="0.8"/>
+      <text x="1050" y="141" fill="rgba(44,36,32,0.35)" font-size="7" font-family="'Libre Baskerville', monospace" text-anchor="middle" letter-spacing="0.14em">3. CORPUS PINNING &amp; SPEC TARGETS</text>
+
+      <!-- NODES Layer 1 -->
+      <rect x="80" y="160" width="300" height="64" fill="#2C2420" stroke="#2C2420" stroke-width="1"/>
+      <text x="96" y="177" fill="#2C2420" font-size="7" font-family="'Libre Baskerville', monospace">TXT</text>
+      <text x="230" y="196" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Text &amp; Markdown Docs</text>
+
+      <rect x="80" y="248" width="300" height="64" fill="#2C2420" stroke="#2C2420" stroke-width="1"/>
+      <text x="96" y="265" fill="#2C2420" font-size="7" font-family="'Libre Baskerville', monospace">PDF</text>
+      <text x="230" y="284" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Declassified PDF Scans</text>
+
+      <rect x="80" y="336" width="300" height="64" fill="#2C2420" stroke="#2C2420" stroke-width="1"/>
+      <text x="96" y="353" fill="#2C2420" font-size="7" font-family="'Libre Baskerville', monospace">IMG</text>
+      <text x="230" y="372" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">High-Res Layout Imagery</text>
+
+      <rect x="80" y="424" width="300" height="64" fill="#2C2420" stroke="#2C2420" stroke-width="1"/>
+      <text x="96" y="441" fill="#2C2420" font-size="7" font-family="'Libre Baskerville', monospace">VID</text>
+      <text x="230" y="460" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Historical Film &amp; Video</text>
+
+      <rect x="80" y="512" width="300" height="64" fill="#2C2420" stroke="#2C2420" stroke-width="1"/>
+      <text x="96" y="529" fill="#2C2420" font-size="7" font-family="'Libre Baskerville', monospace">AUD</text>
+      <text x="230" y="548" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Spoken Audio Interviews</text>
+
+      <!-- NODES Layer 2 (Engines) -->
+      <rect x="480" y="160" width="320" height="64" fill="#2C2420" stroke="#2C2420" stroke-width="1"/>
+      <text x="496" y="177" fill="#2C2420" font-size="7" font-family="'Libre Baskerville', monospace">NORM</text>
+      <text x="640" y="196" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">Text &amp; Layout Normalizer</text>
+
+      <rect x="480" y="280" width="320" height="64" fill="rgba(196,80,26,0.08)" stroke="#C4501A" stroke-width="1"/>
+      <text x="496" y="297" fill="#C4501A" font-size="7" font-family="'Libre Baskerville', monospace">VIS</text>
+      <text x="640" y="316" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">CIC Vision &amp; OCR Engine</text>
+
+      <rect x="480" y="400" width="320" height="64" fill="#2C2420" stroke="#2C2420" stroke-width="1"/>
+      <text x="496" y="417" fill="#2C2420" font-size="7" font-family="'Libre Baskerville', monospace">FFM</text>
+      <text x="640" y="436" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">ffmpeg Keyframe Extractor</text>
+
+      <rect x="480" y="512" width="320" height="64" fill="rgba(196,80,26,0.08)" stroke="#C4501A" stroke-width="1"/>
+      <text x="496" y="529" fill="#C4501A" font-size="7" font-family="'Libre Baskerville', monospace">STT</text>
+      <text x="640" y="548" fill="#2C2420" font-size="12" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">whisper.cpp Speech-to-Text</text>
+
+      <!-- NODES Layer 3 (Output) -->
+      <rect x="900" y="220" width="300" height="80" fill="rgba(196,80,26,0.08)" stroke="#C4501A" stroke-width="1"/>
+      <text x="916" y="237" fill="#C4501A" font-size="7" font-family="'Libre Baskerville', monospace">CAT</text>
+      <text x="1050" y="258" fill="#2C2420" font-size="13" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">corpus/source_catalog.json</text>
+      <text x="1050" y="276" fill="#9A9088" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle">SHA-256 Hashes &amp; Byte Lengths</text>
+
+      <rect x="900" y="440" width="300" height="80" fill="rgba(184,146,42,0.08)" stroke="#B8922A" stroke-width="1"/>
+      <text x="916" y="457" fill="#B8922A" font-size="7" font-family="'Libre Baskerville', monospace">TSK</text>
+      <text x="1050" y="478" fill="#2C2420" font-size="13" font-weight="600" font-family="'Barlow Condensed', sans-serif" text-anchor="middle">specs/task-*.json</text>
+      <text x="1050" y="496" fill="#9A9088" font-size="9" font-family="'Libre Baskerville', monospace" text-anchor="middle">Pointers to Pinned Source Spans</text>
+
+      <!-- Connectors -->
+      <line x1="380" y1="192" x2="480" y2="192" stroke="#9A9088" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <line x1="380" y1="280" x2="480" y2="192" stroke="#9A9088" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <line x1="380" y1="368" x2="480" y2="312" stroke="#9A9088" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <line x1="380" y1="456" x2="480" y2="432" stroke="#9A9088" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <line x1="380" y1="544" x2="480" y2="544" stroke="#9A9088" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+      <line x1="640" y1="400" x2="640" y2="344" stroke="#9A9088" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <line x1="640" y1="464" x2="640" y2="512" stroke="#9A9088" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+      <line x1="800" y1="192" x2="900" y2="260" stroke="#C4501A" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+      <line x1="800" y1="312" x2="900" y2="260" stroke="#C4501A" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+      <line x1="800" y1="544" x2="900" y2="260" stroke="#C4501A" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+
+      <line x1="1050" y1="300" x2="1050" y2="440" stroke="#C4501A" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+
+      <!-- LEGEND -->
+      <line x1="40" y1="688" x2="1240" y2="688" stroke="rgba(44,36,32,0.1)" stroke-width="0.8"/>
+      <text x="40" y="700" fill="#9A9088" font-size="8" font-family="'Libre Baskerville', monospace" letter-spacing="0.18em">LEGEND</text>
+      <rect x="40" y="706" width="14" height="10" fill="rgba(196,80,26,0.08)" stroke="#C4501A" stroke-width="1"/>
+      <text x="60" y="714" fill="#9A9088" font-size="8.5" font-family="'Barlow Condensed', sans-serif">Focal / Vision &amp; Whisper AI engines</text>
+      <rect x="250" y="706" width="14" height="10" fill="#2C2420" stroke="#2C2420" stroke-width="1"/>
+      <text x="270" y="714" fill="#9A9088" font-size="8.5" font-family="'Barlow Condensed', sans-serif">Media converter / text normalizer</text>
+      <line x1="480" y1="712" x2="508" y2="712" stroke="#C4501A" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+      <text x="516" y="714" fill="#9A9088" font-size="8.5" font-family="'Barlow Condensed', sans-serif">Pinned corpus reference flow</text>
+    </svg>
+  </div>
+</body>
+</html>
