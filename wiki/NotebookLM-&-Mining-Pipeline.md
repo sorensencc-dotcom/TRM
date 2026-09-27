@@ -1,10 +1,10 @@
----
+<!--
 title: "NotebookLM & Mining Pipeline"
 status: active
 owner: chris
 last-reviewed: 2026-09-26
 brand: cic
----
+-->
 
 # NotebookLM & Mining Pipeline
 

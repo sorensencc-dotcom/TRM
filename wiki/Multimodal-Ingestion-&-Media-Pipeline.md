@@ -1,10 +1,10 @@
----
+<!--
 title: "Multimodal Ingestion & Media Pipeline"
 status: active
 owner: chris
 last-reviewed: 2026-09-26
 brand: cic
----
+-->
 
 # Multimodal Ingestion & Media Pipeline
 

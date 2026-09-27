@@ -1,10 +1,10 @@
----
+<!--
 title: "Viking Virtual File System (VFS) & Tiered Compaction"
 status: active
 owner: chris
 last-reviewed: 2026-09-26
 brand: cic
----
+-->
 
 # Viking Virtual File System (VFS) & Tiered Compaction
 

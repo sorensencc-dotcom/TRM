@@ -1,10 +1,10 @@
----
+<!--
 title: "Security Guardrails & Root Safety"
 status: active
 owner: chris
 last-reviewed: 2026-09-26
 brand: cic
----
+-->
 
 # Security Guardrails & Root Safety
 

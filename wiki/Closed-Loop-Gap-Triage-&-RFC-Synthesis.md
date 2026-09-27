@@ -1,10 +1,10 @@
----
+<!--
 title: "Closed-Loop Gap Triage & RFC Synthesis"
 status: active
 owner: chris
 last-reviewed: 2026-09-26
 brand: cic
----
+-->
 
 # Closed-Loop Gap Triage & RFC Synthesis
 
