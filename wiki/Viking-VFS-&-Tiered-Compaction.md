@@ -1,3 +1,11 @@
+---
+title: "Viking Virtual File System (VFS) & Tiered Compaction"
+status: active
+owner: chris
+last-reviewed: 2026-09-26
+brand: cic
+---
+
 # Viking Virtual File System (VFS) & Tiered Compaction
 
 The `viking://` virtual filesystem provider implements a high-speed SQLite Write-Ahead Logging (WAL) state machine and AST skeletonizer designed to reduce agent token overhead by up to 94.5% during codebase exploration and knowledge synthesis.

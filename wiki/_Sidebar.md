@@ -4,27 +4,27 @@
 
 ---
 
-### **📐 Architecture & Core**
+### **Architecture & Core**
 * [[Architecture & Data Model]]
 * [[Security Guardrails & Root Safety]]
 * [[Viking VFS & Tiered Compaction]]
 
 ---
 
-### **🛠️ CLI & Ingestion**
+### **CLI & Ingestion**
 * [[CLI Reference & Commands]]
 * [[Multimodal Ingestion & Media Pipeline]]
 * [[NotebookLM & Mining Pipeline]]
 
 ---
 
-### **🔄 Workflows & Governance**
+### **Workflows & Governance**
 * [[Closed-Loop Gap Triage & RFC Synthesis]]
 * [[Deployment & Automation]]
 
 ---
 
-### **ℹ️ Quick Instructions**
+### **Quick Instructions**
 1. **Scaffold Topic:**  
    `python scaffold_topic.py --topic <slug>`
 2. **Audit Coverage:**  
@@ -33,5 +33,5 @@
    `powershell scripts/run-ondemand-mine.ps1`
 4. **Triage Gaps:**  
    `npm run trm:triage`
-5. **Reconcile Fleet:**  
-   `npm run fleet:wiki:reconcile`
+5. **Publish Wiki:**  
+   `npm run wiki:publish`
