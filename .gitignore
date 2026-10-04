@@ -14,3 +14,4 @@ intake-manifest.json
 *.key
 secrets/
 .kb_cache/
+.wiki-sync-receipt.json
