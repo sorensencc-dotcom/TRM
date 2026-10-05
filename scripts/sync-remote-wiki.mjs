@@ -30,8 +30,13 @@ try {
       cwd: tempDir,
       stdio: 'inherit'
     });
-    execSync('git push origin master', { cwd: tempDir, stdio: 'inherit' });
-    console.log('✓ Remote GitHub Wiki successfully updated and published.');
+    const shouldPush = process.argv.includes('--push') || process.env.AUTO_PUSH === 'true';
+    if (!shouldPush) {
+      console.log('[WIKI-SYNC] Skipping push. Pass --push or set AUTO_PUSH=true.');
+    } else {
+      execSync('git push origin master', { cwd: tempDir, stdio: 'inherit' });
+      console.log('[WIKI-SYNC] Remote GitHub Wiki successfully updated and published.');
+    }
   }
 } finally {
   if (fs.existsSync(tempDir)) {
