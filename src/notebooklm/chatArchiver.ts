@@ -240,6 +240,21 @@ export function archiveNotebook(
     }
   }
 
+function writeFileWithRetry(filePath: string, content: string, maxRetries = 3): void {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      fs.writeFileSync(filePath, content, 'utf-8');
+      return;
+    } catch (err) {
+      if (attempt === maxRetries) throw err;
+      const start = Date.now();
+      while (Date.now() - start < 100 * attempt) {
+        // Synchronous spin backoff for file locks
+      }
+    }
+  }
+}
+
   // Write local markdown files for knowledge.db ingestion
   const slug = slugifyTitle(notebook.title);
   const targetDirs = [
@@ -253,7 +268,7 @@ export function archiveNotebook(
       try {
         fs.mkdirSync(dir, { recursive: true });
         const filePath = path.join(dir, `${slug}.md`);
-        fs.writeFileSync(filePath, markdown, 'utf-8');
+        writeFileWithRetry(filePath, markdown);
         if (!localPath) localPath = filePath;
       } catch (_) {
         // Continue to write to available targets
