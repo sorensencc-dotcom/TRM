@@ -19,9 +19,25 @@ export function isUrgentAnswer(answer: string): boolean {
   return URGENCY_PATTERNS.some((p) => p.test(answer));
 }
 
-export function loadMiningQuestions(): MiningQuestion[] {
-  const configPath = path.resolve(__dirname, '../../../config/mining-questions.json');
-  const parsed = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as { questions: MiningQuestion[] };
+export function loadMiningQuestions(root?: string, category: string = 'research'): MiningQuestion[] {
+  const normCategory = category === 'operational' ? 'operational' : 'research';
+  const filename = normCategory === 'operational' ? 'operational-questions.json' : 'mining-questions.json';
+  const candidatePaths = [
+    root ? path.join(root, 'config', filename) : '',
+    path.resolve(__dirname, '../../../config', filename),
+    path.join('C:\\dev\\trm\\config', filename),
+  ].filter(Boolean);
+
+  const foundPath = candidatePaths.find((p) => fs.existsSync(p));
+  if (!foundPath) {
+    const fallbackPath = path.resolve(__dirname, '../../../config/mining-questions.json');
+    if (fs.existsSync(fallbackPath)) {
+      const parsed = JSON.parse(fs.readFileSync(fallbackPath, 'utf-8')) as { questions: MiningQuestion[] };
+      return parsed.questions;
+    }
+    return [];
+  }
+  const parsed = JSON.parse(fs.readFileSync(foundPath, 'utf-8')) as { questions: MiningQuestion[] };
   return parsed.questions;
 }
 
@@ -38,8 +54,9 @@ function upsertDocRow(root: string, relativeDocPath: string, question: MiningQue
   const absPath = path.join(root, relativeDocPath);
   const exists = fs.existsSync(absPath);
   const header = '| Question | Answer excerpt | Notebook | First-seen date | Entry key |\n|---|---|---|---|---|\n';
+  const qText = question.text.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
   const excerpt = answer.length > 200 ? `${answer.slice(0, 200)}...` : answer;
-  const newRow = `| ${question.text} | ${excerpt.replace(/\|/g, '\\|').replace(/\n/g, ' ')} | ${notebookTitle} | ${new Date().toISOString().slice(0, 10)} | ${key} |`;
+  const newRow = `| ${qText} | ${excerpt.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ')} | ${notebookTitle} | ${new Date().toISOString().slice(0, 10)} | ${key} |`;
   fs.mkdirSync(path.dirname(absPath), { recursive: true });
 
   if (!exists) {
@@ -51,7 +68,7 @@ function upsertDocRow(root: string, relativeDocPath: string, question: MiningQue
   const lines = existingContent.split(/\r?\n/);
 
   // Match existing row for this specific question
-  const questionPrefix = `| ${question.text} |`;
+  const questionPrefix = `| ${qText} |`;
   const existingIdx = lines.findIndex((l) => l.startsWith(questionPrefix));
 
   if (existingIdx !== -1) {
@@ -244,12 +261,13 @@ function triggerGapTriage(root: string): void {
   }
 }
 
-function uploadResearchGapsSource(root: string, notebookId: string, relativeDocPath: string): void {
+function uploadResearchGapsSource(root: string, notebookId: string, relativeDocPath: string, category: string = 'research'): void {
   const absPath = path.join(root, relativeDocPath);
   if (!fs.existsSync(absPath)) return;
 
   try {
-    const title = 'TRM Research Gaps & Synthesis';
+    const title = category === 'operational' ? 'TRM Operational Gaps & Synthesis' : 'TRM Research Gaps & Synthesis';
+    const oldTitle = category === 'operational' ? 'TRM Research Gaps & Synthesis' : 'TRM Operational Gaps & Synthesis';
     const nlmBin = 'nlm';
     const baseName = path.basename(absPath).toLowerCase();
 
@@ -270,7 +288,7 @@ function uploadResearchGapsSource(root: string, notebookId: string, relativeDocP
 
     const staleSources = existingSources.filter((s) => {
       const sTitle = (s.title || s.name || '').toLowerCase().trim();
-      return sTitle === title.toLowerCase() || sTitle === baseName;
+      return sTitle === title.toLowerCase() || sTitle === oldTitle.toLowerCase() || sTitle === baseName;
     });
 
     // Add fresh source before deleting older versions. Preserve an existing
@@ -311,7 +329,8 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
   // src/core/config.ts loadConfig; there is no fallback/default when it's missing.
   const config = loadConfig(root);
 
-  const questions = loadMiningQuestions();
+  const category = entry.category === 'operational' ? 'operational' : 'research';
+  const questions = loadMiningQuestions(root, category);
   const relativeDocPath = docPathFor(root, slugifyTitle(entry.title));
   const seenKeys = new Set(entry.last_mined_answer_keys);
   let newEntries = 0;
@@ -344,7 +363,7 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
     flushMinedState(root, notebookId, Array.from(seenKeys), new Date().toISOString());
     if (newEntries > 0) {
       triggerGapTriage(root);
-      uploadResearchGapsSource(root, notebookId, relativeDocPath);
+      uploadResearchGapsSource(root, notebookId, relativeDocPath, category);
     }
   }
 

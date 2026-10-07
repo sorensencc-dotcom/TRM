@@ -62,9 +62,23 @@ describe('mineNotebooklm', () => {
     expect(items[0].key).toContain('nb-1:open-contradictions:');
   });
 
-  it('loadMiningQuestions returns the 4 fixed questions with stable ids', () => {
-    const questions = loadMiningQuestions();
-    expect(questions.map((q) => q.id)).toEqual(['open-contradictions', 'under-sourced', 'adjacent-topics', 'follow-up']);
+  it('loadMiningQuestions returns the 5 research questions or 4 operational questions based on category', () => {
+    const researchQuestions = loadMiningQuestions(undefined, 'research');
+    expect(researchQuestions.map((q) => q.id)).toEqual([
+      'open-contradictions',
+      'under-sourced',
+      'adjacent-topics',
+      'follow-up',
+      'non-obvious-connections',
+    ]);
+
+    const opQuestions = loadMiningQuestions(undefined, 'operational');
+    expect(opQuestions.map((q) => q.id)).toEqual([
+      'unresolved-bottlenecks',
+      'unverified-assumptions',
+      'tooling-gaps',
+      'system-improvements',
+    ]);
   });
 
   it('answerKey is stable for identical inputs and changes when the answer changes', () => {
@@ -84,7 +98,7 @@ describe('mineNotebooklm', () => {
     fs.writeFileSync(path.join(root, 'TODOS.md'), '# TODOS\n\n## Open\n\n## Completed\n');
 
     const first = runMineNotebooklm(root, 'nb-1', {});
-    expect(first.newEntries).toBe(4);
+    expect(first.newEntries).toBe(5);
 
     const docContent = fs.readFileSync(path.join(root, first.docPath), 'utf-8');
     expect(docContent).toContain('No source found for the 1943 production date.');
@@ -104,6 +118,39 @@ describe('mineNotebooklm', () => {
     expect(result.newEntries).toBe(0);
   });
 
+  it('dispatches operational questions when notebook category is operational', () => {
+    fs.writeFileSync(
+      registryPath(root),
+      JSON.stringify({
+        version: 1,
+        notebooks: [
+          {
+            notebook_id: 'nb-op',
+            title: 'Sigil Protocol & Federation',
+            category: 'operational',
+            url: 'https://notebooklm.google.com/notebook/nb-op',
+            last_pulled_hashes: {},
+            quarantined: {},
+            last_ingested_at: null,
+            last_mined_at: null,
+            last_mined_answer_keys: [],
+          },
+        ],
+      })
+    );
+
+    const askedQuestions: string[] = [];
+    (nlmCli.queryNotebook as jest.Mock).mockImplementation((_nb: string, question: string) => {
+      askedQuestions.push(question);
+      return { ok: true, data: 'Operational insight result.' };
+    });
+
+    const res = runMineNotebooklm(root, 'nb-op', {});
+    expect(res.newEntries).toBe(4);
+    expect(askedQuestions).toHaveLength(4);
+    expect(askedQuestions[0]).toContain('technical blockers');
+  });
+
   it('replaces existing question rows in place without duplicating table rows when answers change', () => {
     (nlmCli.queryNotebook as jest.Mock).mockImplementation((_nb: string, question: string) => ({
       ok: true,
@@ -111,13 +158,12 @@ describe('mineNotebooklm', () => {
     }));
 
     const first = runMineNotebooklm(root, 'nb-1', {});
-    expect(first.newEntries).toBe(4);
+    expect(first.newEntries).toBe(5);
 
     const docPath = path.join(root, first.docPath);
     let lines = fs.readFileSync(docPath, 'utf-8').trim().split('\n');
-    // Header + separator + 4 question rows = 6 lines (plus title/blank)
-    const tableRows1 = lines.filter((l) => l.startsWith('| What '));
-    expect(tableRows1.length).toBe(4);
+    const tableRows1 = lines.filter((l) => l.startsWith('| What ') || l.startsWith('| Find '));
+    expect(tableRows1.length).toBe(5);
     expect(tableRows1.find((r) => r.includes('Version 1 contradiction.'))).toBeDefined();
 
     // Now answer changes on next run
@@ -127,11 +173,11 @@ describe('mineNotebooklm', () => {
     }));
 
     const second = runMineNotebooklm(root, 'nb-1', {});
-    expect(second.newEntries).toBe(4);
+    expect(second.newEntries).toBe(5);
 
     lines = fs.readFileSync(docPath, 'utf-8').trim().split('\n');
-    const tableRows2 = lines.filter((l) => l.startsWith('| What '));
-    expect(tableRows2.length).toBe(4);
+    const tableRows2 = lines.filter((l) => l.startsWith('| What ') || l.startsWith('| Find '));
+    expect(tableRows2.length).toBe(5);
     expect(tableRows2.find((r) => r.includes('Version 2 contradiction updated.'))).toBeDefined();
     expect(tableRows2.find((r) => r.includes('Version 1 contradiction.'))).toBeUndefined();
   });
