@@ -128,6 +128,36 @@ try {
         Clear-PriorAlert
     }
 
+    # 5b. Staging & Context Compaction into viking:// Virtual Filesystem & SQLite Ingestion
+    if ($ExitCode -eq 0) {
+        Set-Location -Path $TrmRoot
+        $compactArgs = @("./scripts/viking-vfs-compact.mjs", "--protocol", "viking://", "--source", $LogFile)
+        if ($DryRun) {
+            $compactArgs += "--dry-run"
+        } else {
+            $compactArgs += @("--out", "vfs/")
+        }
+
+        Log-Message "[VFS-COMPACT] Compacting harvested session logs into viking:// hierarchy..." "Cyan"
+        & node @compactArgs 2>&1 | Tee-Object -FilePath $LogFile -Append
+        if ($LASTEXITCODE -ne 0) {
+            Log-Message "[VFS-COMPACT] Warning: viking-vfs-compact returned non-zero status: $LASTEXITCODE" "Yellow"
+        } else {
+            Log-Message "[VFS-COMPACT] Virtual filesystem compaction completed successfully." "Green"
+
+            # Ingest into knowledge.db if not dry run
+            if (-not $DryRun) {
+                Log-Message "[DB-INGEST] Ingesting staged VFS artifacts into local knowledge.db WAL..." "Cyan"
+                & node ./scripts/vfs-to-knowledge-db.mjs --manifest vfs/manifest.json --db ./data/knowledge.db 2>&1 | Tee-Object -FilePath $LogFile -Append
+                if ($LASTEXITCODE -ne 0) {
+                    Log-Message "[DB-INGEST] Warning: vfs-to-knowledge-db returned non-zero status: $LASTEXITCODE" "Yellow"
+                } else {
+                    Log-Message "[DB-INGEST] Knowledge.db WAL ingestion and checkpoint successful." "Green"
+                }
+            }
+        }
+    }
+
     # 6. Canonical knowledge.db SQLite Cache Refresh
     if ((Test-Path "$KbSyncRoot\package.json") -and (-not $DryRun) -and ($ExitCode -eq 0)) {
         Log-Message "[CACHE-SYNC] Refreshing SQLite knowledge.db FTS5/BM25 cache..." "Cyan"
