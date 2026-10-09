@@ -253,6 +253,26 @@ describe('mineNotebooklm', () => {
     );
   });
 
+  it('constrains queries to top 20 source IDs with 180s timeout when notebook has >50 sources', () => {
+    const mockSources = Array.from({ length: 60 }, (_, i) => ({
+      id: `src-${i}`,
+      title: `Source ${i}`,
+    }));
+    (nlmCli.listSources as jest.Mock).mockReturnValue({ ok: true, data: mockSources });
+    (nlmCli.queryNotebook as jest.Mock).mockReturnValue({ ok: true, data: 'Answer from constrained sources' });
+
+    runMineNotebooklm(root, 'nb-1', {});
+
+    expect(nlmCli.queryNotebook).toHaveBeenCalledWith(
+      'nb-1',
+      expect.any(String),
+      expect.objectContaining({
+        sourceIds: mockSources.slice(0, 20).map((s) => s.id),
+        timeoutSeconds: 180,
+      })
+    );
+  });
+
   it('isUrgentAnswer matches the three urgency patterns and nothing else', () => {
     expect(isUrgentAnswer('This needs verification against another source.')).toBe(true);
     expect(isUrgentAnswer('We recommend investigating this further.')).toBe(true);
