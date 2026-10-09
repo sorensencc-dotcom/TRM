@@ -51,12 +51,12 @@ interface RawSpawnResult {
 
 // Bounds every nlm invocation in this file so a wedged `nlm` process
 // cannot hang dispatch indefinitely.
-const FIXED_CALL_TIMEOUT_MS = 60_000;
+const DEFAULT_CALL_TIMEOUT_MS = 180_000;
 
-function runNlm(args: string[], rawText = false): NlmResult<unknown> {
+function runNlm(args: string[], rawText = false, timeoutMs?: number): NlmResult<unknown> {
   const result = spawnSync('nlm', args, {
     encoding: 'utf-8',
-    timeout: FIXED_CALL_TIMEOUT_MS,
+    timeout: timeoutMs || DEFAULT_CALL_TIMEOUT_MS,
     stdio: ['ignore', 'pipe', 'pipe'],
   }) as unknown as RawSpawnResult;
 
@@ -116,10 +116,29 @@ export function listNotes(notebookId: string): NlmResult<NlmNote[]> {
   return { ok: true, data: (result.data as { notes: NlmNote[] }).notes };
 }
 
-export function queryNotebook(notebookId: string, question: string, timeoutSeconds?: number): NlmResult<string> {
+export interface QueryNotebookOptions {
+  timeoutSeconds?: number;
+  sourceIds?: string[];
+  newConversation?: boolean;
+}
+
+export function queryNotebook(
+  notebookId: string,
+  question: string,
+  options?: QueryNotebookOptions | number
+): NlmResult<string> {
+  const opts: QueryNotebookOptions = typeof options === 'number' ? { timeoutSeconds: options } : (options || {});
   const args = ['query', 'notebook', notebookId, question, '--json'];
-  if (timeoutSeconds !== undefined) args.push('--timeout', String(timeoutSeconds));
-  const result = runNlm(args);
+  if (opts.sourceIds && opts.sourceIds.length > 0) {
+    args.push('--source-ids', opts.sourceIds.join(','));
+  }
+  const timeoutSec = opts.timeoutSeconds !== undefined ? opts.timeoutSeconds : 120;
+  args.push('--timeout', String(timeoutSec));
+  if (opts.newConversation) {
+    args.push('--new-conversation');
+  }
+  const callTimeoutMs = (timeoutSec + 30) * 1000;
+  const result = runNlm(args, false, callTimeoutMs);
   if (!result.ok) return result;
   return { ok: true, data: (result.data as { answer: string }).answer };
 }

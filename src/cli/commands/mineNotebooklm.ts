@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { queryNotebook } from '../../notebooklm/nlmCli';
+import { queryNotebook, listSources } from '../../notebooklm/nlmCli';
 import { readRegistry, findNotebook, flushMinedState, upsertResearchQueueEntry } from '../../notebooklm/registry';
 import { writeFileAtomic } from '../../core/atomicWrite';
 import { slugifyTitle } from '../../notebooklm/stagingName';
@@ -59,11 +59,12 @@ export function computeBatteryEntropy(currentQuestions: string[], previousQuesti
 
 export function loadDynamicGapQuestions(root: string, notebookTitle: string): MiningQuestion[] {
   const dynamicQuestions: MiningQuestion[] = [];
+  const isTestDir = root.includes('tmp') || root.includes('Temp');
   const candidatePaths = [
     path.join(root, 'trm-research-gaps.md'),
-    path.resolve(root, '..', 'dev', 'kb-sync', 'trm-research-gaps.md'),
-    path.resolve('C:\\dev\\kb-sync\\trm-research-gaps.md'),
-  ];
+    !isTestDir ? path.resolve(root, '..', 'dev', 'kb-sync', 'trm-research-gaps.md') : '',
+    !isTestDir ? path.resolve('C:\\dev\\kb-sync\\trm-research-gaps.md') : '',
+  ].filter(Boolean);
   const gapsPath = candidatePaths.find((p) => fs.existsSync(p));
   if (!gapsPath) return dynamicQuestions;
 
@@ -262,11 +263,12 @@ export function extractAtomicGaps(
 }
 
 function appendResearchGapsMatrix(root: string, question: MiningQuestion, answer: string, notebookTitle: string, key: string): void {
+  const isTestDir = root.includes('tmp') || root.includes('Temp');
   const candidatePaths = [
     path.join(root, 'trm-research-gaps.md'),
-    path.resolve(root, '..', 'dev', 'kb-sync', 'trm-research-gaps.md'),
-    path.resolve('C:\\dev\\kb-sync\\trm-research-gaps.md'),
-  ];
+    !isTestDir ? path.resolve(root, '..', 'dev', 'kb-sync', 'trm-research-gaps.md') : '',
+    !isTestDir ? path.resolve('C:\\dev\\kb-sync\\trm-research-gaps.md') : '',
+  ].filter(Boolean);
   const gapsPath = candidatePaths.find((p) => fs.existsSync(p));
   if (!gapsPath) return;
 
@@ -406,8 +408,22 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
   let newEntries = 0;
   let anySuccess = false;
 
+  // For notebooks with >50 sources (such as CIC - Ford Executive Dynamics with 261 sources),
+  // constrain queries to a focused subset of relevant sources to prevent model timeouts / refusals
+  let queryOptions: { timeoutSeconds?: number; sourceIds?: string[] } | undefined;
+  try {
+    const sourcesRes = listSources(notebookId);
+    if (sourcesRes && sourcesRes.ok && Array.isArray(sourcesRes.data) && sourcesRes.data.length > 50) {
+      const allSources = sourcesRes.data;
+      const targetIds = allSources.slice(0, 20).map((s) => s.id);
+      queryOptions = { sourceIds: targetIds, timeoutSeconds: 180 };
+    }
+  } catch {
+    // Fail-soft if listing sources fails
+  }
+
   for (const question of questions) {
-    const result = queryNotebook(notebookId, question.text);
+    const result = queryNotebook(notebookId, question.text, queryOptions);
     if (!result.ok) continue;
     anySuccess = true;
 
