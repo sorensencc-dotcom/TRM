@@ -166,6 +166,46 @@ describe('chatArchiver', () => {
       expect(fs.existsSync(writtenFile)).toBe(true);
     });
 
+    it('mirrors dated synthesis log to Google Drive mirror root when provided', () => {
+      mockNlmCli.listChats.mockReturnValue({
+        ok: true,
+        data: {
+          notebook_id: 'nb-1',
+          sessions: [{ conversation_id: 'conv-1', turn_count: 1 }],
+        },
+      });
+
+      mockNlmCli.getChatTranscript.mockReturnValue({
+        ok: true,
+        data: {
+          conversation_id: 'conv-1',
+          turn_count: 1,
+          transcript: [{ turn: 1, query: 'How does KB Operations work?', answer: 'It manages telemetry and runbooks.' }],
+        },
+      });
+
+      mockNlmCli.listNotes.mockReturnValue({
+        ok: true,
+        data: [],
+      });
+
+      mockNlmCli.createNote.mockReturnValue({
+        ok: true,
+        data: { noteId: 'note-123' },
+      });
+
+      const driveTmp = path.join(tmpDir, 'gdrive_mirror');
+      const result = archiveNotebook(
+        { id: 'nb-1', title: 'KB - Operations' },
+        { kbVaultRoot: tmpDir, localVaultRoot: tmpDir, driveMirrorRoot: driveTmp, date: '2026-09-19' }
+      );
+
+      expect(result.skipped).toBe(false);
+      const driveFile = path.join(driveTmp, 'kb-operations', 'Daily Synthesis Log - 2026-09-19.md');
+      expect(fs.existsSync(driveFile)).toBe(true);
+      expect(fs.readFileSync(driveFile, 'utf-8')).toContain('# Daily Synthesis Log: KB - Operations — 2026-09-19');
+    });
+
     it('idempotently skips note creation when note already exists', () => {
       mockNlmCli.listChats.mockReturnValue({
         ok: true,

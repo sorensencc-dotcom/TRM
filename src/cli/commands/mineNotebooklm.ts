@@ -41,6 +41,61 @@ export function loadMiningQuestions(root?: string, category: string = 'research'
   return parsed.questions;
 }
 
+export function computeBatteryEntropy(currentQuestions: string[], previousQuestions: string[]): number {
+  if (!previousQuestions || previousQuestions.length === 0) return 1.0;
+  if (!currentQuestions || currentQuestions.length === 0) return 0.0;
+
+  const currentSet = new Set(currentQuestions.map((q) => q.trim().toLowerCase()));
+  const previousSet = new Set(previousQuestions.map((q) => q.trim().toLowerCase()));
+
+  let overlap = 0;
+  for (const q of currentSet) {
+    if (previousSet.has(q)) overlap++;
+  }
+
+  const union = new Set([...currentSet, ...previousSet]).size;
+  return union === 0 ? 0.0 : 1.0 - (overlap / union);
+}
+
+export function loadDynamicGapQuestions(root: string, notebookTitle: string): MiningQuestion[] {
+  const dynamicQuestions: MiningQuestion[] = [];
+  const candidatePaths = [
+    path.join(root, 'trm-research-gaps.md'),
+    path.resolve(root, '..', 'dev', 'kb-sync', 'trm-research-gaps.md'),
+    path.resolve('C:\\dev\\kb-sync\\trm-research-gaps.md'),
+  ];
+  const gapsPath = candidatePaths.find((p) => fs.existsSync(p));
+  if (!gapsPath) return dynamicQuestions;
+
+  try {
+    const content = fs.readFileSync(gapsPath, 'utf-8');
+    const lines = content.split(/\r?\n/);
+    const cleanTitle = notebookTitle.toLowerCase().replace(/[^a-z0-9]+/g, ' ');
+
+    for (const line of lines) {
+      if (!line.startsWith('- [ ]') && !line.startsWith('- [x]')) continue;
+      const lineLower = line.toLowerCase();
+      if (lineLower.includes(cleanTitle) || lineLower.includes(notebookTitle.toLowerCase())) {
+        const match = line.match(/\*\*([^*]+)\*\*:\s*(.*)$/);
+        if (match) {
+          const gapTitle = match[1].trim();
+          const gapExcerpt = match[2].trim();
+          const qId = `dynamic-gap-${crypto.createHash('md5').update(gapTitle).digest('hex').slice(0, 8)}`;
+          dynamicQuestions.push({
+            id: qId,
+            text: `Investigate and resolve open research gap: "${gapTitle}". Specific context: ${gapExcerpt.slice(0, 200)}`,
+          });
+        }
+      }
+      if (dynamicQuestions.length >= 3) break;
+    }
+  } catch {
+    // Fail-soft on dynamic question load
+  }
+
+  return dynamicQuestions;
+}
+
 export function answerKey(notebookId: string, questionId: string, answer: string): string {
   const answerHash = crypto.createHash('sha256').update(answer, 'utf-8').digest('hex');
   return `${notebookId}:${questionId}:${answerHash}`;
@@ -330,7 +385,22 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
   const config = loadConfig(root);
 
   const category = entry.category === 'operational' ? 'operational' : 'research';
-  const questions = loadMiningQuestions(root, category);
+  const baseQuestions = loadMiningQuestions(root, category);
+  const dynamicQuestions = loadDynamicGapQuestions(root, entry.title);
+  const questions = dynamicQuestions.length > 0
+    ? [...dynamicQuestions, ...baseQuestions.slice(0, Math.max(1, 4 - dynamicQuestions.length))]
+    : baseQuestions;
+
+  const prevQuestionIds = entry.last_mined_answer_keys
+    .filter((k) => k.startsWith(`${notebookId}:`))
+    .map((k) => k.split(':')[1]);
+  const entropy = computeBatteryEntropy(questions.map((q) => q.id), prevQuestionIds);
+
+  if (entropy < 0.25 && prevQuestionIds.length > 0) {
+    console.warn(`[BOILERPLATE-STAGNATION-ALERT] Notebook "${entry.title}" (${notebookId}): Question battery entropy is ${entropy.toFixed(2)} (< 0.25 threshold). Repeating boilerplate battery without net-new inquiries!`);
+  } else {
+    console.log(`[ENTROPY-AUDIT] Notebook "${entry.title}" (${notebookId}): Question battery entropy score: ${entropy.toFixed(2)}.`);
+  }
   const relativeDocPath = docPathFor(root, slugifyTitle(entry.title));
   const seenKeys = new Set(entry.last_mined_answer_keys);
   let newEntries = 0;

@@ -96,9 +96,20 @@ $TargetNotebooks = if ($NotebookId) {
     $Registry.notebooks
 }
 
+$TotalTargets = $TargetNotebooks.Count
+$AttemptedCount = 0
+$SucceededNotebooks = @()
+$FailedNotebooks = @()
+
 foreach ($Notebook in $TargetNotebooks) {
+    $AttemptedCount++
+    $notebookFailed = $false
+    "================================================================================" | Tee-Object -FilePath $LogFile -Append
+    "=== [TARGET $AttemptedCount/$TotalTargets] $($Notebook.title) ($($Notebook.notebook_id)) ===" | Tee-Object -FilePath $LogFile -Append
+    "================================================================================" | Tee-Object -FilePath $LogFile -Append
+
     if (-not $SkipIngest) {
-        "=== syncing & ingesting $($Notebook.title) ($($Notebook.notebook_id)) ===" | Tee-Object -FilePath $LogFile -Append
+        "--- Ingesting $($Notebook.title) ---" | Tee-Object -FilePath $LogFile -Append
         try {
             $NarrativeRoot = 'C:\dev\charlie-deep-research'
             if (Test-Path $NarrativeRoot) {
@@ -109,27 +120,54 @@ foreach ($Notebook in $TargetNotebooks) {
             if ($LASTEXITCODE -ne 0) {
                 "ingest-notebooklm failed for $($Notebook.notebook_id) with exit code $LASTEXITCODE" | Tee-Object -FilePath $LogFile -Append
                 $ExitCode = 1
+                $notebookFailed = $true
             }
         } catch {
             "ingest-notebooklm threw for $($Notebook.notebook_id): $_" | Tee-Object -FilePath $LogFile -Append
             $ExitCode = 1
+            $notebookFailed = $true
         }
     } else {
-        "=== skipping ingestion for $($Notebook.title) (-SkipIngest set) ===" | Tee-Object -FilePath $LogFile -Append
+        "--- Skipping ingestion for $($Notebook.title) (-SkipIngest set) ---" | Tee-Object -FilePath $LogFile -Append
     }
 
-    "=== mining $($Notebook.title) ($($Notebook.notebook_id)) ===" | Tee-Object -FilePath $LogFile -Append
+    "--- Mining $($Notebook.title) ---" | Tee-Object -FilePath $LogFile -Append
     try {
+        $mineStart = Get-Date
         & trm mine-notebooklm $Notebook.notebook_id 2>&1 | Tee-Object -FilePath $LogFile -Append
+        $mineSec = [Math]::Round(((Get-Date) - $mineStart).TotalSeconds, 1)
         if ($LASTEXITCODE -ne 0) {
-            "mine-notebooklm failed for $($Notebook.notebook_id) with exit code $LASTEXITCODE" | Tee-Object -FilePath $LogFile -Append
+            "mine-notebooklm failed for $($Notebook.notebook_id) with exit code $LASTEXITCODE (${mineSec}s)" | Tee-Object -FilePath $LogFile -Append
             $ExitCode = 1
+            $notebookFailed = $true
+        } else {
+            "mine-notebooklm completed for $($Notebook.title) in ${mineSec}s" | Tee-Object -FilePath $LogFile -Append
         }
     } catch {
         "mine-notebooklm threw for $($Notebook.notebook_id): $_" | Tee-Object -FilePath $LogFile -Append
         $ExitCode = 1
+        $notebookFailed = $true
+    }
+
+    if ($notebookFailed) {
+        $FailedNotebooks += "$($Notebook.title) ($($Notebook.notebook_id))"
+    } else {
+        $SucceededNotebooks += "$($Notebook.title) ($($Notebook.notebook_id))"
     }
 }
+
+"================================================================================" | Tee-Object -FilePath $LogFile -Append
+"=== SWEEP COMPLETENESS & STALENESS AUDIT ===" | Tee-Object -FilePath $LogFile -Append
+"Total Registry Targets: $TotalTargets | Attempted: $AttemptedCount | Succeeded: $($SucceededNotebooks.Count) | Failed: $($FailedNotebooks.Count)" | Tee-Object -FilePath $LogFile -Append
+if ($AttemptedCount -lt $TotalTargets) {
+    $ExitCode = 1
+    $StallMsg = "🚨 CRITICAL: NotebookLM mining sweep stalled prematurely! Only attempted $AttemptedCount of $TotalTargets targets."
+    $StallMsg | Tee-Object -FilePath $LogFile -Append
+}
+if ($FailedNotebooks.Count -gt 0) {
+    "Failed Targets: $($FailedNotebooks -join ', ')" | Tee-Object -FilePath $LogFile -Append
+}
+"================================================================================" | Tee-Object -FilePath $LogFile -Append
 
 "=== research-notebooklm (all notebooks) ===" | Tee-Object -FilePath $LogFile -Append
 try {

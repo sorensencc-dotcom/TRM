@@ -1,7 +1,16 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { loadMiningQuestions, answerKey, runMineNotebooklm, isUrgentAnswer, appendStalledTodo, extractAtomicGaps } from './mineNotebooklm';
+import {
+  loadMiningQuestions,
+  answerKey,
+  runMineNotebooklm,
+  isUrgentAnswer,
+  appendStalledTodo,
+  extractAtomicGaps,
+  computeBatteryEntropy,
+  loadDynamicGapQuestions,
+} from './mineNotebooklm';
 import * as nlmCli from '../../notebooklm/nlmCli';
 import { registryPath, readRegistry, findNotebook } from '../../notebooklm/registry';
 import { spawnSync } from 'node:child_process';
@@ -79,6 +88,49 @@ describe('mineNotebooklm', () => {
       'tooling-gaps',
       'system-improvements',
     ]);
+  });
+
+  describe('computeBatteryEntropy', () => {
+    it('returns 1.0 when previous question set is empty', () => {
+      const entropy = computeBatteryEntropy(['q1', 'q2', 'q3'], []);
+      expect(entropy).toBe(1.0);
+    });
+
+    it('returns 0.0 when question sets are 100% identical (boilerplate loop)', () => {
+      const entropy = computeBatteryEntropy(
+        ['open-contradictions', 'under-sourced', 'adjacent-topics'],
+        ['open-contradictions', 'under-sourced', 'adjacent-topics']
+      );
+      expect(entropy).toBe(0.0);
+    });
+
+    it('returns positive entropy when net-new dynamic inquiries are added', () => {
+      const entropy = computeBatteryEntropy(
+        ['dynamic-gap-1', 'dynamic-gap-2', 'open-contradictions'],
+        ['open-contradictions', 'under-sourced', 'adjacent-topics', 'follow-up']
+      );
+      expect(entropy).toBeGreaterThan(0.5);
+    });
+  });
+
+  describe('loadDynamicGapQuestions', () => {
+    it('extracts active gaps matching notebook title from trm-research-gaps.md', () => {
+      const gapsPath = path.join(root, 'trm-research-gaps.md');
+      fs.writeFileSync(
+        gapsPath,
+        `## Active Research Gaps\n- [ ] **Willow Run Videos (open-contradictions - B-24 Turret Gear Ratio)**: Discrepancy in engineering drawing #401.\n- [ ] **Other Notebook (something)**: Other info.\n`
+      );
+
+      const dynamic = loadDynamicGapQuestions(root, 'Willow Run Videos');
+      expect(dynamic.length).toBeGreaterThanOrEqual(1);
+      expect(dynamic[0].text).toContain('B-24 Turret Gear Ratio');
+      expect(dynamic[0].id).toContain('dynamic-gap-');
+    });
+
+    it('returns empty array when no research gaps exist or match', () => {
+      const dynamic = loadDynamicGapQuestions(root, 'Unmatched Notebook');
+      expect(dynamic).toEqual([]);
+    });
   });
 
   it('answerKey is stable for identical inputs and changes when the answer changes', () => {
