@@ -22,6 +22,8 @@ export interface ArchivalResult {
   skipped: boolean;
   skipReason?: string;
   localPath?: string;
+  drivePath?: string;
+  driveError?: string;
   contentHash?: string;
   error?: string;
 }
@@ -33,6 +35,7 @@ export interface SweepOptions {
   concurrency?: number;
   kbVaultRoot?: string;
   localVaultRoot?: string;
+  driveMirrorRoot?: string;
 }
 
 const EXCLUDED_PATTERNS = [
@@ -240,23 +243,58 @@ export function archiveNotebook(
     }
   }
 
-  // Write local markdown files for knowledge.db ingestion
+function writeFileWithRetry(filePath: string, content: string, maxRetries = 3): void {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      fs.writeFileSync(filePath, content, 'utf-8');
+      return;
+    } catch (err) {
+      if (attempt === maxRetries) throw err;
+      const start = Date.now();
+      while (Date.now() - start < 100 * attempt) {
+        // Synchronous spin backoff for file locks
+      }
+    }
+  }
+}
+
+  // Write local markdown files for knowledge.db ingestion and Google Drive mirror
   const slug = slugifyTitle(notebook.title);
-  const targetDirs = [
-    path.join(kbVaultRoot, 'conversations', dateStr),
-    path.join(localVaultRoot, 'conversations', dateStr),
+  const driveMirrorRoot = options.driveMirrorRoot !== undefined
+    ? options.driveMirrorRoot
+    : (fs.existsSync(path.join('G:', 'My Drive', 'notebooklm')) ? path.join('G:', 'My Drive', 'notebooklm') : undefined);
+
+  const targets = [
+    { dir: path.join(kbVaultRoot, 'conversations', dateStr), fileName: `${slug}.md` },
+    { dir: path.join(localVaultRoot, 'conversations', dateStr), fileName: `${slug}.md` },
   ];
+
+  let drivePath: string | undefined;
+  let driveError: string | undefined;
+
+  if (driveMirrorRoot) {
+    targets.push({ dir: path.join(driveMirrorRoot, slug), fileName: `Daily Synthesis Log - ${dateStr}.md` });
+  }
 
   let localPath: string | undefined;
   if (!options.dryRun) {
-    for (const dir of targetDirs) {
+    for (const target of targets) {
+      const isDriveTarget = target.fileName.startsWith('Daily Synthesis Log');
       try {
-        fs.mkdirSync(dir, { recursive: true });
-        const filePath = path.join(dir, `${slug}.md`);
-        fs.writeFileSync(filePath, markdown, 'utf-8');
-        if (!localPath) localPath = filePath;
-      } catch (_) {
-        // Continue to write to available targets
+        fs.mkdirSync(target.dir, { recursive: true });
+        const filePath = path.join(target.dir, target.fileName);
+        writeFileWithRetry(filePath, markdown);
+        if (isDriveTarget) {
+          drivePath = filePath;
+          console.log(`[DRIVE-MIRROR] Synced Daily Synthesis Log for ${notebook.title} (${slug}) -> ${filePath}`);
+        } else if (!localPath) {
+          localPath = filePath;
+        }
+      } catch (err) {
+        if (isDriveTarget) {
+          driveError = String(err);
+          console.error(`[DRIVE-MIRROR-ERROR] Failed to mirror ${notebook.title} (${slug}) to Google Drive: ${err}`);
+        }
       }
     }
   }
@@ -270,6 +308,8 @@ export function archiveNotebook(
     noteId: createdNoteId,
     skipped: false,
     localPath,
+    drivePath,
+    driveError,
     contentHash,
   };
 }
@@ -286,6 +326,8 @@ export async function runUniversalChatArchival(
   const concurrency = options.concurrency || 2;
   const limit = pLimit(concurrency);
 
+  console.log(`[SWEEP-START] Initiating Universal Chat Archival across ${allNotebooks.length} notebooks (concurrency=${concurrency})...`);
+
   const tasks = allNotebooks.map((nb) =>
     limit(() => Promise.resolve(archiveNotebook(nb, options)))
   );
@@ -293,6 +335,14 @@ export async function runUniversalChatArchival(
   const results = await Promise.all(tasks);
   const totalProcessed = results.filter((r) => !r.skipped).length;
   const totalTurns = results.reduce((acc, r) => acc + r.totalTurns, 0);
+  const driveSynced = results.filter((r) => r.drivePath).length;
+  const driveErrors = results.filter((r) => r.driveError);
+
+  console.log(`[SWEEP-SUMMARY] Total: ${allNotebooks.length} | Processed: ${totalProcessed} | Turns: ${totalTurns} | Drive Mirrored: ${driveSynced}`);
+
+  if (driveErrors.length > 0) {
+    console.error(`[DRIVE-MIRROR-ALERT] ${driveErrors.length} notebooks encountered Google Drive mirror failures!`);
+  }
 
   return {
     results,

@@ -1,0 +1,21 @@
+{
+  "category": "operational",
+  "questions": [
+    {
+      "id": "unresolved-bottlenecks",
+      "text": "What open technical blockers, workflow bottlenecks, or unresolved architectural trade-offs exist across these specifications and notes?"
+    },
+    {
+      "id": "unverified-assumptions",
+      "text": "What architectural guarantees, protocol rules, or performance assumptions are asserted but lack concrete validation contracts, schemas, or test coverage?"
+    },
+    {
+      "id": "tooling-gaps",
+      "text": "What adjacent tools, missing agent capabilities, or unbuilt pipeline integrations do these sources explicitly point to as necessary next steps?"
+    },
+    {
+      "id": "system-improvements",
+      "text": "What high-leverage engineering implementations, refactors, or automation scripts would deliver the highest operational ROI across these systems?"
+    }
+  ]
+}

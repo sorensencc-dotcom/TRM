@@ -166,6 +166,46 @@ describe('chatArchiver', () => {
       expect(fs.existsSync(writtenFile)).toBe(true);
     });
 
+    it('mirrors dated synthesis log to Google Drive mirror root when provided', () => {
+      mockNlmCli.listChats.mockReturnValue({
+        ok: true,
+        data: {
+          notebook_id: 'nb-1',
+          sessions: [{ conversation_id: 'conv-1', turn_count: 1 }],
+        },
+      });
+
+      mockNlmCli.getChatTranscript.mockReturnValue({
+        ok: true,
+        data: {
+          conversation_id: 'conv-1',
+          turn_count: 1,
+          transcript: [{ turn: 1, query: 'How does KB Operations work?', answer: 'It manages telemetry and runbooks.' }],
+        },
+      });
+
+      mockNlmCli.listNotes.mockReturnValue({
+        ok: true,
+        data: [],
+      });
+
+      mockNlmCli.createNote.mockReturnValue({
+        ok: true,
+        data: { noteId: 'note-123' },
+      });
+
+      const driveTmp = path.join(tmpDir, 'gdrive_mirror');
+      const result = archiveNotebook(
+        { id: 'nb-1', title: 'KB - Operations' },
+        { kbVaultRoot: tmpDir, localVaultRoot: tmpDir, driveMirrorRoot: driveTmp, date: '2026-09-19' }
+      );
+
+      expect(result.skipped).toBe(false);
+      const driveFile = path.join(driveTmp, 'kb-operations', 'Daily Synthesis Log - 2026-09-19.md');
+      expect(fs.existsSync(driveFile)).toBe(true);
+      expect(fs.readFileSync(driveFile, 'utf-8')).toContain('# Daily Synthesis Log: KB - Operations — 2026-09-19');
+    });
+
     it('idempotently skips note creation when note already exists', () => {
       mockNlmCli.listChats.mockReturnValue({
         ok: true,
@@ -222,6 +262,112 @@ describe('chatArchiver', () => {
 
       expect(sweep.results).toHaveLength(2);
       expect(sweep.totalProcessed).toBe(0); // both skipped (1 by filter, 1 with 0 sessions)
+    });
+
+    it('throws error when listNotebooks encounters authentication error', async () => {
+      mockNlmCli.listNotebooks.mockReturnValue({
+        ok: false,
+        error: 'Authentication Error: Authentication expired. Run nlm login.',
+      });
+
+      await expect(
+        runUniversalChatArchival({
+          kbVaultRoot: tmpDir,
+          localVaultRoot: tmpDir,
+        })
+      ).rejects.toThrow('Failed to list notebooks from Google NotebookLM: Authentication Error');
+    });
+
+    it('gracefully isolates individual notebook errors during sweep', async () => {
+      mockNlmCli.listNotebooks.mockReturnValue({
+        ok: true,
+        data: [
+          { id: 'nb-1', title: 'KB - Operations' },
+          { id: 'nb-2', title: 'CIC - Willow Run & Aviation Engineering' },
+        ],
+      });
+
+      // nb-1 fails with API timeout
+      mockNlmCli.listChats.mockImplementation((id) => {
+        if (id === 'nb-1') {
+          return { ok: false, error: 'ETIMEDOUT: Connection reset by peer' };
+        }
+        return {
+          ok: true,
+          data: {
+            notebook_id: 'nb-2',
+            sessions: [{ conversation_id: 'conv-2', turn_count: 1 }],
+          },
+        };
+      });
+
+      mockNlmCli.getChatTranscript.mockReturnValue({
+        ok: true,
+        data: {
+          conversation_id: 'conv-2',
+          turn_count: 1,
+          transcript: [{ turn: 1, query: 'Q', answer: 'A' }],
+        },
+      });
+
+      mockNlmCli.listNotes.mockReturnValue({ ok: true, data: [] });
+      mockNlmCli.createNote.mockReturnValue({ ok: true, data: { noteId: 'note-healthy' } });
+
+      const sweep = await runUniversalChatArchival({
+        kbVaultRoot: tmpDir,
+        localVaultRoot: tmpDir,
+        date: '2026-10-06',
+      });
+
+      expect(sweep.results).toHaveLength(2);
+      const failed = sweep.results.find((r) => r.notebookId === 'nb-1');
+      const passed = sweep.results.find((r) => r.notebookId === 'nb-2');
+
+      expect(failed).toBeDefined();
+      expect(failed?.error).toContain('Failed to list chats: ETIMEDOUT');
+      expect(failed?.skipped).toBe(true);
+
+      expect(passed).toBeDefined();
+      expect(passed?.skipped).toBe(false);
+      expect(passed?.noteCreated).toBe(true);
+      expect(sweep.totalProcessed).toBe(1);
+    });
+
+    it('handles createNote failure gracefully while still persisting local markdown', () => {
+      mockNlmCli.listChats.mockReturnValue({
+        ok: true,
+        data: {
+          notebook_id: 'nb-1',
+          sessions: [{ conversation_id: 'conv-1', turn_count: 1 }],
+        },
+      });
+
+      mockNlmCli.getChatTranscript.mockReturnValue({
+        ok: true,
+        data: {
+          conversation_id: 'conv-1',
+          turn_count: 1,
+          transcript: [{ turn: 1, query: 'Q', answer: 'A' }],
+        },
+      });
+
+      mockNlmCli.listNotes.mockReturnValue({ ok: true, data: [] });
+      mockNlmCli.createNote.mockReturnValue({
+        ok: false,
+        error: 'Rate limit exceeded on Studio note creation',
+      });
+
+      const result = archiveNotebook(
+        { id: 'nb-1', title: 'KB - Operations' },
+        { kbVaultRoot: tmpDir, localVaultRoot: tmpDir, date: '2026-10-06' }
+      );
+
+      expect(result.skipped).toBe(false);
+      expect(result.noteCreated).toBe(false);
+      expect(result.noteId).toBeUndefined();
+      // Local markdown file should still be written for offline cache resiliency
+      const writtenFile = path.join(tmpDir, 'conversations', '2026-10-06', 'kb-operations.md');
+      expect(fs.existsSync(writtenFile)).toBe(true);
     });
   });
 });

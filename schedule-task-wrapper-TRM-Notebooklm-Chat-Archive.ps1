@@ -15,6 +15,7 @@ $ErrorActionPreference = "Continue"
 $startTime = Get-Date
 $correlationId = [Guid]::NewGuid().ToString()
 $Timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+$AlertDispatcher = "C:\dev\scripts\send-critical-alert.ps1"
 
 # 0. Setup Logging
 $LogDir = Join-Path $TrmRoot "logs"
@@ -27,6 +28,23 @@ function Log-Message([string]$msg, [string]$color = "White") {
     $formatted = "[$(Get-Date -Format 'o')] $msg"
     Write-Host $msg -ForegroundColor $color
     $formatted | Out-File -FilePath $LogFile -Append -Encoding utf8
+}
+
+function Dispatch-Alert([string]$title, [string]$message, [string]$action = "nlm login") {
+    if (Test-Path $AlertDispatcher) {
+        & pwsh -NoProfile -File $AlertDispatcher -Source "TRM-Notebooklm-Chat-Archive" `
+            -Title $title `
+            -Message $message `
+            -Severity "CRITICAL" `
+            -ActionRequired $action `
+            -LogFile $LogFile
+    }
+}
+
+function Clear-PriorAlert() {
+    if (Test-Path $AlertDispatcher) {
+        & pwsh -NoProfile -File $AlertDispatcher -Source "TRM-Notebooklm-Chat-Archive" -ClearAlert
+    }
 }
 
 Log-Message "========================================================================" "Cyan"
@@ -66,7 +84,30 @@ try {
         }
     }
 
-    # 4. Execute Universal Chat Archival Sweep
+    # 4. Live Auth Verification with Self-Healing Probe
+    Log-Message "[AUTH-CHECK] Verifying live Google NotebookLM authentication..." "Cyan"
+    $authProbe = & nlm notebook list --json 2>&1
+    if ($LASTEXITCODE -ne 0 -or ($authProbe -match "Authentication (Error|expired)")) {
+        Log-Message "[AUTH-CHECK] Session expired or invalid. Attempting silent 'nlm auth refresh'..." "Yellow"
+        & nlm auth refresh 2>&1 | Tee-Object -FilePath $LogFile -Append
+
+        $authProbeRetry = & nlm notebook list --json 2>&1
+        if ($LASTEXITCODE -ne 0 -or ($authProbeRetry -match "Authentication (Error|expired)")) {
+            $errMsg = "NotebookLM authentication expired and headless refresh failed. Interactive login required."
+            Log-Message "[AUTH-FATAL] $errMsg" "Red"
+            Log-Message "[AUTH-FATAL] Action required: Run 'nlm login' in terminal." "Red"
+
+            Dispatch-Alert "🚨 CRITICAL: NotebookLM Auth Expired" $errMsg "nlm login"
+            $ExitCode = 1
+            exit $ExitCode
+        } else {
+            Log-Message "[AUTH-CHECK] Headless auth refresh succeeded!" "Green"
+        }
+    } else {
+        Log-Message "[AUTH-CHECK] Live authentication confirmed healthy." "Green"
+    }
+
+    # 5. Execute Universal Chat Archival Sweep
     Set-Location -Path $TrmRoot
     Log-Message "[SWEEP] Executing universal chat archive across approved notebooks..." "Green"
 
@@ -78,14 +119,47 @@ try {
     $sweepExitCode = $LASTEXITCODE
 
     if ($sweepExitCode -ne 0) {
-        Log-Message "[SWEEP] Chat archival finished with non-zero exit code: $sweepExitCode" "Yellow"
+        $sweepErr = "Chat archival finished with non-zero exit code: $sweepExitCode"
+        Log-Message "[SWEEP] $sweepErr" "Red"
+        Dispatch-Alert "🚨 CRITICAL: NotebookLM Chat Archival Failed" $sweepErr "Inspect $LogFile"
         $ExitCode = 1
     } else {
         Log-Message "[SWEEP] Chat archival completed successfully." "Green"
+        Clear-PriorAlert
     }
 
-    # 5. Canonical knowledge.db SQLite Cache Refresh
-    if ((Test-Path "$KbSyncRoot\package.json") -and (-not $DryRun)) {
+    # 5b. Staging & Context Compaction into viking:// Virtual Filesystem & SQLite Ingestion
+    if ($ExitCode -eq 0) {
+        Set-Location -Path $TrmRoot
+        $compactArgs = @("./scripts/viking-vfs-compact.mjs", "--protocol", "viking://", "--source", $LogFile)
+        if ($DryRun) {
+            $compactArgs += "--dry-run"
+        } else {
+            $compactArgs += @("--out", "vfs/")
+        }
+
+        Log-Message "[VFS-COMPACT] Compacting harvested session logs into viking:// hierarchy..." "Cyan"
+        & node @compactArgs 2>&1 | Tee-Object -FilePath $LogFile -Append
+        if ($LASTEXITCODE -ne 0) {
+            Log-Message "[VFS-COMPACT] Warning: viking-vfs-compact returned non-zero status: $LASTEXITCODE" "Yellow"
+        } else {
+            Log-Message "[VFS-COMPACT] Virtual filesystem compaction completed successfully." "Green"
+
+            # Ingest into knowledge.db if not dry run
+            if (-not $DryRun) {
+                Log-Message "[DB-INGEST] Ingesting staged VFS artifacts into local knowledge.db WAL..." "Cyan"
+                & node ./scripts/vfs-to-knowledge-db.mjs --manifest vfs/manifest.json --db ./data/knowledge.db 2>&1 | Tee-Object -FilePath $LogFile -Append
+                if ($LASTEXITCODE -ne 0) {
+                    Log-Message "[DB-INGEST] Warning: vfs-to-knowledge-db returned non-zero status: $LASTEXITCODE" "Yellow"
+                } else {
+                    Log-Message "[DB-INGEST] Knowledge.db WAL ingestion and checkpoint successful." "Green"
+                }
+            }
+        }
+    }
+
+    # 6. Canonical knowledge.db SQLite Cache Refresh
+    if ((Test-Path "$KbSyncRoot\package.json") -and (-not $DryRun) -and ($ExitCode -eq 0)) {
         Log-Message "[CACHE-SYNC] Refreshing SQLite knowledge.db FTS5/BM25 cache..." "Cyan"
         Set-Location -Path $KbSyncRoot
         & npm run kb:cache:sync 2>&1 | Tee-Object -FilePath $LogFile -Append
@@ -97,7 +171,9 @@ try {
     }
 
 } catch {
-    Log-Message "[FATAL] Chat archival execution error: $($_.Exception.Message)" "Red"
+    $fatalErr = "Chat archival execution error: $($_.Exception.Message)"
+    Log-Message "[FATAL] $fatalErr" "Red"
+    Dispatch-Alert "🚨 CRITICAL: NotebookLM Task Crash" $fatalErr "Inspect $LogFile"
     $ExitCode = 1
 } finally {
     if ($mutex -ne $null -and $createdNew) {

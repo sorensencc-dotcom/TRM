@@ -19,10 +19,81 @@ export function isUrgentAnswer(answer: string): boolean {
   return URGENCY_PATTERNS.some((p) => p.test(answer));
 }
 
-export function loadMiningQuestions(): MiningQuestion[] {
-  const configPath = path.resolve(__dirname, '../../../config/mining-questions.json');
-  const parsed = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as { questions: MiningQuestion[] };
+export function loadMiningQuestions(root?: string, category: string = 'research'): MiningQuestion[] {
+  const normCategory = category === 'operational' ? 'operational' : 'research';
+  const filename = normCategory === 'operational' ? 'operational-questions.json' : 'mining-questions.json';
+  const candidatePaths = [
+    root ? path.join(root, 'config', filename) : '',
+    path.resolve(__dirname, '../../../config', filename),
+    path.join('C:\\dev\\trm\\config', filename),
+  ].filter(Boolean);
+
+  const foundPath = candidatePaths.find((p) => fs.existsSync(p));
+  if (!foundPath) {
+    const fallbackPath = path.resolve(__dirname, '../../../config/mining-questions.json');
+    if (fs.existsSync(fallbackPath)) {
+      const parsed = JSON.parse(fs.readFileSync(fallbackPath, 'utf-8')) as { questions: MiningQuestion[] };
+      return parsed.questions;
+    }
+    return [];
+  }
+  const parsed = JSON.parse(fs.readFileSync(foundPath, 'utf-8')) as { questions: MiningQuestion[] };
   return parsed.questions;
+}
+
+export function computeBatteryEntropy(currentQuestions: string[], previousQuestions: string[]): number {
+  if (!previousQuestions || previousQuestions.length === 0) return 1.0;
+  if (!currentQuestions || currentQuestions.length === 0) return 0.0;
+
+  const currentSet = new Set(currentQuestions.map((q) => q.trim().toLowerCase()));
+  const previousSet = new Set(previousQuestions.map((q) => q.trim().toLowerCase()));
+
+  let overlap = 0;
+  for (const q of currentSet) {
+    if (previousSet.has(q)) overlap++;
+  }
+
+  const union = new Set([...currentSet, ...previousSet]).size;
+  return union === 0 ? 0.0 : 1.0 - (overlap / union);
+}
+
+export function loadDynamicGapQuestions(root: string, notebookTitle: string): MiningQuestion[] {
+  const dynamicQuestions: MiningQuestion[] = [];
+  const candidatePaths = [
+    path.join(root, 'trm-research-gaps.md'),
+    path.resolve(root, '..', 'dev', 'kb-sync', 'trm-research-gaps.md'),
+    path.resolve('C:\\dev\\kb-sync\\trm-research-gaps.md'),
+  ];
+  const gapsPath = candidatePaths.find((p) => fs.existsSync(p));
+  if (!gapsPath) return dynamicQuestions;
+
+  try {
+    const content = fs.readFileSync(gapsPath, 'utf-8');
+    const lines = content.split(/\r?\n/);
+    const cleanTitle = notebookTitle.toLowerCase().replace(/[^a-z0-9]+/g, ' ');
+
+    for (const line of lines) {
+      if (!line.startsWith('- [ ]') && !line.startsWith('- [x]')) continue;
+      const lineLower = line.toLowerCase();
+      if (lineLower.includes(cleanTitle) || lineLower.includes(notebookTitle.toLowerCase())) {
+        const match = line.match(/\*\*([^*]+)\*\*:\s*(.*)$/);
+        if (match) {
+          const gapTitle = match[1].trim();
+          const gapExcerpt = match[2].trim();
+          const qId = `dynamic-gap-${crypto.createHash('md5').update(gapTitle).digest('hex').slice(0, 8)}`;
+          dynamicQuestions.push({
+            id: qId,
+            text: `Investigate and resolve open research gap: "${gapTitle}". Specific context: ${gapExcerpt.slice(0, 200)}`,
+          });
+        }
+      }
+      if (dynamicQuestions.length >= 3) break;
+    }
+  } catch {
+    // Fail-soft on dynamic question load
+  }
+
+  return dynamicQuestions;
 }
 
 export function answerKey(notebookId: string, questionId: string, answer: string): string {
@@ -38,8 +109,9 @@ function upsertDocRow(root: string, relativeDocPath: string, question: MiningQue
   const absPath = path.join(root, relativeDocPath);
   const exists = fs.existsSync(absPath);
   const header = '| Question | Answer excerpt | Notebook | First-seen date | Entry key |\n|---|---|---|---|---|\n';
+  const qText = question.text.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
   const excerpt = answer.length > 200 ? `${answer.slice(0, 200)}...` : answer;
-  const newRow = `| ${question.text} | ${excerpt.replace(/\|/g, '\\|').replace(/\n/g, ' ')} | ${notebookTitle} | ${new Date().toISOString().slice(0, 10)} | ${key} |`;
+  const newRow = `| ${qText} | ${excerpt.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ')} | ${notebookTitle} | ${new Date().toISOString().slice(0, 10)} | ${key} |`;
   fs.mkdirSync(path.dirname(absPath), { recursive: true });
 
   if (!exists) {
@@ -51,7 +123,7 @@ function upsertDocRow(root: string, relativeDocPath: string, question: MiningQue
   const lines = existingContent.split(/\r?\n/);
 
   // Match existing row for this specific question
-  const questionPrefix = `| ${question.text} |`;
+  const questionPrefix = `| ${qText} |`;
   const existingIdx = lines.findIndex((l) => l.startsWith(questionPrefix));
 
   if (existingIdx !== -1) {
@@ -244,12 +316,13 @@ function triggerGapTriage(root: string): void {
   }
 }
 
-function uploadResearchGapsSource(root: string, notebookId: string, relativeDocPath: string): void {
+function uploadResearchGapsSource(root: string, notebookId: string, relativeDocPath: string, category: string = 'research'): void {
   const absPath = path.join(root, relativeDocPath);
   if (!fs.existsSync(absPath)) return;
 
   try {
-    const title = 'TRM Research Gaps & Synthesis';
+    const title = category === 'operational' ? 'TRM Operational Gaps & Synthesis' : 'TRM Research Gaps & Synthesis';
+    const oldTitle = category === 'operational' ? 'TRM Research Gaps & Synthesis' : 'TRM Operational Gaps & Synthesis';
     const nlmBin = 'nlm';
     const baseName = path.basename(absPath).toLowerCase();
 
@@ -270,7 +343,7 @@ function uploadResearchGapsSource(root: string, notebookId: string, relativeDocP
 
     const staleSources = existingSources.filter((s) => {
       const sTitle = (s.title || s.name || '').toLowerCase().trim();
-      return sTitle === title.toLowerCase() || sTitle === baseName;
+      return sTitle === title.toLowerCase() || sTitle === oldTitle.toLowerCase() || sTitle === baseName;
     });
 
     // Add fresh source before deleting older versions. Preserve an existing
@@ -311,7 +384,23 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
   // src/core/config.ts loadConfig; there is no fallback/default when it's missing.
   const config = loadConfig(root);
 
-  const questions = loadMiningQuestions();
+  const category = entry.category === 'operational' ? 'operational' : 'research';
+  const baseQuestions = loadMiningQuestions(root, category);
+  const dynamicQuestions = loadDynamicGapQuestions(root, entry.title);
+  const questions = dynamicQuestions.length > 0
+    ? [...dynamicQuestions, ...baseQuestions.slice(0, Math.max(1, 4 - dynamicQuestions.length))]
+    : baseQuestions;
+
+  const prevQuestionIds = entry.last_mined_answer_keys
+    .filter((k) => k.startsWith(`${notebookId}:`))
+    .map((k) => k.split(':')[1]);
+  const entropy = computeBatteryEntropy(questions.map((q) => q.id), prevQuestionIds);
+
+  if (entropy < 0.25 && prevQuestionIds.length > 0) {
+    console.warn(`[BOILERPLATE-STAGNATION-ALERT] Notebook "${entry.title}" (${notebookId}): Question battery entropy is ${entropy.toFixed(2)} (< 0.25 threshold). Repeating boilerplate battery without net-new inquiries!`);
+  } else {
+    console.log(`[ENTROPY-AUDIT] Notebook "${entry.title}" (${notebookId}): Question battery entropy score: ${entropy.toFixed(2)}.`);
+  }
   const relativeDocPath = docPathFor(root, slugifyTitle(entry.title));
   const seenKeys = new Set(entry.last_mined_answer_keys);
   let newEntries = 0;
@@ -344,7 +433,7 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
     flushMinedState(root, notebookId, Array.from(seenKeys), new Date().toISOString());
     if (newEntries > 0) {
       triggerGapTriage(root);
-      uploadResearchGapsSource(root, notebookId, relativeDocPath);
+      uploadResearchGapsSource(root, notebookId, relativeDocPath, category);
     }
   }
 

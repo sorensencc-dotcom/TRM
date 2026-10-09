@@ -57,6 +57,7 @@ function runNlm(args: string[], rawText = false): NlmResult<unknown> {
   const result = spawnSync('nlm', args, {
     encoding: 'utf-8',
     timeout: FIXED_CALL_TIMEOUT_MS,
+    stdio: ['ignore', 'pipe', 'pipe'],
   }) as unknown as RawSpawnResult;
 
   if (result.error) {

@@ -1,9 +1,25 @@
 {
-  "version": 1,
+  "category": "research",
   "questions": [
-    { "id": "open-contradictions", "text": "What open questions or unresolved contradictions exist across these sources?" },
-    { "id": "under-sourced", "text": "What claims are asserted but single-sourced or under-corroborated?" },
-    { "id": "adjacent-topics", "text": "What adjacent topics do these sources point to that aren't covered yet?" },
-    { "id": "follow-up", "text": "What follow-up research would most strengthen current findings?" }
+    {
+      "id": "open-contradictions",
+      "text": "What open questions or unresolved contradictions exist across these sources?"
+    },
+    {
+      "id": "under-sourced",
+      "text": "What claims are asserted but single-sourced or under-corroborated?"
+    },
+    {
+      "id": "adjacent-topics",
+      "text": "What adjacent topics do these sources point to that aren't covered yet?"
+    },
+    {
+      "id": "follow-up",
+      "text": "What follow-up research would most strengthen current findings?"
+    },
+    {
+      "id": "non-obvious-connections",
+      "text": "Find the non-obvious connections between sources in this notebook that appear unrelated on the surface.\n\nFor each connection:\n1. Name the two (or three) sources being bridged.\n2. State the shared underlying idea, mechanism, or historical pattern in one sentence.\n3. Quote the key passage from each source that demonstrates the link.\n4. Explain why this connection isn't obvious — what surface-level differences hide it.\n5. Describe one new insight or narrative angle that only becomes visible once both sources are read together."
+    }
   ]
 }

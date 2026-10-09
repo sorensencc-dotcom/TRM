@@ -31,6 +31,7 @@ export interface NotebookRegistryEntry {
   notebook_id: string;
   title: string;
   url: string;
+  category?: 'operational' | 'research' | string;
   last_pulled_hashes: Record<string, string>;
   quarantined: Record<string, QuarantineEntry>;
   last_ingested_at: string | null;

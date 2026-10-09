@@ -5,6 +5,12 @@
 # Registered in Windows Task Scheduler, weekly trigger -- see
 # docs/superpowers/specs/2026-08-12-notebooklm-cic-ingest-mining-design.md §5
 # and docs/superpowers/specs/2026-09-13-notebooklm-push-research-loop-design.md.
+param(
+    [Parameter(Mandatory = $false)]
+    [string]$NotebookId,
+    [Parameter(Mandatory = $false)]
+    [switch]$SkipIngest
+)
 
 $ErrorActionPreference = "Continue"
 $VaultRoot = 'C:\Users\soren\trm-vault'
@@ -16,6 +22,19 @@ if (-not (Test-Path $LogDir)) {
 $Timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $LogFile = Join-Path $LogDir "trm-notebooklm-mine-$Timestamp.log"
 $StartTime = Get-Date
+
+# Load Parallel API key from secrets if present
+$SecretsFile = 'C:\Users\soren\.secrets\parallel.env'
+if (Test-Path $SecretsFile) {
+    Get-Content $SecretsFile | ForEach-Object {
+        if ($_ -match '^\s*([^#=]+)=(.*)$') {
+            $key = $matches[1].Trim()
+            $val = $matches[2].Trim()
+            [Environment]::SetEnvironmentVariable($key, $val, 'Process')
+            Set-Item "env:$key" $val
+        }
+    }
+}
 
 "=== TRM Notebooklm Mining Sweep ===" | Tee-Object -FilePath $LogFile -Append
 "Started: $StartTime" | Tee-Object -FilePath $LogFile -Append
@@ -66,36 +85,89 @@ try {
 
 $ExitCode = 0
 
-foreach ($Notebook in $Registry.notebooks) {
-    "=== syncing & ingesting $($Notebook.title) ($($Notebook.notebook_id)) ===" | Tee-Object -FilePath $LogFile -Append
-    try {
-        $NarrativeRoot = 'C:\dev\charlie-deep-research'
-        if (Test-Path $NarrativeRoot) {
-            & trm ingest-notebooklm $Notebook.notebook_id --narrative-root $NarrativeRoot 2>&1 | Tee-Object -FilePath $LogFile -Append
-        } else {
-            "Narrative root $NarrativeRoot not found, skipping ingestion step" | Tee-Object -FilePath $LogFile -Append
-        }
-        if ($LASTEXITCODE -ne 0) {
-            "ingest-notebooklm failed for $($Notebook.notebook_id) with exit code $LASTEXITCODE" | Tee-Object -FilePath $LogFile -Append
+$TargetNotebooks = if ($NotebookId) {
+    $matched = @($Registry.notebooks | Where-Object { $_.notebook_id -eq $NotebookId })
+    if ($matched.Count -eq 0) {
+        "Notebook ID $NotebookId not found in registry -- aborting" | Tee-Object -FilePath $LogFile -Append
+        exit 1
+    }
+    $matched
+} else {
+    $Registry.notebooks
+}
+
+$TotalTargets = $TargetNotebooks.Count
+$AttemptedCount = 0
+$SucceededNotebooks = @()
+$FailedNotebooks = @()
+
+foreach ($Notebook in $TargetNotebooks) {
+    $AttemptedCount++
+    $notebookFailed = $false
+    "================================================================================" | Tee-Object -FilePath $LogFile -Append
+    "=== [TARGET $AttemptedCount/$TotalTargets] $($Notebook.title) ($($Notebook.notebook_id)) ===" | Tee-Object -FilePath $LogFile -Append
+    "================================================================================" | Tee-Object -FilePath $LogFile -Append
+
+    if (-not $SkipIngest) {
+        "--- Ingesting $($Notebook.title) ---" | Tee-Object -FilePath $LogFile -Append
+        try {
+            $NarrativeRoot = 'C:\dev\charlie-deep-research'
+            if (Test-Path $NarrativeRoot) {
+                & trm ingest-notebooklm $Notebook.notebook_id --narrative-root $NarrativeRoot 2>&1 | Tee-Object -FilePath $LogFile -Append
+            } else {
+                "Narrative root $NarrativeRoot not found, skipping ingestion step" | Tee-Object -FilePath $LogFile -Append
+            }
+            if ($LASTEXITCODE -ne 0) {
+                "ingest-notebooklm failed for $($Notebook.notebook_id) with exit code $LASTEXITCODE" | Tee-Object -FilePath $LogFile -Append
+                $ExitCode = 1
+                $notebookFailed = $true
+            }
+        } catch {
+            "ingest-notebooklm threw for $($Notebook.notebook_id): $_" | Tee-Object -FilePath $LogFile -Append
             $ExitCode = 1
+            $notebookFailed = $true
         }
-    } catch {
-        "ingest-notebooklm threw for $($Notebook.notebook_id): $_" | Tee-Object -FilePath $LogFile -Append
-        $ExitCode = 1
+    } else {
+        "--- Skipping ingestion for $($Notebook.title) (-SkipIngest set) ---" | Tee-Object -FilePath $LogFile -Append
     }
 
-    "=== mining $($Notebook.title) ($($Notebook.notebook_id)) ===" | Tee-Object -FilePath $LogFile -Append
+    "--- Mining $($Notebook.title) ---" | Tee-Object -FilePath $LogFile -Append
     try {
+        $mineStart = Get-Date
         & trm mine-notebooklm $Notebook.notebook_id 2>&1 | Tee-Object -FilePath $LogFile -Append
+        $mineSec = [Math]::Round(((Get-Date) - $mineStart).TotalSeconds, 1)
         if ($LASTEXITCODE -ne 0) {
-            "mine-notebooklm failed for $($Notebook.notebook_id) with exit code $LASTEXITCODE" | Tee-Object -FilePath $LogFile -Append
+            "mine-notebooklm failed for $($Notebook.notebook_id) with exit code $LASTEXITCODE (${mineSec}s)" | Tee-Object -FilePath $LogFile -Append
             $ExitCode = 1
+            $notebookFailed = $true
+        } else {
+            "mine-notebooklm completed for $($Notebook.title) in ${mineSec}s" | Tee-Object -FilePath $LogFile -Append
         }
     } catch {
         "mine-notebooklm threw for $($Notebook.notebook_id): $_" | Tee-Object -FilePath $LogFile -Append
         $ExitCode = 1
+        $notebookFailed = $true
+    }
+
+    if ($notebookFailed) {
+        $FailedNotebooks += "$($Notebook.title) ($($Notebook.notebook_id))"
+    } else {
+        $SucceededNotebooks += "$($Notebook.title) ($($Notebook.notebook_id))"
     }
 }
+
+"================================================================================" | Tee-Object -FilePath $LogFile -Append
+"=== SWEEP COMPLETENESS & STALENESS AUDIT ===" | Tee-Object -FilePath $LogFile -Append
+"Total Registry Targets: $TotalTargets | Attempted: $AttemptedCount | Succeeded: $($SucceededNotebooks.Count) | Failed: $($FailedNotebooks.Count)" | Tee-Object -FilePath $LogFile -Append
+if ($AttemptedCount -lt $TotalTargets) {
+    $ExitCode = 1
+    $StallMsg = "🚨 CRITICAL: NotebookLM mining sweep stalled prematurely! Only attempted $AttemptedCount of $TotalTargets targets."
+    $StallMsg | Tee-Object -FilePath $LogFile -Append
+}
+if ($FailedNotebooks.Count -gt 0) {
+    "Failed Targets: $($FailedNotebooks -join ', ')" | Tee-Object -FilePath $LogFile -Append
+}
+"================================================================================" | Tee-Object -FilePath $LogFile -Append
 
 "=== research-notebooklm (all notebooks) ===" | Tee-Object -FilePath $LogFile -Append
 try {
@@ -123,5 +195,19 @@ if (Test-Path -Path $StatusRunner) {
 $EndTime = Get-Date
 $Duration = ($EndTime - $StartTime).TotalSeconds
 "Completed: $EndTime (Duration: {0:F2}s, Exit Code: {1})" -f $Duration, $ExitCode | Tee-Object -FilePath $LogFile -Append
+
+$AlertDispatcher = "C:\dev\scripts\send-critical-alert.ps1"
+if (Test-Path $AlertDispatcher) {
+    if ($ExitCode -ne 0) {
+        & pwsh -NoProfile -File $AlertDispatcher -Source "TRM-Notebooklm-Mine" `
+            -Title "🚨 CRITICAL: TRM NotebookLM Mining Failed" `
+            -Message "TRM NotebookLM Mining sweep finished with non-zero exit code ($ExitCode)." `
+            -Severity "CRITICAL" `
+            -ActionRequired "Inspect log: $LogFile" `
+            -LogFile $LogFile
+    } else {
+        & pwsh -NoProfile -File $AlertDispatcher -Source "TRM-Notebooklm-Mine" -ClearAlert
+    }
+}
 
 exit $ExitCode
