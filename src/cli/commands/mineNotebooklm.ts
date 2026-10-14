@@ -19,6 +19,17 @@ export function isUrgentAnswer(answer: string): boolean {
   return URGENCY_PATTERNS.some((p) => p.test(answer));
 }
 
+export function sleepSync(ms: number): void {
+  try {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  } catch {
+    const start = Date.now();
+    while (Date.now() - start < ms) {
+      // fallback busy-wait
+    }
+  }
+}
+
 export function loadMiningQuestions(root?: string, category: string = 'research'): MiningQuestion[] {
   const normCategory = category === 'operational' ? 'operational' : 'research';
   const filename = normCategory === 'operational' ? 'operational-questions.json' : 'mining-questions.json';
@@ -273,11 +284,22 @@ function appendResearchGapsMatrix(root: string, question: MiningQuestion, answer
   if (!gapsPath) return;
 
   const content = fs.readFileSync(gapsPath, 'utf-8');
+
+  // Global circuit breaker: if content has over 500 active research gap items, stop appending new ones
+  const activeGapMatches = content.match(/^- \[ \] \*\*/gm);
+  if (activeGapMatches && activeGapMatches.length > 500) {
+    console.warn(`[GAP-CIRCUIT-BREAKER] trm-research-gaps.md has ${activeGapMatches.length} active gaps (>500 threshold). Halting new gap insertions.`);
+    return;
+  }
+
   const notebookId = key.includes(':') ? key.split(':')[0] : key;
   const items = extractAtomicGaps(notebookId, question.id, answer);
 
+  // Partition ceiling: cap to max 3 items per question to prevent explosive gap generation
+  const cappedItems = items.slice(0, 3);
+
   const linesToAdd: string[] = [];
-  for (const item of items) {
+  for (const item of cappedItems) {
     const gapTag = `**${notebookTitle} (${question.id} - ${item.title})**`;
     const itemSnippet = item.text.slice(0, 80).replace(/[[\]()#*]/g, '').trim();
     if (content.includes(gapTag) || (itemSnippet.length > 30 && content.includes(itemSnippet))) {
@@ -422,7 +444,8 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
     // Fail-soft if listing sources fails
   }
 
-  for (const question of questions) {
+  for (let i = 0; i < questions.length; i++) {
+    const question = questions[i];
     const result = queryNotebook(notebookId, question.text, queryOptions);
     if (!result.ok) continue;
     anySuccess = true;
@@ -438,6 +461,11 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
     }
     seenKeys.add(key);
     newEntries++;
+
+    // Enforce 3.5s distributed execution pacing during live runs to respect NotebookLM rate limits
+    if (i < questions.length - 1 && process.env.NODE_ENV !== 'test' && !root.includes('tmp') && !root.includes('Temp')) {
+      sleepSync(3500);
+    }
   }
 
   // Only persist registry state (and bump last_mined_at) when we actually
