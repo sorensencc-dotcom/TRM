@@ -3,6 +3,36 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { writeFileAtomic } from '../core/atomicWrite';
 
+export const KB_TESTING_SANDBOX_UUID = 'd721ed70-5b37-497f-a279-10ba362c744e';
+export const KB_TESTING_FIXTURE_SOURCE_ID = 'cc06bd53-1793-4ea0-b723-6f77eb1dd490';
+export const KB_TESTING_FIXTURE_TITLE = 'Test Harness Specification & Live Verification Fixtures';
+
+// Only initialize an empty vault: never add this target to a production registry.
+export function setupTestingSandbox(root: string): void {
+  fs.mkdirSync(root, { recursive: true });
+  if (fs.readdirSync(root).length !== 0) throw new Error('Sandbox setup requires an empty vault directory');
+  writeFileAtomic(path.join(root, '.kb-testing-sandbox'), KB_TESTING_SANDBOX_UUID);
+  writeFileAtomic(path.join(root, 'config.json'), JSON.stringify({
+    default_scoring_adapter: 'stub', actor_source: 'env', time_source: 'system', promotion_threshold: 80,
+  }));
+  writeRegistry(root, { version: 1, notebooks: [{
+    notebook_id: KB_TESTING_SANDBOX_UUID,
+    title: 'KB - Testing Sandbox (Live Verification)',
+    url: `https://notebooklm.google.com/notebook/${KB_TESTING_SANDBOX_UUID}`,
+    category: 'kb-testing',
+    last_pulled_hashes: {}, quarantined: {}, last_ingested_at: null,
+    last_mined_at: null, last_mined_answer_keys: [], research_queue: {},
+  }] });
+}
+
+export function assertTestingSandbox(root: string, registry: RegistryFile): void {
+  const marker = path.join(root, '.kb-testing-sandbox');
+  if (!fs.existsSync(marker) || fs.readFileSync(marker, 'utf8') !== KB_TESTING_SANDBOX_UUID ||
+      registry.notebooks.length !== 1 || registry.notebooks[0].notebook_id !== KB_TESTING_SANDBOX_UUID) {
+    throw new Error('kb-testing requires an isolated vault created by setupTestingSandbox');
+  }
+}
+
 export interface QuarantineEntry {
   hash: string;
   reason: string;

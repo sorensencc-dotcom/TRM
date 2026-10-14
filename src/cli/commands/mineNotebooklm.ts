@@ -2,8 +2,9 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { queryNotebook, listSources } from '../../notebooklm/nlmCli';
-import { readRegistry, findNotebook, flushMinedState, upsertResearchQueueEntry } from '../../notebooklm/registry';
+import { queryNotebook, queryNotebookDetailed, listSources } from '../../notebooklm/nlmCli';
+import { readRegistry, findNotebook, flushMinedState, upsertResearchQueueEntry,
+  KB_TESTING_SANDBOX_UUID, KB_TESTING_FIXTURE_SOURCE_ID, KB_TESTING_FIXTURE_TITLE, assertTestingSandbox } from '../../notebooklm/registry';
 import { writeFileAtomic } from '../../core/atomicWrite';
 import { slugifyTitle } from '../../notebooklm/stagingName';
 import { loadConfig } from '../../core/config';
@@ -141,9 +142,17 @@ export function buildSourceFilter(
   };
 }
 
-export function synthesizeDynamicQuestions(notebook: { title: string; slug?: string; category?: string }): MiningQuestion[] {
+export function synthesizeDynamicQuestions(notebook: { title: string; slug?: string; category?: string; notebook_id?: string }): MiningQuestion[] {
   const title = (notebook.title || '').toLowerCase();
   const slug = (notebook.slug || slugifyTitle(notebook.title) || '').toLowerCase();
+
+  if (notebook.notebook_id === KB_TESTING_SANDBOX_UUID) {
+    return [
+      { id: 'sandbox-alpha-101', text: 'For Entity ALPHA-101 (MCP Gateway Runtime Config), what port, transport protocol, persistence mode, and TRM authority guardrail are specified?' },
+      { id: 'sandbox-bravo-202', text: 'For Entity BRAVO-202 (Charles E. Sorensen Danish Royal Honors), what are the exact Ordenskapitlet appointment dates for Knight and Commander of Dannebrog and which GAP IDs do they close?' },
+      { id: 'sandbox-charlie-303', text: 'For Entity CHARLIE-303 (Architecture Byte Ceiling & Pacing Invariants), what is the hard byte budget in KiB and bytes per serialized knowledge pack chunk and mandatory API rate pacing delay?' },
+    ];
+  }
 
   if (slug.includes('willow') || title.includes('willow run') || title.includes('aviation')) {
     return [
@@ -287,7 +296,7 @@ export function computeBatteryEntropy(currentQuestions: string[], previousQuesti
 
 export function loadDynamicGapQuestions(root: string, notebookTitle: string): MiningQuestion[] {
   const dynamicQuestions: MiningQuestion[] = [];
-  const isTestDir = root.includes('tmp') || root.includes('Temp');
+  const isTestDir = process.env.NODE_ENV === 'test';
   const candidatePaths = [
     path.join(root, 'trm-research-gaps.md'),
     !isTestDir ? path.resolve(root, '..', 'dev', 'kb-sync', 'trm-research-gaps.md') : '',
@@ -491,7 +500,7 @@ export function extractAtomicGaps(
 }
 
 function appendResearchGapsMatrix(root: string, question: MiningQuestion, answer: string, notebookTitle: string, key: string): void {
-  const isTestDir = root.includes('tmp') || root.includes('Temp');
+  const isTestDir = process.env.NODE_ENV === 'test';
   const candidatePaths = [
     path.join(root, 'trm-research-gaps.md'),
     !isTestDir ? path.resolve(root, '..', 'dev', 'kb-sync', 'trm-research-gaps.md') : '',
@@ -621,13 +630,16 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
   if (!entry) {
     throw new Error(`notebooklm-registry.json has no entry for notebook "${notebookId}"`);
   }
+  const isSandbox = notebookId === KB_TESTING_SANDBOX_UUID;
+  if (isSandbox) assertTestingSandbox(root, registry);
+  if (!isSandbox && entry.category === 'kb-testing') throw new Error('kb-testing requires the exact sandbox notebook ID');
   // loadConfig requires config.json to exist in the vault root (root) -- see
   // src/core/config.ts loadConfig; there is no fallback/default when it's missing.
   const config = loadConfig(root);
 
   const category = entry.category === 'operational' ? 'operational' : 'research';
   const baseQuestions = loadMiningQuestions(root, category);
-  const dynamicQuestions = loadDynamicGapQuestions(root, entry.title);
+  const dynamicQuestions = isSandbox ? [] : loadDynamicGapQuestions(root, entry.title);
   const synthesized = category === 'research' ? synthesizeDynamicQuestions(entry) : [];
   const candidateQuestions = synthesized.length > 0 ? synthesized : baseQuestions;
   const questions = dynamicQuestions.length > 0
@@ -654,7 +666,16 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
     newConversation: true,
     timeoutSeconds: 120,
   };
-  try {
+  if (isSandbox) {
+    // Fresh local conversation IDs are not persisted by nlm; reuse the server thread.
+    queryOptions.newConversation = false;
+    const sources = listSources(notebookId);
+    if (!sources?.ok || !Array.isArray(sources.data) ||
+        !sources.data.some((source) => source.id === KB_TESTING_FIXTURE_SOURCE_ID && source.title === KB_TESTING_FIXTURE_TITLE)) {
+      throw new Error('kb-testing pinned fixture missing or source listing failed');
+    }
+    queryOptions.sourceIds = [KB_TESTING_FIXTURE_SOURCE_ID];
+  } else try {
     const sourcesRes = listSources(notebookId);
     if (sourcesRes && sourcesRes.ok && Array.isArray(sourcesRes.data)) {
       const filterResult = buildSourceFilter(sourcesRes.data, {
@@ -669,28 +690,37 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
     // Fail-soft if listing sources fails
   }
 
+  const evidence: unknown[] = [];
   for (let i = 0; i < questions.length; i++) {
+    // Pace before every subsequent attempt, including failures and duplicate answers.
+    if (i > 0 && (isSandbox || process.env.NODE_ENV !== 'test')) sleepSync(3500);
     const question = questions[i];
-    const result = queryNotebook(notebookId, question.text, queryOptions);
+    if (isSandbox) console.log(`[KB-TESTING] Query ${i + 1}/${questions.length}: ${question.id}; pinned fixture only`);
+    const detailed = isSandbox ? queryNotebookDetailed(notebookId, question.text, queryOptions) : undefined;
+    if (detailed) {
+      evidence.push({ question, queried_at: new Date().toISOString(), result: detailed });
+      writeFileAtomic(path.join(root, 'kb-testing-evidence.json'), JSON.stringify(evidence, null, 2));
+    }
+    const result = detailed ? (detailed.ok ? { ok: true as const, data: detailed.data.answer } : detailed)
+      : queryNotebook(notebookId, question.text, queryOptions);
     if (!result.ok) continue;
+    if (isSandbox && (typeof result.data !== 'string' || !result.data.trim())) throw new Error('NotebookLM returned an empty or invalid answer');
     anySuccess = true;
 
     const key = answerKey(notebookId, question.id, result.data);
     if (seenKeys.has(key)) continue;
 
     upsertDocRow(root, relativeDocPath, question, result.data, entry.title, key);
-    appendTodoIfUrgent(root, result.data, question, key);
-    appendResearchGapsMatrix(root, question, result.data, entry.title, key);
-    if (isUrgentAnswer(result.data)) {
+    if (!isSandbox) {
+      appendTodoIfUrgent(root, result.data, question, key);
+      appendResearchGapsMatrix(root, question, result.data, entry.title, key);
+    }
+    if (!isSandbox && isUrgentAnswer(result.data)) {
       upsertResearchQueueEntry(root, notebookId, question, key, config.dispatch_limits.default_mode);
     }
     seenKeys.add(key);
     newEntries++;
 
-    // Enforce 3.5s distributed execution pacing during live runs to respect NotebookLM rate limits
-    if (i < questions.length - 1 && process.env.NODE_ENV !== 'test' && !root.includes('tmp') && !root.includes('Temp')) {
-      sleepSync(3500);
-    }
   }
 
   // Only persist registry state (and bump last_mined_at) when we actually
@@ -700,7 +730,7 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
   // next run.
   if (anySuccess) {
     flushMinedState(root, notebookId, Array.from(seenKeys), new Date().toISOString());
-    if (newEntries > 0) {
+    if (newEntries > 0 && !isSandbox) {
       triggerGapTriage(root);
       uploadResearchGapsSource(root, notebookId, relativeDocPath, category);
     }

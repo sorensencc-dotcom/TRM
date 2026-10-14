@@ -127,6 +127,16 @@ export function queryNotebook(
   question: string,
   options?: QueryNotebookOptions | number
 ): NlmResult<string> {
+  const result = queryNotebookDetailed(notebookId, question, options);
+  if (!result.ok) return result;
+  return { ok: true, data: result.data.answer };
+}
+
+export function queryNotebookDetailed(
+  notebookId: string,
+  question: string,
+  options?: QueryNotebookOptions | number
+): NlmResult<{ answer: string; [key: string]: unknown }> {
   const opts: QueryNotebookOptions = typeof options === 'number' ? { timeoutSeconds: options } : (options || {});
   const args = ['query', 'notebook', notebookId, question, '--json'];
   if (opts.sourceIds && opts.sourceIds.length > 0) {
@@ -140,7 +150,12 @@ export function queryNotebook(
   const callTimeoutMs = (timeoutSec + 30) * 1000;
   const result = runNlm(args, false, callTimeoutMs);
   if (!result.ok) return result;
-  return { ok: true, data: (result.data as { answer: string }).answer };
+  if (!result.data || typeof result.data !== 'object' ||
+      typeof (result.data as { answer?: unknown }).answer !== 'string' ||
+      !(result.data as { answer: string }).answer.trim()) {
+    return { ok: false, error: 'nlm query produced an empty or invalid answer' };
+  }
+  return { ok: true, data: result.data as { answer: string; [key: string]: unknown } };
 }
 
 export function addSource(notebookId: string, filePath: string, title: string): NlmResult<undefined> {

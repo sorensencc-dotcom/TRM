@@ -1,4 +1,4 @@
-import { listSources, getSourceContent, listNotes, queryNotebook, addSource } from './nlmCli';
+import { listSources, getSourceContent, listNotes, queryNotebook, queryNotebookDetailed, addSource } from './nlmCli';
 import * as childProcess from 'node:child_process';
 
 jest.mock('node:child_process');
@@ -6,6 +6,18 @@ const mockSpawnSync = childProcess.spawnSync as jest.Mock;
 
 describe('nlmCli', () => {
   afterEach(() => jest.resetAllMocks());
+
+  it('preserves query evidence while the existing text API stays compatible', () => {
+    const data = { answer: '8765 WAL', conversation_id: 'conversation', citations: { '1': { source_id: 'fixture' } }, references: [] };
+    mockSpawnSync.mockReturnValue({ status: 0, stdout: JSON.stringify(data), stderr: '' });
+    expect(queryNotebookDetailed('sandbox', 'ALPHA-101')).toEqual({ ok: true, data });
+    expect(queryNotebook('sandbox', 'ALPHA-101')).toEqual({ ok: true, data: data.answer });
+  });
+
+  it.each([null, {}, { answer: 42 }, { answer: '' }, { answer: '   ' }])('rejects invalid query payload %p at the CLI boundary', (data) => {
+    mockSpawnSync.mockReturnValue({ status: 0, stdout: JSON.stringify(data), stderr: '' });
+    expect(queryNotebookDetailed('sandbox', 'ALPHA-101')).toEqual({ ok: false, error: 'nlm query produced an empty or invalid answer' });
+  });
 
   it('listSources parses a successful --json array', () => {
     mockSpawnSync.mockReturnValue({

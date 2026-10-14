@@ -16,7 +16,8 @@ import {
   synthesizeDynamicQuestions,
 } from './mineNotebooklm';
 import * as nlmCli from '../../notebooklm/nlmCli';
-import { registryPath, readRegistry, findNotebook } from '../../notebooklm/registry';
+import { registryPath, readRegistry, findNotebook, setupTestingSandbox, KB_TESTING_SANDBOX_UUID,
+  KB_TESTING_FIXTURE_SOURCE_ID, KB_TESTING_FIXTURE_TITLE } from '../../notebooklm/registry';
 import { spawnSync } from 'node:child_process';
 
 jest.mock('../../notebooklm/nlmCli');
@@ -58,6 +59,71 @@ describe('mineNotebooklm', () => {
 
   afterEach(() => {
     fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  describe('kb-testing isolated mining', () => {
+    function setup(): void {
+      fs.unlinkSync(registryPath(root));
+      fs.unlinkSync(path.join(root, 'config.json'));
+      setupTestingSandbox(root);
+    }
+
+    it('requires an empty setup vault and refuses a production registry', () => {
+      expect(() => setupTestingSandbox(root)).toThrow('empty vault');
+      const registry = readRegistry(root);
+      registry.notebooks[0].notebook_id = KB_TESTING_SANDBOX_UUID;
+      fs.writeFileSync(registryPath(root), JSON.stringify(registry));
+      expect(() => runMineNotebooklm(root, KB_TESTING_SANDBOX_UUID, {})).toThrow('isolated vault');
+      expect(nlmCli.listSources).not.toHaveBeenCalled();
+    });
+
+    it.each([undefined, { ok: false, error: 'offline' }, { ok: true, data: [] },
+      { ok: true, data: [{ id: 'wrong-id', title: KB_TESTING_FIXTURE_TITLE }] }])('fails closed before querying when fixture cannot be verified (%p)', (sources) => {
+      setup();
+      (nlmCli.listSources as jest.Mock).mockReturnValue(sources);
+      expect(() => runMineNotebooklm(root, KB_TESTING_SANDBOX_UUID, {})).toThrow('pinned fixture');
+      expect(nlmCli.queryNotebookDetailed).not.toHaveBeenCalled();
+      expect(nlmCli.queryNotebook).not.toHaveBeenCalled();
+      expect(findNotebook(readRegistry(root), KB_TESTING_SANDBOX_UUID)?.last_mined_at).toBeNull();
+    });
+
+    it('runs three fixture-pinned questions, paces duplicates and failures, and isolates repeat effects', () => {
+      setup();
+      const matrix = '## Active Research Gaps\n- [ ] **KB - Testing Sandbox (Live Verification) (real-gap)**: never dispatch\n';
+      fs.writeFileSync(path.join(root, 'trm-research-gaps.md'), matrix);
+      (nlmCli.listSources as jest.Mock).mockReturnValue({ ok: true, data: [
+        { id: KB_TESTING_FIXTURE_SOURCE_ID, title: KB_TESTING_FIXTURE_TITLE },
+        { id: 'unrelated', title: 'Other primary source' },
+      ] });
+      (nlmCli.queryNotebookDetailed as jest.Mock).mockReturnValue({ ok: true, data: { answer: 'needs verification: sandbox fact', conversation_id: 'conversation-1' } });
+      const wait = jest.spyOn(Atomics, 'wait').mockReturnValue('timed-out');
+      try {
+        const first = runMineNotebooklm(root, KB_TESTING_SANDBOX_UUID, {});
+        expect(first.newEntries).toBe(3);
+        expect(runMineNotebooklm(root, KB_TESTING_SANDBOX_UUID, {}).newEntries).toBe(0);
+        (nlmCli.queryNotebookDetailed as jest.Mock).mockReturnValue({ ok: false, error: 'offline' });
+        expect(runMineNotebooklm(root, KB_TESTING_SANDBOX_UUID, {}).newEntries).toBe(0);
+        expect(wait).toHaveBeenCalledTimes(6);
+        for (const call of wait.mock.calls) expect(call[3]).toBe(3500);
+        const calls = (nlmCli.queryNotebookDetailed as jest.Mock).mock.calls;
+        expect(calls.slice(0, 3).map((call) => call[1]).join(' ')).toMatch(/ALPHA-101.*BRAVO-202.*CHARLIE-303/);
+        for (const call of calls) expect(call).toEqual([KB_TESTING_SANDBOX_UUID, expect.any(String), {
+          sourceIds: [KB_TESTING_FIXTURE_SOURCE_ID], newConversation: false, timeoutSeconds: 120,
+        }]);
+        expect(nlmCli.queryNotebook).not.toHaveBeenCalled();
+        expect(spawnSync).not.toHaveBeenCalled();
+        expect(fs.existsSync(path.join(root, 'TODOS.md'))).toBe(false);
+        expect(fs.readFileSync(path.join(root, 'trm-research-gaps.md'), 'utf8')).toBe(matrix);
+        expect(findNotebook(readRegistry(root), KB_TESTING_SANDBOX_UUID)?.research_queue).toEqual({});
+        expect(fs.readFileSync(path.join(root, first.docPath), 'utf8').split('\n').filter((line) => line.startsWith('| For Entity'))).toHaveLength(3);
+      } finally { wait.mockRestore(); }
+    });
+
+    it('requires exact notebook identity for deterministic sandbox questions', () => {
+      const questions = synthesizeDynamicQuestions({ notebook_id: KB_TESTING_SANDBOX_UUID, title: 'renamed' });
+      expect(questions.map((question) => question.id)).toEqual(['sandbox-alpha-101', 'sandbox-bravo-202', 'sandbox-charlie-303']);
+      expect(synthesizeDynamicQuestions({ title: KB_TESTING_FIXTURE_TITLE, slug: 'kb-testing' })).not.toEqual(questions);
+    });
   });
 
   it('extractAtomicGaps decomposes markdown lists and bold headers into atomic items', () => {
