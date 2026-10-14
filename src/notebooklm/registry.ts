@@ -38,6 +38,8 @@ export interface NotebookRegistryEntry {
   last_mined_at: string | null;
   last_mined_answer_keys: string[];
   research_queue?: Record<string, ResearchQueueEntry>;
+  source_count?: number;
+  large_source_threshold?: number | boolean;
 }
 
 export interface RegistryFile {

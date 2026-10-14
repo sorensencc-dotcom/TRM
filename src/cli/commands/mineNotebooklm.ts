@@ -52,6 +52,223 @@ export function loadMiningQuestions(root?: string, category: string = 'research'
   return parsed.questions;
 }
 
+export const SYNTHETIC_SOURCE_PATTERNS = [
+  /^TRM\s+(?:Research|Operational)\s+Gaps\s+&\s+Synthesis/i,
+  /^Ecosystem\s+Architecture\s+Guide/i,
+  /^(?:repo_)?knowledge_pack/i,
+  /^pack_.*\.txt$/i,
+  /research\s+gaps\s+&\s+synthesis/i,
+  /foundational\s+dossier\s+&\s+research\s+gaps/i,
+  /\.nlm_pack/i,
+];
+
+export function isSyntheticSource(source: { title?: string; name?: string }): boolean {
+  if (!source) return false;
+  const t = (source.title || source.name || '').trim();
+  return SYNTHETIC_SOURCE_PATTERNS.some((p) => p.test(t));
+}
+
+export function filterPrimarySources<T extends { title?: string; name?: string }>(sources: T[]): T[] {
+  if (!Array.isArray(sources)) return [];
+  return sources.filter((s) => !isSyntheticSource(s));
+}
+
+export function estimateSourceTokens(source: { id?: string; title?: string; type?: string; char_count?: number; token_count?: number }): number {
+  if (!source) return 0;
+  if (typeof source.char_count === 'number') {
+    return Math.round(source.char_count / 4);
+  }
+  if (typeof source.token_count === 'number') {
+    return source.token_count;
+  }
+  const isPdf = source.type === 'pdf' || (source.title && source.title.toLowerCase().endsWith('.pdf'));
+  if (isPdf) {
+    return 100_000;
+  }
+  return 2000;
+}
+
+export interface BuildSourceFilterResult {
+  sourceIds: string[];
+  timeoutSeconds: number;
+  isConstrained: boolean;
+  totalTokens: number;
+  primaryCount: number;
+  hasHeavyPdf: boolean;
+}
+
+export function buildSourceFilter(
+  sources: Array<{ id: string; title?: string; name?: string; type?: string; char_count?: number; token_count?: number }>,
+  options: { large_source_threshold?: boolean } = {}
+): BuildSourceFilterResult {
+  const primary = filterPrimarySources(sources);
+  if (primary.length === 0) {
+    return {
+      sourceIds: Array.isArray(sources) && sources.length > 0 ? sources.slice(0, 20).map((s) => s.id) : [],
+      timeoutSeconds: 120,
+      isConstrained: false,
+      totalTokens: 0,
+      primaryCount: 0,
+      hasHeavyPdf: false,
+    };
+  }
+
+  const totalTokens = primary.reduce((acc, s) => acc + estimateSourceTokens(s), 0);
+  const hasHeavyPdf = primary.some((s) => {
+    const isPdf = s.type === 'pdf' || (s.title && s.title.toLowerCase().endsWith('.pdf'));
+    return isPdf && estimateSourceTokens(s) >= 100_000;
+  });
+  const shouldConstrain = primary.length > 50 || totalTokens > 250_000 || hasHeavyPdf || Boolean(options.large_source_threshold);
+
+  if (shouldConstrain) {
+    return {
+      sourceIds: primary.slice(0, 20).map((s) => s.id),
+      timeoutSeconds: 180,
+      isConstrained: true,
+      totalTokens,
+      primaryCount: primary.length,
+      hasHeavyPdf,
+    };
+  }
+
+  return {
+    sourceIds: primary.map((s) => s.id),
+    timeoutSeconds: 120,
+    isConstrained: false,
+    totalTokens,
+    primaryCount: primary.length,
+    hasHeavyPdf,
+  };
+}
+
+export function synthesizeDynamicQuestions(notebook: { title: string; slug?: string; category?: string }): MiningQuestion[] {
+  const title = (notebook.title || '').toLowerCase();
+  const slug = (notebook.slug || slugifyTitle(notebook.title) || '').toLowerCase();
+
+  if (slug.includes('willow') || title.includes('willow run') || title.includes('aviation')) {
+    return [
+      {
+        id: 'open-contradictions',
+        text: 'What specific documentary contradictions, conflicting engineering tolerances, or assembly line disputes exist across the Willow Run B-24 sources?',
+      },
+      {
+        id: 'under-sourced',
+        text: 'What airframe cold-heading rivet shear, alloy temper, or dimple cracking assertions remain single-sourced without independent technical corroboration?',
+      },
+      {
+        id: 'adjacent-topics',
+        text: 'What engineering blueprints, lofting specifications, or tooling adaptations for the Davis high-lift wing require deeper investigation?',
+      },
+      {
+        id: 'follow-up',
+        text: 'What specific gauge reference checks or Wright Field inspection reports verify the center-wing thermal expansion discrepancy?',
+      },
+      {
+        id: 'non-obvious-connections',
+        text: 'Find the non-obvious connections between Rouge stamping methods and Willow Run final airframe assembly fixture alignment.',
+      },
+    ];
+  }
+
+  if (slug.includes('post-war') || title.includes('post-war') || title.includes('reconversion')) {
+    return [
+      {
+        id: 'open-contradictions',
+        text: "What documented contradictions exist between Willys-Overland board minutes and Charles Sorensen's post-war corporate records?",
+      },
+      {
+        id: 'under-sourced',
+        text: "What executive assertions regarding Brooks Stevens 6-70 sedan capital development and civilian Jeep tooling remain single-sourced in memoir accounts?",
+      },
+      {
+        id: 'adjacent-topics',
+        text: "What related archival accessions at Benson Ford Research Center or Toledo Public Library detail Sorensen's post-1944 industrial consulting?",
+      },
+      {
+        id: 'follow-up',
+        text: "What financial audits, SEC filings, or corporate tax ledgers verify the Willys-Overland 1945–1946 reconversion costs and CPA tooling allocation?",
+      },
+      {
+        id: 'non-obvious-connections',
+        text: "Find the non-obvious operational links between wartime surplus machine tool allocation and post-war civilian utility vehicle production.",
+      },
+    ];
+  }
+
+  if (slug.includes('ford-politics') || title.includes('executive') || title.includes('politics')) {
+    return [
+      {
+        id: 'open-contradictions',
+        text: "What documented contradictions exist between Harry Bennett's Service Department records and Charles Sorensen's Rouge manufacturing authority?",
+      },
+      {
+        id: 'under-sourced',
+        text: "What claims regarding the March 1944 termination agreement and Capizzi non-compete waiver remain single-sourced in memoir accounts?",
+      },
+      {
+        id: 'adjacent-topics',
+        text: "What corporate board minutes or NLRB Case C-199 deposition transcripts provide unexamined evidence on Ford executive governance?",
+      },
+      {
+        id: 'follow-up',
+        text: "What primary archival corroboration substantiates executive compensation disputes following Dodge v. Ford Motor Co. (1919)?",
+      },
+      {
+        id: 'non-obvious-connections',
+        text: "Find the non-obvious administrative connections between Walter Flanders' 1906 methods and Sorensen's wartime command structure.",
+      },
+    ];
+  }
+
+  if (slug.includes('cuba') || title.includes('cuban') || title.includes('seizures')) {
+    return [
+      {
+        id: 'open-contradictions',
+        text: 'What valuation contradictions exist between Cuban Law 890 seizure decrees and Foreign Claims Settlement Commission (FCSC) certified awards?',
+      },
+      {
+        id: 'under-sourced',
+        text: 'What financial ledgers substantiate the $1.2M vs $2.5M claim valuation for Compañía Litográfica de la Habana under FCSC Claim CU-3440?',
+      },
+      {
+        id: 'adjacent-topics',
+        text: "What diplomatic records or Agrarian Reform Institute (INRA) files document Sorensen's citrus acreage in Matanzas and Pinar del Río?",
+      },
+      {
+        id: 'follow-up',
+        text: "What corporate registries confirm Central West Company's nominee or voting trust ties to the pre-1933 Detroit Trust Company network?",
+      },
+      {
+        id: 'non-obvious-connections',
+        text: 'Find the non-obvious financial connections between pre-revolutionary Cuban asset holding companies and Detroit industrial syndicates.',
+      },
+    ];
+  }
+
+  return [
+    {
+      id: 'open-contradictions',
+      text: `What specific documentary contradictions exist across the primary archival sources in ${notebook.title}?`,
+    },
+    {
+      id: 'under-sourced',
+      text: `What technical milestones, dates, or executive decisions in ${notebook.title} remain single-sourced without independent contemporary corroboration?`,
+    },
+    {
+      id: 'adjacent-topics',
+      text: `What external archival collections, patent registries, or government deposition files are referenced in ${notebook.title}?`,
+    },
+    {
+      id: 'follow-up',
+      text: `What specific ledger audits, blueprint analyses, or primary documents would resolve the unverified claims in ${notebook.title}?`,
+    },
+    {
+      id: 'non-obvious-connections',
+      text: `Find the non-obvious operational or evidentiary connections between the sources in ${notebook.title}.`,
+    },
+  ];
+}
+
 export function computeBatteryEntropy(currentQuestions: string[], previousQuestions: string[]): number {
   if (!previousQuestions || previousQuestions.length === 0) return 1.0;
   if (!currentQuestions || currentQuestions.length === 0) return 0.0;
@@ -411,9 +628,11 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
   const category = entry.category === 'operational' ? 'operational' : 'research';
   const baseQuestions = loadMiningQuestions(root, category);
   const dynamicQuestions = loadDynamicGapQuestions(root, entry.title);
+  const synthesized = category === 'research' ? synthesizeDynamicQuestions(entry) : [];
+  const candidateQuestions = synthesized.length > 0 ? synthesized : baseQuestions;
   const questions = dynamicQuestions.length > 0
-    ? [...dynamicQuestions, ...baseQuestions.slice(0, Math.max(1, 4 - dynamicQuestions.length))]
-    : baseQuestions;
+    ? [...dynamicQuestions, ...candidateQuestions.slice(0, Math.max(1, 4 - dynamicQuestions.length))]
+    : candidateQuestions;
 
   const prevQuestionIds = entry.last_mined_answer_keys
     .filter((k) => k.startsWith(`${notebookId}:`))
@@ -430,15 +649,21 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
   let newEntries = 0;
   let anySuccess = false;
 
-  // For notebooks with >50 sources (such as CIC - Ford Executive Dynamics with 261 sources),
-  // constrain queries to a focused subset of relevant sources to prevent model timeouts / refusals
-  let queryOptions: { timeoutSeconds?: number; sourceIds?: string[] } | undefined;
+  // Constrain queries, exclude synthetic sources, and apply token-density pruning
+  let queryOptions: { timeoutSeconds?: number; sourceIds?: string[]; newConversation?: boolean } = {
+    newConversation: true,
+    timeoutSeconds: 120,
+  };
   try {
     const sourcesRes = listSources(notebookId);
-    if (sourcesRes && sourcesRes.ok && Array.isArray(sourcesRes.data) && sourcesRes.data.length > 50) {
-      const allSources = sourcesRes.data;
-      const targetIds = allSources.slice(0, 20).map((s) => s.id);
-      queryOptions = { sourceIds: targetIds, timeoutSeconds: 180 };
+    if (sourcesRes && sourcesRes.ok && Array.isArray(sourcesRes.data)) {
+      const filterResult = buildSourceFilter(sourcesRes.data, {
+        large_source_threshold: entry.large_source_threshold ? true : (entry.source_count ? entry.source_count > 50 : false),
+      });
+      if (filterResult.sourceIds && filterResult.sourceIds.length > 0) {
+        queryOptions.sourceIds = filterResult.sourceIds;
+        queryOptions.timeoutSeconds = filterResult.timeoutSeconds;
+      }
     }
   } catch {
     // Fail-soft if listing sources fails
