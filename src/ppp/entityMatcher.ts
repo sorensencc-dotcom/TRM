@@ -17,6 +17,8 @@ const STRIP_SUFFIXES = new Set([
   'DBA',
 ]);
 
+const ALIAS_PREFIXES = /^(?:A\/?K\/?A\.?|F\/?K\/?A\.?|N\/?K\/?A\.?|D\/?B\/?A\.?|T\/?A\.?)\s+/i;
+
 /**
  * Normalizes an entity or defendant name for deterministic matching:
  * 1. Uppercase
@@ -47,12 +49,69 @@ export function normalizeEntityName(rawName: string): string {
 }
 
 /**
+ * Extracts candidate names by expanding parenthetical aliases and short names.
+ * e.g., "GLOBAL INFORMATION TECHNOLOGY SOLUTIONS (GITS)" -> ["GLOBAL INFORMATION TECHNOLOGY SOLUTIONS", "GITS"]
+ * e.g., "JOHN DOE (AKA JOHNNY DOE)" -> ["JOHN DOE", "JOHNNY DOE"]
+ * e.g., "JANE DOE (AKA JANIE, JANE SMITH)" -> ["JANE DOE", "JANIE", "JANE SMITH"]
+ */
+export function extractParentheticalCandidates(rawName: string): string[] {
+  if (!rawName) return [];
+  const candidates = new Set<string>();
+
+  // Extract everything inside parentheses
+  const parenMatches = rawName.match(/\(([^)]+)\)/g);
+  if (parenMatches) {
+    for (const match of parenMatches) {
+      const inner = match.slice(1, -1).trim();
+      const subParts = inner.split(/[,;]/);
+      for (const part of subParts) {
+        const stripped = part.trim().replace(ALIAS_PREFIXES, '').trim();
+        if (stripped.length > 0) {
+          candidates.add(stripped);
+        }
+      }
+    }
+  }
+
+  // Extract the text outside of all parentheses
+  const outside = rawName.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+  if (outside.length > 0) {
+    candidates.add(outside);
+  }
+
+  return Array.from(candidates);
+}
+
+/**
  * Splits strings containing DBA/TA trade names into individual candidate names.
  */
 export function extractDbaCandidates(rawName: string): string[] {
   if (!rawName) return [];
   const parts = rawName.split(/\b(?:DBA|D\/B\/A|T\/A|TA|DOING BUSINESS AS)\b/i);
   return parts.map((p) => p.trim()).filter((p) => p.length > 0);
+}
+
+/**
+ * Expands a name string into all candidate variations:
+ * 1. Parenthetical aliases and short names
+ * 2. DBA trade name splits
+ */
+export function expandNameCandidates(rawName: string): string[] {
+  if (!rawName) return [];
+  const candidates = new Set<string>();
+
+  const parenExpanded = extractParentheticalCandidates(rawName);
+  const baseList = parenExpanded.length > 0 ? parenExpanded : [rawName];
+
+  for (const item of baseList) {
+    candidates.add(item);
+    const dbaParts = extractDbaCandidates(item);
+    for (const part of dbaParts) {
+      candidates.add(part);
+    }
+  }
+
+  return Array.from(candidates).filter((c) => c.trim().length > 0);
 }
 
 export interface MatchExclusionResult {
@@ -66,6 +125,7 @@ export interface MatchExclusionResult {
 /**
  * Evaluates whether a borrower name matches any row in the exclusion list.
  * Checks both the defendant column and the entities column.
+ * Expands parenthetical aliases (e.g. AKA) and entity short names (e.g. GITS).
  * Stage 1: Normalized exact match.
  * Stage 2: Literal exact match.
  */
@@ -73,76 +133,72 @@ export function matchExclusion(
   borrowerName: string,
   exclusions: PppExclusionRow[]
 ): MatchExclusionResult {
-  const candidateNames = extractDbaCandidates(borrowerName);
-  if (candidateNames.length === 0) {
-    candidateNames.push(borrowerName);
-  }
+  const borrowerCandidates = expandNameCandidates(borrowerName);
 
-  for (const candidate of candidateNames) {
-    const normCandidate = normalizeEntityName(candidate);
-    const upperCandidate = candidate.toUpperCase().trim();
+  for (const bCandidate of borrowerCandidates) {
+    const normBCandidate = normalizeEntityName(bCandidate);
+    const upperBCandidate = bCandidate.toUpperCase().trim();
+
+    if (!normBCandidate && !upperBCandidate) continue;
 
     for (const row of exclusions) {
-      // Check defendant
-      const normDefendant = normalizeEntityName(row.defendant);
-      const upperDefendant = row.defendant.toUpperCase().trim();
+      // 1. Check defendant column (including aliases in parentheses)
+      const defCandidates = expandNameCandidates(row.defendant);
+      for (const dCandidate of defCandidates) {
+        const normDef = normalizeEntityName(dCandidate);
+        const upperDef = dCandidate.toUpperCase().trim();
 
-      if (normCandidate && normCandidate === normDefendant) {
-        return {
-          matched: true,
-          matchType: 'normalized_exact',
-          matchedOn: 'defendant',
-          matchedValue: row.defendant,
-          exclusion: row,
-        };
+        if (normBCandidate && normBCandidate === normDef) {
+          return {
+            matched: true,
+            matchType: 'normalized_exact',
+            matchedOn: 'defendant',
+            matchedValue: dCandidate,
+            exclusion: row,
+          };
+        }
+
+        if (upperBCandidate && upperBCandidate === upperDef) {
+          return {
+            matched: true,
+            matchType: 'literal',
+            matchedOn: 'defendant',
+            matchedValue: dCandidate,
+            exclusion: row,
+          };
+        }
       }
 
-      if (upperCandidate && upperCandidate === upperDefendant) {
-        return {
-          matched: true,
-          matchType: 'literal',
-          matchedOn: 'defendant',
-          matchedValue: row.defendant,
-          exclusion: row,
-        };
-      }
-
-      // Check entities list (comma or semicolon separated, plus DBA trade names)
+      // 2. Check entities list (comma or semicolon separated, plus parenthetical short names and DBAs)
       const rawEntityItems = row.entities
         ? row.entities.split(/[,;]/).map((e) => e.trim()).filter(Boolean)
         : [];
 
-      const entityItems: string[] = [];
       for (const rawEnt of rawEntityItems) {
-        entityItems.push(rawEnt);
-        const subCandidates = extractDbaCandidates(rawEnt);
-        if (subCandidates.length > 1) {
-          entityItems.push(...subCandidates);
-        }
-      }
+        const entCandidates = expandNameCandidates(rawEnt);
+        for (const eCandidate of entCandidates) {
+          const normEnt = normalizeEntityName(eCandidate);
+          const upperEnt = eCandidate.toUpperCase().trim();
 
-      for (const ent of entityItems) {
-        const normEnt = normalizeEntityName(ent);
-        const upperEnt = ent.toUpperCase().trim();
+          if (normBCandidate && normBCandidate === normEnt) {
+            return {
+              matched: true,
+              matchType: 'normalized_exact',
+              matchedOn: 'entity',
+              matchedValue: eCandidate,
+              exclusion: row,
+            };
+          }
 
-        if (normCandidate && normCandidate === normEnt) {
-          return {
-            matched: true,
-            matchType: 'normalized_exact',
-            matchedOn: 'entity',
-            matchedValue: ent,
-            exclusion: row,
-          };
-        }
-
-        if (upperCandidate && upperCandidate === upperEnt) {
-          return {
-            matched: true,
-            matchType: 'literal',
-            matchedOn: 'entity',
-            matchedValue: ent,
-            exclusion: row,
-          };
+          if (upperBCandidate && upperBCandidate === upperEnt) {
+            return {
+              matched: true,
+              matchType: 'literal',
+              matchedOn: 'entity',
+              matchedValue: eCandidate,
+              exclusion: row,
+            };
+          }
         }
       }
     }

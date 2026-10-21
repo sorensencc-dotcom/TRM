@@ -1,9 +1,12 @@
 import {
+  expandNameCandidates,
   extractDbaCandidates,
+  extractParentheticalCandidates,
   matchExclusion,
   normalizeEntityName,
 } from '../../src/ppp/entityMatcher';
 import { SAMPLE_EXCLUSION_ROWS } from '../../src/ppp/fixtures/exclusionSample';
+import { PppExclusionRow } from '../../src/ppp/types';
 
 describe('PPP Texas - Entity Matcher', () => {
   describe('normalizeEntityName', () => {
@@ -27,6 +30,25 @@ describe('PPP Texas - Entity Matcher', () => {
     });
   });
 
+  describe('extractParentheticalCandidates', () => {
+    it('extracts acronyms and short names from parentheses', () => {
+      const candidates = extractParentheticalCandidates('GLOBAL INFORMATION TECHNOLOGY SOLUTIONS (GITS)');
+      expect(candidates).toContain('GITS');
+      expect(candidates).toContain('GLOBAL INFORMATION TECHNOLOGY SOLUTIONS');
+    });
+
+    it('strips alias prefixes like AKA, FKA, NKA from parenthetical content', () => {
+      const candidates1 = extractParentheticalCandidates('JOHN DOE (AKA JOHNNY DOE)');
+      expect(candidates1).toContain('JOHNNY DOE');
+      expect(candidates1).toContain('JOHN DOE');
+
+      const candidates2 = extractParentheticalCandidates('JANE ROE (F/K/A JANE SMITH, NKA JANE DOE)');
+      expect(candidates2).toContain('JANE SMITH');
+      expect(candidates2).toContain('JANE DOE');
+      expect(candidates2).toContain('JANE ROE');
+    });
+  });
+
   describe('extractDbaCandidates', () => {
     it('splits trade names correctly', () => {
       const candidates = extractDbaCandidates('RIO GRANDE IMPORTS DBA BORDER CARGO');
@@ -41,30 +63,69 @@ describe('PPP Texas - Entity Matcher', () => {
     });
   });
 
-  describe('matchExclusion', () => {
+  describe('expandNameCandidates', () => {
+    it('combines parenthetical short names and DBA candidate splits', () => {
+      const expanded = expandNameCandidates('GLOBAL TECH SOLUTIONS (GITS) DBA FAST CLOUD (FC)');
+      expect(expanded).toContain('GITS');
+      expect(expanded).toContain('FC');
+      expect(expanded).toContain('GLOBAL TECH SOLUTIONS');
+      expect(expanded).toContain('FAST CLOUD');
+    });
+  });
+
+  describe('matchExclusion with Parentheses & DBA rules', () => {
+    const extendedExclusions: PppExclusionRow[] = [
+      ...SAMPLE_EXCLUSION_ROWS,
+      {
+        defendant: 'ROBERT TAYLOR (AKA BOBBY TAYLOR, BOB TAYLOR)',
+        entities: 'GLOBAL INFORMATION TECHNOLOGY SOLUTIONS (GITS), APEX TECH (AT)',
+        city: 'DALLAS',
+        district: 'NDTX',
+        status: 'Charged',
+        release_date: '2022-03-15',
+        url: 'https://www.justice.gov/usao-ndtx/pr/taylor',
+      },
+    ];
+
     it('matches defendant column by normalized exact match', () => {
-      const result = matchExclusion('JOHN DOE', SAMPLE_EXCLUSION_ROWS);
+      const result = matchExclusion('JOHN DOE', extendedExclusions);
       expect(result.matched).toBe(true);
       expect(result.matchType).toBe('normalized_exact');
       expect(result.matchedOn).toBe('defendant');
       expect(result.exclusion?.district).toBe('SDTX');
     });
 
-    it('matches entities column by normalized exact match', () => {
-      const result = matchExclusion('ACME LOGISTICS', SAMPLE_EXCLUSION_ROWS);
+    it('matches defendant parenthetical alias (e.g. AKA BOBBY TAYLOR)', () => {
+      const result = matchExclusion('BOBBY TAYLOR', extendedExclusions);
+      expect(result.matched).toBe(true);
+      expect(result.matchedOn).toBe('defendant');
+      expect(result.matchedValue).toBe('BOBBY TAYLOR');
+      expect(result.exclusion?.defendant).toContain('ROBERT TAYLOR');
+    });
+
+    it('matches entity parenthetical short name / acronym (e.g. GITS)', () => {
+      const result = matchExclusion('GITS', extendedExclusions);
       expect(result.matched).toBe(true);
       expect(result.matchedOn).toBe('entity');
-      expect(result.matchedValue).toBe('ACME LOGISTICS LLC');
+      expect(result.matchedValue).toBe('GITS');
+      expect(result.exclusion?.entities).toContain('GLOBAL INFORMATION TECHNOLOGY SOLUTIONS (GITS)');
+    });
+
+    it('matches full entity name when exclusion has parenthetical acronym', () => {
+      const result = matchExclusion('GLOBAL INFORMATION TECHNOLOGY SOLUTIONS INC', extendedExclusions);
+      expect(result.matched).toBe(true);
+      expect(result.matchedOn).toBe('entity');
+      expect(result.matchedValue).toBe('GLOBAL INFORMATION TECHNOLOGY SOLUTIONS');
     });
 
     it('matches DBA candidates in exclusion list', () => {
-      const result = matchExclusion('BORDER CARGO', SAMPLE_EXCLUSION_ROWS);
+      const result = matchExclusion('BORDER CARGO', extendedExclusions);
       expect(result.matched).toBe(true);
       expect(result.exclusion?.district).toBe('WDTX');
     });
 
     it('returns false for unlisted entities without asserting innocence', () => {
-      const result = matchExclusion('CYBERSOLVE IT INC', SAMPLE_EXCLUSION_ROWS);
+      const result = matchExclusion('CYBERSOLVE IT INC', extendedExclusions);
       expect(result.matched).toBe(false);
       expect(result.exclusion).toBeUndefined();
     });
