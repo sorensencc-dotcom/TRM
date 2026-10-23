@@ -1,0 +1,38 @@
+tests/ppp/matchReview.test.ts
+  s_b25526c12f67dc::t_b724f267b3db32 1-72
+tests/ppp/pppMatchCli.test.ts
+  s_b25526c12f67dc::t_c8427812183b8a 60-89,93-146
+  s_392d63894c4bc4::t_b192c40ee8614e 147
+src/cli/commands/pppMatch.ts
+  s_b25526c12f67dc::t_6f107539fc40b4 4-10,18,32-33,35-41,55,62-63,80,90-91,93-110,117,119,122-123,125,131-136
+src/cli/index.ts
+  s_b25526c12f67dc::t_8d15b7aab6bfc6 5-7,24,58-59,83-116,364-365,372,374
+src/ppp/matchReview.ts
+  s_b25526c12f67dc::t_696a79019c821d 1-265
+src/ppp/types.ts
+  s_b25526c12f67dc::t_142d18ddb2bcd8 30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3adedbb9cde522be62f2579f664633e50abc62c8",
+  "prompts": {},
+  "sessions": {
+    "s_392d63894c4bc4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7c2e3b5a-46d6-4f8b-b99f-517de88c2628",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    },
+    "s_b25526c12f67dc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b4036290-9a5f-43d1-abaf-feb15b65adbf",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
