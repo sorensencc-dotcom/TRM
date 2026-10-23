@@ -1,0 +1,16 @@
+src/notebooklm/chatArchiver.test.ts
+  h_5c172e9b435f5a 31-34,99-118,263-306
+src/notebooklm/chatArchiver.ts
+  h_5c172e9b435f5a 76-107,124-127,257-278
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "883705780a9330619115fd2bd4b461aaa7385fbc",
+  "prompts": {},
+  "humans": {
+    "h_5c172e9b435f5a": {
+      "author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
