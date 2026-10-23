@@ -1,0 +1,19 @@
+src/cli/index.ts
+  s_b25526c12f67dc::t_e42dccdcac3101 5-7,58-59,83-116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6d3e93fcbb44080878932636e18263803e34baeb",
+  "prompts": {},
+  "sessions": {
+    "s_b25526c12f67dc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b4036290-9a5f-43d1-abaf-feb15b65adbf",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
