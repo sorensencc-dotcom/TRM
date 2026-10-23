@@ -130,4 +130,136 @@ describe('PPP Texas - Entity Matcher', () => {
       expect(result.exclusion).toBeUndefined();
     });
   });
+
+  describe('Real-row regressions (multi-defendant, nicknames, parenthetical notes, unbalanced parens)', () => {
+    const realRows: PppExclusionRow[] = [
+      {
+        defendant: 'Weldon Greer, Jr.; Jarrod Durant Wilburn',
+        entities: '',
+        city: 'Houston',
+        district: 'EDTX',
+        status: 'pleaded guilty (Greer); charged (Wilburn)',
+        release_date: '2026-09-14',
+        url: 'https://www.justice.gov/usao-edtx/pr/eastern-district-texas-joins-doj-fraud-division-sba-and-sba-oig-covid-era-loan',
+      },
+      {
+        defendant:
+          'Mihir Patel; Kinjal Patel; Wajahat (Ray) Khan; Bhavesh (Bobby) Patel; Usha Chapain (aka Usha Sharma)',
+        entities: 'Mammoth Metal Recycling; Elephant Recycling',
+        city: '(TX, CA, OK - not stated per defendant)',
+        district: 'NDTX',
+        status: 'charged',
+        release_date: '2023-06-28',
+        url: 'https://www.justice.gov/usao-ndtx/pr/cfo-controller-corporate-officers-charged-53-million-fraud-scheme-involving-pandemic',
+      },
+      {
+        defendant: 'Kaylee Ree Lunn',
+        entities: 'First Capital Bank (employer, victim); Prosperity Bank',
+        city: 'Holliday / Wichita Falls',
+        district: 'NDTX',
+        status: 'sentenced',
+        release_date: '2025-12-05',
+        url: 'https://www.justice.gov/usao-ndtx/pr/former-bank-vice-president-sentenced-four-years-federal-prison-fraudulent-ppp-and-eidl',
+      },
+      {
+        defendant: 'Fahad Shah',
+        entities: 'WBF Weddings by Farah Inc. (WBF)',
+        city: 'Murphy',
+        district: 'EDTX',
+        status: 'sentenced',
+        release_date: '2021-09-16',
+        url: 'https://www.justice.gov/usao-edtx/pr/collin-county-wedding-planner-sentenced-covid-relief-fraud',
+      },
+      {
+        defendant: 'Brian Bui',
+        entities: '(dentistry business, unnamed)',
+        city: 'Plano',
+        district: 'EDTX',
+        status: 'sentenced',
+        release_date: '2023-06-05',
+        url: 'https://www.justice.gov/usao-edtx/pr/collin-county-dentist-sentenced-covid-19-relief-related-fraud',
+      },
+      {
+        defendant: 'Nathan Reis',
+        entities: 'Blueacorn (lender service provider)',
+        city: 'Rio Grande PR (formerly AZ)',
+        district: 'NDTX',
+        status: 'sentenced',
+        release_date: '2025-12-18',
+        url: 'https://www.justice.gov/usao-ndtx/pr/co-founder-paycheck-protection-program-lender-service-provider-sentenced-65m-covid-19',
+      },
+      {
+        defendant: 'Leticia Arceneaux',
+        entities: '(volleyball club, unnamed)',
+        city: 'San Antonio',
+        district: 'WDTX',
+        status: 'sentenced',
+        release_date: '2025-11-20',
+        url: 'https://www.justice.gov/usao-wdtx/pr/san-antonio-woman-sentenced-federal-prison-defrauding-covid-relief-program',
+      },
+    ];
+
+    it('splits multi-defendant on semicolon without breaking comma suffixes like "Weldon Greer, Jr."', () => {
+      expect(matchExclusion('Weldon Greer Jr', realRows).matched).toBe(true);
+      expect(matchExclusion('WELDON GREER JR', realRows).matched).toBe(true);
+      expect(matchExclusion('Jarrod Durant Wilburn', realRows).matched).toBe(true);
+      expect(matchExclusion('Jr', realRows).matched).toBe(false);
+    });
+
+    it('expands bare single-token nicknames as nickname + surname and rejects bare nickname or surname alone', () => {
+      for (const name of [
+        'Mihir Patel',
+        'Kinjal Patel',
+        'Wajahat Khan',
+        'Ray Khan',
+        'Bhavesh Patel',
+        'Bobby Patel',
+        'Usha Chapain',
+        'Usha Sharma',
+      ]) {
+        const res = matchExclusion(name, realRows);
+        expect(res.matched).toBe(true);
+        expect(res.matchedOn).toBe('defendant');
+      }
+
+      for (const nonMatch of ['Ray', 'Bobby', 'Patel', 'Khan']) {
+        expect(matchExclusion(nonMatch, realRows).matched).toBe(false);
+      }
+    });
+
+    it('keeps entities with parenthetical notes intact, drops note tokens, and leaves no stray parentheses', () => {
+      expect(matchExclusion('First Capital Bank', realRows).matched).toBe(true);
+      expect(matchExclusion('Prosperity Bank', realRows).matched).toBe(true);
+      expect(matchExclusion('Blueacorn', realRows).matched).toBe(true);
+
+      for (const noteWord of [
+        'victim',
+        'employer',
+        'unnamed',
+        'dentistry business',
+        'lender service provider',
+        'volleyball club',
+      ]) {
+        expect(matchExclusion(noteWord, realRows).matched).toBe(false);
+      }
+
+      const candidates = [
+        ...expandNameCandidates('First Capital Bank (employer, victim); Prosperity Bank'),
+        ...expandNameCandidates('(dentistry business, unnamed)'),
+        ...expandNameCandidates('First Capital Bank (employer'),
+        ...expandNameCandidates('victim)'),
+      ];
+      for (const c of candidates) {
+        expect(c).not.toContain('(');
+        expect(c).not.toContain(')');
+      }
+    });
+
+    it('still yields all-caps short names like GITS and WBF', () => {
+      expect(
+        expandNameCandidates('GLOBAL INFORMATION TECHNOLOGY SOLUTIONS (GITS)')
+      ).toContain('GITS');
+      expect(matchExclusion('WBF', realRows).matched).toBe(true);
+    });
+  });
 });

@@ -1,4 +1,8 @@
-export type PppClaimType = 'PUBLIC_RECORD_FACT' | 'OFFICIAL_ALLEGATION' | 'UNVERIFIED_LEAD';
+export type PppClaimType =
+  | 'PUBLIC_RECORD_FACT'
+  | 'OFFICIAL_ALLEGATION'
+  | 'UNVERIFIED_LEAD'
+  | 'NEGATIVE_SEARCH';
 
 export type PppVerificationStatus = 'VERIFIED' | 'UNVERIFIED' | 'CONTRADICTED';
 
@@ -35,6 +39,10 @@ export interface PppClaim {
   status_as_of: string;
   span_hash: string;
   source_file: string;
+  source_url?: string;
+  quoted_span?: string;
+  retrieved?: string;
+  search_scope?: string;
   loan_number?: string;
   notes?: string;
 }

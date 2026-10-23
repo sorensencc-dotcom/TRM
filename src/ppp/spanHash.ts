@@ -1,5 +1,4 @@
 import * as crypto from 'node:crypto';
-import * as path from 'node:path';
 
 /**
  * Returns a canonical JSON representation of a row:
@@ -28,17 +27,27 @@ export function canonicalRowJson(row: Record<string, unknown>): string {
 
 /**
  * Computes deterministic span hash for an SBA PPP tabular row:
- * sha256(source_file_basename + "|" + LoanNumber + "|" + canonical_row_json)
+ * sha256(LoanNumber + "|" + canonical_row_json)
  */
 export function computeSpanHash(
-  sourceFilePath: string,
   loanNumber: string,
   row: Record<string, unknown>
+): string;
+export function computeSpanHash(
+  _sourceFilePath: string,
+  loanNumber: string,
+  row: Record<string, unknown>
+): string;
+export function computeSpanHash(
+  arg1: string,
+  arg2: string | Record<string, unknown>,
+  arg3?: Record<string, unknown>
 ): string {
-  const fileBasename = path.basename(sourceFilePath);
+  const loanNumber = typeof arg2 === 'string' ? arg2 : arg1;
+  const row = (typeof arg2 === 'string' ? arg3 : arg2) || {};
   const normalizedLoanNumber = String(loanNumber).trim();
   const canonicalJson = canonicalRowJson(row);
-  const payload = `${fileBasename}|${normalizedLoanNumber}|${canonicalJson}`;
+  const payload = `${normalizedLoanNumber}|${canonicalJson}`;
 
   return crypto.createHash('sha256').update(payload, 'utf8').digest('hex');
 }
@@ -47,11 +56,12 @@ export function computeSpanHash(
  * Verifies if a given claim's span_hash matches a candidate row.
  */
 export function verifySpanHash(
-  claim: { span_hash: string; source_file: string; loan_number?: string },
+  claim: { span_hash: string; source_file?: string; loan_number?: string },
   row: Record<string, unknown>
 ): boolean {
-  if (!claim.span_hash || !claim.source_file) return false;
+  if (!claim.span_hash) return false;
   const loanNumber = claim.loan_number || (row.LoanNumber as string) || '';
-  const expectedHash = computeSpanHash(claim.source_file, loanNumber, row);
+  if (!loanNumber) return false;
+  const expectedHash = computeSpanHash(loanNumber, row);
   return claim.span_hash.toLowerCase() === expectedHash.toLowerCase();
 }

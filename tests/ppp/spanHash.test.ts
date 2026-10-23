@@ -69,4 +69,31 @@ describe('PPP Texas - Span Hash Canonicalization', () => {
     const mutatedRow = { ...row, CurrentApprovalAmount: '295345' };
     expect(verifySpanHash(validClaim, mutatedRow)).toBe(false);
   });
+
+  it('produces identical hash for the same row across two different source file names', () => {
+    const row = {
+      BorrowerName: 'CYBERSOLVE IT INC',
+      LoanNumber: '4491747703',
+      CurrentApprovalAmount: '295344',
+      LoanStatus: 'Charged Off',
+    };
+
+    const hashExtract = computeSpanHash('source-sba-loan-4491747703.csv', '4491747703', row);
+    const hashBulk = computeSpanHash('public_150k_plus_240930.csv', '4491747703', row);
+    const hashTwoArg = computeSpanHash('4491747703', row);
+
+    expect(hashExtract).toBe(hashBulk);
+    expect(hashExtract).toBe(hashTwoArg);
+    expect(
+      verifySpanHash(
+        {
+          span_hash: hashExtract,
+          source_file: 'public_150k_plus_240930.csv',
+          loan_number: '4491747703',
+        },
+        row
+      )
+    ).toBe(true);
+    expect(verifySpanHash({ span_hash: hashExtract, loan_number: '4491747703' }, row)).toBe(true);
+  });
 });

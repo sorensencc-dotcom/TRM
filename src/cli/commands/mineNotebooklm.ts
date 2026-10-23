@@ -1,13 +1,15 @@
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { queryNotebook } from '../../notebooklm/nlmCli';
+import { resolveKbSyncRoot } from '../../notebooklm/chatArchiver';
 import { readRegistry, findNotebook, flushMinedState, upsertResearchQueueEntry } from '../../notebooklm/registry';
 import { writeFileAtomic } from '../../core/atomicWrite';
 import { slugifyTitle } from '../../notebooklm/stagingName';
 import { loadConfig } from '../../core/config';
+
+export { resolveKbSyncRoot };
 
 export interface MiningQuestion {
   id: string;
@@ -60,13 +62,9 @@ export function computeBatteryEntropy(currentQuestions: string[], previousQuesti
 
 export function loadDynamicGapQuestions(root: string, notebookTitle: string): MiningQuestion[] {
   const dynamicQuestions: MiningQuestion[] = [];
-  const isTempRoot = root.startsWith(os.tmpdir());
   const candidatePaths = [
     path.join(root, 'trm-research-gaps.md'),
-    ...(isTempRoot ? [] : [
-      path.resolve(root, '..', 'dev', 'kb-sync', 'trm-research-gaps.md'),
-      path.resolve('C:\\dev\\kb-sync\\trm-research-gaps.md'),
-    ]),
+    path.join(resolveKbSyncRoot(root), 'trm-research-gaps.md'),
   ];
   const gapsPath = candidatePaths.find((p) => fs.existsSync(p));
   if (!gapsPath) return dynamicQuestions;
@@ -268,8 +266,7 @@ export function extractAtomicGaps(
 function appendResearchGapsMatrix(root: string, question: MiningQuestion, answer: string, notebookTitle: string, key: string): void {
   const candidatePaths = [
     path.join(root, 'trm-research-gaps.md'),
-    path.resolve(root, '..', 'dev', 'kb-sync', 'trm-research-gaps.md'),
-    path.resolve('C:\\dev\\kb-sync\\trm-research-gaps.md'),
+    path.join(resolveKbSyncRoot(root), 'trm-research-gaps.md'),
   ];
   const gapsPath = candidatePaths.find((p) => fs.existsSync(p));
   if (!gapsPath) return;
@@ -304,8 +301,7 @@ function appendResearchGapsMatrix(root: string, question: MiningQuestion, answer
 function triggerGapTriage(root: string): void {
   const candidateScripts = [
     path.join(root, 'scripts', 'trm-triage.mjs'),
-    path.resolve(root, '..', 'dev', 'kb-sync', 'scripts', 'trm-triage.mjs'),
-    path.resolve('C:\\dev\\kb-sync\\scripts\\trm-triage.mjs'),
+    path.join(resolveKbSyncRoot(root), 'scripts', 'trm-triage.mjs'),
   ];
   const scriptPath = candidateScripts.find((p) => fs.existsSync(p));
   if (!scriptPath) return;
