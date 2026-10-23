@@ -3,6 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import {
   materializeClaimFromLoan,
+  materializeNegativeSearch,
   materializeUnverifiedLead,
   PppDatabase,
   streamSbaCsv,
@@ -86,12 +87,18 @@ describe('PPP Texas - SBA Ingestion and Storage', () => {
       DateApproved: '05/11/2020',
     };
 
-    const claim = materializeClaimFromLoan(loan, 'ppp_foia_tx.csv');
+    const claim = materializeClaimFromLoan(loan, 'ppp_foia_tx.csv', undefined, {
+      source_url: 'https://data.sba.gov/dataset/ppp-foia',
+      retrieved: '2026-10-21',
+    });
 
     expect(claim.claim_type).toBe('PUBLIC_RECORD_FACT');
     expect(claim.verification_status).toBe('VERIFIED');
     expect(claim.status_as_of).toBe('2024-09-30');
     expect(claim.span_hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(claim.source_url).toBe('https://data.sba.gov/dataset/ppp-foia');
+    expect(claim.retrieved).toBe('2026-10-21');
+    expect(claim.quoted_span).toContain('"LoanNumber":"4491747703"');
     expect(claim.text).toContain('administrative write-off of an uncollected loan balance');
     expect(claim.text).toContain('not a criminal charge');
     expect(claim.text.toLowerCase()).not.toContain('fraud');
@@ -108,7 +115,37 @@ describe('PPP Texas - SBA Ingestion and Storage', () => {
     expect(lead.claim_type).toBe('UNVERIFIED_LEAD');
     expect(lead.verification_status).toBe('UNVERIFIED');
     expect(lead.span_hash).toBe('');
+    expect(lead.retrieved).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(lead.quoted_span).toContain('matching $295,344 loan amount');
     expect(lead.notes).toContain('Not verified');
     expect(lead.text.toLowerCase()).not.toContain('fraud');
+  });
+
+  it('materializes a NEGATIVE_SEARCH claim with search_scope and provenance fields', () => {
+    const negClaim = materializeNegativeSearch({
+      id: 'PPP-CS-06',
+      subject: 'CYBERSOLVE IT INC',
+      source: 'SAM.gov',
+      search_scope: 'active entity registrations and exclusions for query "cybersolve"',
+      source_url: 'https://sam.gov/api/prod/sgs/v1/search/?index=ei&q=cybersolve',
+      quoted_span: '"totalElements":0',
+      retrieved: '2026-10-21',
+    });
+
+    expect(negClaim.id).toBe('PPP-CS-06');
+    expect(negClaim.topic).toBe('trm-ppp');
+    expect(negClaim.claim_type).toBe('NEGATIVE_SEARCH');
+    expect(negClaim.verification_status).toBe('VERIFIED');
+    expect(negClaim.subject).toBe('CYBERSOLVE IT INC');
+    expect(negClaim.search_scope).toBe(
+      'active entity registrations and exclusions for query "cybersolve"'
+    );
+    expect(negClaim.source_url).toBe(
+      'https://sam.gov/api/prod/sgs/v1/search/?index=ei&q=cybersolve'
+    );
+    expect(negClaim.quoted_span).toBe('"totalElements":0');
+    expect(negClaim.retrieved).toBe('2026-10-21');
+    expect(negClaim.text).toContain('SAM.gov');
+    expect(negClaim.text).toContain('0 records');
   });
 });

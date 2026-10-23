@@ -10,6 +10,7 @@ import {
   extractAtomicGaps,
   computeBatteryEntropy,
   loadDynamicGapQuestions,
+  resolveKbSyncRoot,
 } from './mineNotebooklm';
 import * as nlmCli from '../../notebooklm/nlmCli';
 import { registryPath, readRegistry, findNotebook } from '../../notebooklm/registry';
@@ -326,5 +327,34 @@ describe('mineNotebooklm', () => {
     const occurrences = todos.split('nb-1:open-contradictions:abc').length - 1;
     expect(occurrences).toBe(1);
     expect(todos).toContain('[STALLED]');
+  });
+
+  it('resolveKbSyncRoot honors TRM_KB_SYNC_ROOT and falls back to sibling ../kb-sync', () => {
+    const prev = process.env.TRM_KB_SYNC_ROOT;
+    try {
+      delete process.env.TRM_KB_SYNC_ROOT;
+      expect(resolveKbSyncRoot('/workspace/trm-pr/TRM')).toBe(
+        path.resolve('/workspace/trm-pr/TRM', '..', 'kb-sync')
+      );
+
+      const customKb = path.join(root, 'custom-kb-sync');
+      fs.mkdirSync(customKb, { recursive: true });
+      fs.writeFileSync(
+        path.join(customKb, 'trm-research-gaps.md'),
+        '## Active Research Gaps\n- [ ] **Willow Run Videos (gap-x - Custom Gap)**: Details here.\n'
+      );
+      process.env.TRM_KB_SYNC_ROOT = customKb;
+
+      expect(resolveKbSyncRoot(root)).toBe(path.resolve(customKb));
+      const dynamic = loadDynamicGapQuestions(root, 'Willow Run Videos');
+      expect(dynamic).toHaveLength(1);
+      expect(dynamic[0].text).toContain('Custom Gap');
+    } finally {
+      if (prev === undefined) {
+        delete process.env.TRM_KB_SYNC_ROOT;
+      } else {
+        process.env.TRM_KB_SYNC_ROOT = prev;
+      }
+    }
   });
 });

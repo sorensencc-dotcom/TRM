@@ -21,11 +21,12 @@ import { runResearchNotebooklm } from './commands/researchNotebooklm';
 import { runReingestUrls } from './commands/reingestUrls';
 import { runEvalWhichllm } from './commands/evalWhichllm';
 import { runArchiveChats } from './commands/archiveChats';
+import { runPppMatch } from './commands/pppMatch';
 import { assertSafeRoot } from '../core/rootSafety';
 import { LockConflictError, LockUnrecoverableError } from '../sync/lock';
 
 const root = process.cwd();
-if (!process.argv.includes('eval-whichllm')) {
+if (!process.argv.includes('eval-whichllm') && !process.argv.includes('ppp-match')) {
   assertSafeRoot(root);
 }
 const program = new Command();
@@ -354,6 +355,25 @@ program
   .option('--allow-unsafe-relevance', 'allow selecting local model anchor even if it fails negative relevance rejection safety threshold (< 50%)')
   .action(async (opts) => {
     await runEvalWhichllm(root, opts);
+  });
+
+program
+  .command('ppp-match')
+  .requiredOption('--loans <csv>', 'path to SBA PPP loans CSV')
+  .requiredOption('--exclusions <csv>', 'path to exclusions CSV')
+  .option('--out <file>', 'optional path to write JSON results')
+  .action(async (opts) => {
+    try {
+      const summary = await runPppMatch({
+        loans: opts.loans,
+        exclusions: opts.exclusions,
+        out: opts.out,
+      });
+      console.log(JSON.stringify(summary, null, 2));
+    } catch (err) {
+      console.error(`[ppp-match] ${(err as Error).message}`);
+      process.exitCode = 1;
+    }
   });
 
 program.parse();

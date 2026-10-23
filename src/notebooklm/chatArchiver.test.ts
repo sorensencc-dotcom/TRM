@@ -369,5 +369,53 @@ describe('chatArchiver', () => {
       const writtenFile = path.join(tmpDir, 'conversations', '2026-10-06', 'kb-operations.md');
       expect(fs.existsSync(writtenFile)).toBe(true);
     });
+
+    it('derives default kbVaultRoot from TRM_KB_SYNC_ROOT -> <root>/obsidian/vault/wiki', () => {
+      const prev = process.env.TRM_KB_SYNC_ROOT;
+      const customKbRoot = path.join(tmpDir, 'env-kb-sync');
+      try {
+        process.env.TRM_KB_SYNC_ROOT = customKbRoot;
+        mockNlmCli.listChats.mockReturnValue({
+          ok: true,
+          data: {
+            notebook_id: 'nb-1',
+            sessions: [{ conversation_id: 'conv-1', turn_count: 1 }],
+          },
+        });
+        mockNlmCli.getChatTranscript.mockReturnValue({
+          ok: true,
+          data: {
+            conversation_id: 'conv-1',
+            turn_count: 1,
+            transcript: [{ turn: 1, query: 'Q', answer: 'A' }],
+          },
+        });
+        mockNlmCli.listNotes.mockReturnValue({ ok: true, data: [] });
+        mockNlmCli.createNote.mockReturnValue({ ok: true, data: { noteId: 'note-1' } });
+
+        const result = archiveNotebook(
+          { id: 'nb-1', title: 'KB - Operations' },
+          { localVaultRoot: tmpDir, date: '2026-10-21' }
+        );
+
+        expect(result.skipped).toBe(false);
+        const expectedWikiFile = path.join(
+          customKbRoot,
+          'obsidian',
+          'vault',
+          'wiki',
+          'conversations',
+          '2026-10-21',
+          'kb-operations.md'
+        );
+        expect(fs.existsSync(expectedWikiFile)).toBe(true);
+      } finally {
+        if (prev === undefined) {
+          delete process.env.TRM_KB_SYNC_ROOT;
+        } else {
+          process.env.TRM_KB_SYNC_ROOT = prev;
+        }
+      }
+    });
   });
 });

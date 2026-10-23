@@ -151,12 +151,18 @@ export function formatCathrynLaverySynthesis(
   return lines.join('\n');
 }
 
+export function resolveKbSyncRoot(root: string = process.cwd()): string {
+  const envRoot = process.env.TRM_KB_SYNC_ROOT?.trim();
+  return envRoot ? path.resolve(envRoot) : path.resolve(root, '..', 'kb-sync');
+}
+
 export function archiveNotebook(
   notebook: NlmNotebook,
   options: SweepOptions = {}
 ): ArchivalResult {
   const dateStr = options.date || new Date().toISOString().slice(0, 10);
-  const kbVaultRoot = options.kbVaultRoot || 'C:/dev/kb-sync/obsidian/vault/wiki';
+  const kbVaultRoot =
+    options.kbVaultRoot || path.join(resolveKbSyncRoot(), 'obsidian', 'vault', 'wiki');
   const localVaultRoot = options.localVaultRoot || 'C:/dev/trm/vault/topics';
 
   if (!isApprovedNotebook(notebook.title)) {
