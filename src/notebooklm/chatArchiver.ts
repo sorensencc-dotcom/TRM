@@ -73,6 +73,38 @@ export function computeTranscriptHash(sessions: ChatSession[]): string {
   return crypto.createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
 }
 
+/**
+ * Finds the latest existing archived transcript hash for a notebook across prior dates.
+ */
+export function getPreviousArchivedHash(vaultRoot: string, slug: string, currentDateStr: string): string | null {
+  const convDir = path.join(vaultRoot, 'conversations');
+  if (!fs.existsSync(convDir)) return null;
+
+  try {
+    const dates = fs.readdirSync(convDir)
+      .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && d < currentDateStr)
+      .sort()
+      .reverse();
+
+    for (const d of dates) {
+      const filePath = path.join(convDir, d, `${slug}.md`);
+      if (fs.existsSync(filePath)) {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const match = content.match(/\|\s*\*\*Content SHA-256\*\*\s*\|\s*`([a-f0-9]{16})/i);
+        if (match) {
+          return match[1];
+        }
+      }
+    }
+  } catch {}
+  return null;
+}
+
+/** `[text](target)` -> `text`; also handles links truncated before the closing paren. */
+export function stripMarkdownLinks(s: string): string {
+  return s.replace(/\[([^\]\n]*)\]\([^)\n]*\)?/g, '$1');
+}
+
 export function formatCathrynLaverySynthesis(
   notebookTitle: string,
   notebookId: string,
@@ -89,8 +121,10 @@ export function formatCathrynLaverySynthesis(
   for (const session of sessions) {
     if (!session.transcript) continue;
     for (const turn of session.transcript) {
-      const q = turn.query.trim();
-      const a = turn.answer.trim();
+      // Queries/answers carry repo-relative links (e.g. RFC gap links) that are dead from
+      // wiki/conversations/<date>/ and get cut mid-target by NotebookLM or the slices below.
+      const q = stripMarkdownLinks(turn.query.trim());
+      const a = stripMarkdownLinks(turn.answer.trim());
 
       if (a.toLowerCase().includes('decision') || a.toLowerCase().includes('agreed') || a.toLowerCase().includes('confirmed')) {
         decisions.push(`- **Q:** ${q}\n  **Outcome:** ${a.slice(0, 300)}...`);
@@ -220,6 +254,28 @@ export function archiveNotebook(
 
   const totalTurns = hydratedSessions.reduce((acc, s) => acc + (s.transcript ? s.transcript.length : 0), 0);
   const contentHash = computeTranscriptHash(hydratedSessions);
+  const slug = slugifyTitle(notebook.title);
+
+  // Check if content is identical to the most recent archived export
+  if (!options.force) {
+    const prevKbHash = getPreviousArchivedHash(kbVaultRoot, slug, dateStr);
+    const prevLocalHash = getPreviousArchivedHash(localVaultRoot, slug, dateStr);
+    const prevHash = prevKbHash || prevLocalHash;
+
+    if (prevHash && contentHash.startsWith(prevHash)) {
+      return {
+        notebookId: notebook.id,
+        notebookTitle: notebook.title,
+        sessionCount: hydratedSessions.length,
+        totalTurns,
+        noteCreated: false,
+        skipped: true,
+        skipReason: `Transcript unchanged from prior archive (hash: ${prevHash}...)`,
+        contentHash,
+      };
+    }
+  }
+
   const noteTitle = `Daily Synthesis Log - ${dateStr}`;
   const markdown = formatCathrynLaverySynthesis(notebook.title, notebook.id, hydratedSessions, dateStr, contentHash);
 
@@ -259,7 +315,6 @@ function writeFileWithRetry(filePath: string, content: string, maxRetries = 3): 
 }
 
   // Write local markdown files for knowledge.db ingestion and Google Drive mirror
-  const slug = slugifyTitle(notebook.title);
   const driveMirrorRoot = options.driveMirrorRoot !== undefined
     ? options.driveMirrorRoot
     : (fs.existsSync(path.join('G:', 'My Drive', 'notebooklm')) ? path.join('G:', 'My Drive', 'notebooklm') : undefined);

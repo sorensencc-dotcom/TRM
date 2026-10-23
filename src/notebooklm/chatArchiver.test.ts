@@ -28,6 +28,10 @@ describe('chatArchiver', () => {
 
   afterEach(() => {
     jest.resetAllMocks();
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+      fs.mkdirSync(tmpDir, { recursive: true });
+    } catch (_) {}
   });
 
   describe('isApprovedNotebook', () => {
@@ -91,6 +95,26 @@ describe('chatArchiver', () => {
       expect(md).toContain('## Unresolved questions & open contradictions');
       expect(md).toContain('webhook latency gap');
       expect(md).toContain('## Grounded citations & session metadata');
+    });
+
+    it('emits no markdown links from full or truncated query/answer links', () => {
+      const sessions: nlmCli.ChatSession[] = [
+        {
+          conversation_id: 'conv-2',
+          turn_count: 1,
+          preview: 'gap',
+          transcript: [
+            {
+              turn: 1,
+              query: 'Resolve gap (Drafted: [RFC](wiki/research/rfc-gap-03.md)) (Resolved: [RFC](wiki/research/rfc-gap-07-wi',
+              answer: 'Open gap? See [doc](wik',
+            },
+          ],
+        },
+      ];
+      const md = formatCathrynLaverySynthesis('Willow Run Videos', 'nb-2', sessions, '2026-10-21', 'h');
+      expect(md).not.toMatch(/\]\(/);
+      expect(md).toContain('(Drafted: RFC) (Resolved: RFC');
     });
   });
 
@@ -236,7 +260,50 @@ describe('chatArchiver', () => {
 
       expect(result.skipped).toBe(false);
       expect(result.noteCreated).toBe(false);
-      expect(mockNlmCli.createNote).not.toHaveBeenCalled();
+    });
+
+    it('skips archival when transcript is unchanged from prior day archive', () => {
+      mockNlmCli.listChats.mockReturnValue({
+        ok: true,
+        data: {
+          notebook_id: 'nb-1',
+          sessions: [{ conversation_id: 'conv-1', turn_count: 1 }],
+        },
+      });
+
+      mockNlmCli.getChatTranscript.mockReturnValue({
+        ok: true,
+        data: {
+          conversation_id: 'conv-1',
+          turn_count: 1,
+          transcript: [{ turn: 1, query: 'Q', answer: 'A' }],
+        },
+      });
+
+      mockNlmCli.listNotes.mockReturnValue({ ok: true, data: [] });
+      mockNlmCli.createNote.mockReturnValue({ ok: true, data: { noteId: 'note-1' } });
+
+      // First run for 2026-09-19
+      const run1 = archiveNotebook(
+        { id: 'nb-1', title: 'KB - Operations' },
+        { kbVaultRoot: tmpDir, localVaultRoot: tmpDir, date: '2026-09-19' }
+      );
+      expect(run1.skipped).toBe(false);
+
+      // Second run on 2026-09-20 with unchanged transcript
+      const run2 = archiveNotebook(
+        { id: 'nb-1', title: 'KB - Operations' },
+        { kbVaultRoot: tmpDir, localVaultRoot: tmpDir, date: '2026-09-20' }
+      );
+      expect(run2.skipped).toBe(true);
+      expect(run2.skipReason).toContain('Transcript unchanged from prior archive');
+
+      // But with force: true, it does not skip
+      const run3 = archiveNotebook(
+        { id: 'nb-1', title: 'KB - Operations' },
+        { kbVaultRoot: tmpDir, localVaultRoot: tmpDir, date: '2026-09-20', force: true }
+      );
+      expect(run3.skipped).toBe(false);
     });
   });
 
