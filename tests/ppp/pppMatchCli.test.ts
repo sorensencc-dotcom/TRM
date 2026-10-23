@@ -57,7 +57,92 @@ describe('trm ppp-match CLI and runner', () => {
     expect(fs.existsSync(outJson)).toBe(true);
     const written = JSON.parse(fs.readFileSync(outJson, 'utf-8'));
     expect(written.matchCount).toBe(1);
+    expect(written.results).toBeUndefined();
+    expect(written.matches).toBeUndefined();
+  });
+
+  it('groups matched loans by release with release metadata', async () => {
+    const summary = await runPppMatch({ loans: loansCsv, exclusions: exclusionsCsv, out: outJson });
+    expect(summary.releaseCount).toBe(1);
+    const written = JSON.parse(fs.readFileSync(outJson, 'utf-8'));
+    expect(written.releases).toHaveLength(1);
+    const release = written.releases[0];
+    expect(release).toMatchObject({
+      defendant: 'Weldon Greer, Jr.; Jarrod Durant Wilburn',
+      district: 'EDTX',
+      status: 'charged',
+      release_date: '2026-09-14',
+      url: 'https://www.justice.gov/example',
+    });
+    expect(release.loans).toHaveLength(1);
+    expect(release.loans[0].loanNumber).toBe('9990001112');
+  });
+
+  it('includes the full per-loan results array only with full', async () => {
+    const summary = await runPppMatch({
+      loans: loansCsv,
+      exclusions: exclusionsCsv,
+      out: outJson,
+      full: true,
+    });
+    expect(summary.results).toHaveLength(2);
+    const written = JSON.parse(fs.readFileSync(outJson, 'utf-8'));
     expect(written.results).toHaveLength(2);
+  });
+
+  it('adds per-match checks, confidence, reason and evidence', async () => {
+    const summary = await runPppMatch({ loans: loansCsv, exclusions: exclusionsCsv });
+    const checks = summary.releases[0].loans[0].checks;
+    expect(checks.city_match).toBe(true);
+    expect(checks.zip_match).toBeNull();
+    expect(checks.approved_before_release).toBe(true);
+    expect(checks.confidence).toBe('weak');
+    expect(checks.reason).toMatch(/defendant/);
+    expect(checks.evidence).toEqual({
+      release_url: 'https://www.justice.gov/example',
+      matched_value: 'Weldon Greer, Jr.',
+      exclusion_entities: '',
+      loan_number: '9990001112',
+    });
+  });
+
+  it('rates entity matches on non-generic names strong and compares zip when present', async () => {
+    fs.writeFileSync(
+      loansCsv,
+      [
+        'LoanNumber,BorrowerName,BorrowerCity,BorrowerState,BorrowerZip,CurrentApprovalAmount,LoanStatus,DateApproved',
+        '1,PROSPERITY BANK,Dallas,TX,75001,10,Paid in Full,2026-12-06',
+      ].join('\n'),
+      'utf-8'
+    );
+    fs.writeFileSync(
+      exclusionsCsv,
+      [
+        'defendant,entities,city,district,status,release_date,url,zip',
+        'Kaylee Ree Lunn,"First Capital Bank (employer, victim); Prosperity Bank",Wichita Falls;Dallas,NDTX,sentenced,2025-12-05,https://www.justice.gov/example2,76301;75001',
+      ].join('\n'),
+      'utf-8'
+    );
+    const summary = await runPppMatch({ loans: loansCsv, exclusions: exclusionsCsv });
+    const checks = summary.releases[0].loans[0].checks;
+    expect(checks.confidence).toBe('strong');
+    expect(checks.city_match).toBe(true);
+    expect(checks.zip_match).toBe(true);
+    expect(checks.approved_before_release).toBe(false);
+    expect(checks.evidence.exclusion_entities).toContain('Prosperity Bank');
+    expect(checks.evidence.matched_value).toBe('Prosperity Bank');
+  });
+
+  it('writes matches.md next to the JSON output with one row per match', async () => {
+    await runPppMatch({ loans: loansCsv, exclusions: exclusionsCsv, out: outJson });
+    const md = fs.readFileSync(path.join(tmpDir, 'matches.md'), 'utf-8');
+    const rows = md.split('\n').filter((l) => l.startsWith('| ') && !l.startsWith('| ---'));
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toContain('Release');
+    expect(rows[1]).toContain('9990001112');
+    expect(rows[1]).toContain('150000');
+    expect(rows[1]).toContain('Paid in Full');
+    expect(rows[1]).toContain('weak');
   });
 
   it('invokes trm ppp-match via commander CLI entrypoint', () => {

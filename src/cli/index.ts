@@ -21,7 +21,7 @@ import { runResearchNotebooklm } from './commands/researchNotebooklm';
 import { runReingestUrls } from './commands/reingestUrls';
 import { runEvalWhichllm } from './commands/evalWhichllm';
 import { runArchiveChats } from './commands/archiveChats';
-import { runPppMatch } from './commands/pppMatch';
+import { runPppMatch, toOutput } from './commands/pppMatch';
 import { assertSafeRoot } from '../core/rootSafety';
 import { LockConflictError, LockUnrecoverableError } from '../sync/lock';
 
@@ -361,15 +361,17 @@ program
   .command('ppp-match')
   .requiredOption('--loans <csv>', 'path to SBA PPP loans CSV')
   .requiredOption('--exclusions <csv>', 'path to exclusions CSV')
-  .option('--out <file>', 'optional path to write JSON results')
+  .option('--out <file>', 'optional path to write JSON results (also writes matches.md alongside)')
+  .option('--full', 'include the full per-loan results array, not just matches')
   .action(async (opts) => {
     try {
       const summary = await runPppMatch({
         loans: opts.loans,
         exclusions: opts.exclusions,
         out: opts.out,
+        full: !!opts.full,
       });
-      console.log(JSON.stringify(summary, null, 2));
+      console.log(JSON.stringify(toOutput(summary), null, 2));
     } catch (err) {
       console.error(`[ppp-match] ${(err as Error).message}`);
       process.exitCode = 1;

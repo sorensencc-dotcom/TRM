@@ -27,6 +27,7 @@ export interface PppExclusionRow {
   status: string;
   release_date: string;
   url: string;
+  zip?: string;
 }
 
 export interface PppClaim {
