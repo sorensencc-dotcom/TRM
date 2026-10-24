@@ -1,0 +1,16 @@
+src/cli/commands/mineNotebooklm.test.ts
+  h_5c172e9b435f5a 17-18,80-101
+src/cli/commands/mineNotebooklm.ts
+  h_5c172e9b435f5a 16-55,533-545,572-576,582-594,752
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ddc2422e858e97baa0ea1501963c05673685854a",
+  "prompts": {},
+  "humans": {
+    "h_5c172e9b435f5a": {
+      "author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
