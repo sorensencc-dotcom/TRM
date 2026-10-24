@@ -13,6 +13,46 @@ export interface MiningQuestion {
   text: string;
 }
 
+export const NON_HISTORICAL_TERMS_PATTERN = /\b(sigil|ed25519|cryptographic|keypair|websocket|heartbeat|notebook instances?|ingestion gaps?|document silos?|relay|mcp server|agent framework)\b/i;
+
+export function extractCompleteSentences(text: string, minLength: number = 60, maxLength: number = 400): string | null {
+  if (!text) return null;
+  const cleaned = text.replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
+  if (cleaned.length < minLength) return null;
+
+  // Match sentences ending in terminal punctuation (. ! ?)
+  const sentenceMatches = cleaned.match(/[^.!?]+[.!?]+(?:\s|$)/g);
+  if (!sentenceMatches || sentenceMatches.length === 0) {
+    if (/[.!?]$/.test(cleaned) && cleaned.length >= minLength && cleaned.length <= maxLength) {
+      return cleaned;
+    }
+    return null;
+  }
+
+  let result = '';
+  for (const s of sentenceMatches) {
+    const candidate = (result ? `${result} ${s.trim()}` : s.trim()).trim();
+    if (candidate.length <= maxLength) {
+      result = candidate;
+    } else {
+      break;
+    }
+  }
+
+  if (!result && sentenceMatches[0]) {
+    const first = sentenceMatches[0].trim();
+    if (/[.!?]$/.test(first) && first.length >= minLength) {
+      result = first;
+    }
+  }
+
+  if (result.length < minLength || !/[.!?]$/.test(result)) {
+    return null;
+  }
+
+  return result;
+}
+
 const URGENCY_PATTERNS = [/needs verification/i, /recommend investigating/i, /no source found/i];
 
 export function isUrgentAnswer(answer: string): boolean {
@@ -490,7 +530,19 @@ export function extractAtomicGaps(
   return items;
 }
 
-function appendResearchGapsMatrix(root: string, question: MiningQuestion, answer: string, notebookTitle: string, key: string): void {
+function appendResearchGapsMatrix(
+  root: string,
+  question: MiningQuestion,
+  answer: string,
+  notebookTitle: string,
+  key: string,
+  category: string = 'research'
+): void {
+  // Reject operational notebooks from appending into historical research gaps
+  if (category === 'operational') {
+    return;
+  }
+
   const isTestDir = root.includes('tmp') || root.includes('Temp');
   const candidatePaths = [
     path.join(root, 'trm-research-gaps.md'),
@@ -517,12 +569,29 @@ function appendResearchGapsMatrix(root: string, question: MiningQuestion, answer
 
   const linesToAdd: string[] = [];
   for (const item of cappedItems) {
+    // Reject items with modern non-historical process / crypto jargon
+    if (NON_HISTORICAL_TERMS_PATTERN.test(item.title) || NON_HISTORICAL_TERMS_PATTERN.test(item.text)) {
+      continue;
+    }
+
     const gapTag = `**${notebookTitle} (${question.id} - ${item.title})**`;
     const itemSnippet = item.text.slice(0, 80).replace(/[[\]()#*]/g, '').trim();
     if (content.includes(gapTag) || (itemSnippet.length > 30 && content.includes(itemSnippet))) {
       continue;
     }
-    const excerpt = item.text.replace(/\r?\n/g, ' ').slice(0, 180).trim();
+
+    // Clean out redundant bold title prefix if present in text
+    let cleanText = item.text;
+    const titlePrefixMatch = cleanText.match(/^\*\*([^*]+)\*\*:?\s*(.*)$/s);
+    if (titlePrefixMatch && titlePrefixMatch[2].trim().length >= 40) {
+      cleanText = titlePrefixMatch[2].trim();
+    }
+
+    const excerpt = extractCompleteSentences(cleanText, 60, 400);
+    if (!excerpt) {
+      continue;
+    }
+
     linesToAdd.push(`- [ ] ${gapTag}: ${excerpt}\n`);
   }
 
@@ -680,7 +749,7 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
 
     upsertDocRow(root, relativeDocPath, question, result.data, entry.title, key);
     appendTodoIfUrgent(root, result.data, question, key);
-    appendResearchGapsMatrix(root, question, result.data, entry.title, key);
+    appendResearchGapsMatrix(root, question, result.data, entry.title, key, category);
     if (isUrgentAnswer(result.data)) {
       upsertResearchQueueEntry(root, notebookId, question, key, config.dispatch_limits.default_mode);
     }

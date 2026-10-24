@@ -14,6 +14,8 @@ import {
   filterPrimarySources,
   isSyntheticSource,
   synthesizeDynamicQuestions,
+  extractCompleteSentences,
+  NON_HISTORICAL_TERMS_PATTERN,
 } from './mineNotebooklm';
 import * as nlmCli from '../../notebooklm/nlmCli';
 import { registryPath, readRegistry, findNotebook } from '../../notebooklm/registry';
@@ -73,6 +75,28 @@ describe('mineNotebooklm', () => {
     expect(items[1].title).toBe('Mental Acuity');
     expect(items[2].title).toBe('Cuban Claim Valuation');
     expect(items[0].key).toContain('nb-1:open-contradictions:');
+  });
+
+  describe('extractCompleteSentences & NON_HISTORICAL_TERMS_PATTERN', () => {
+    it('extracts complete sentences ending in terminal punctuation', () => {
+      const input = 'Charles Sorensen directed production at Willow Run during World War II. He developed the modular assembly concept on hotel stationery. This was unprecedented.';
+      const res = extractCompleteSentences(input, 60, 150);
+      expect(res).toBe('Charles Sorensen directed production at Willow Run during World War II. He developed the modular assembly concept on hotel stationery.');
+      expect(res?.endsWith('.')).toBe(true);
+    });
+
+    it('rejects truncated fragments without terminal punctuation or under minimum length', () => {
+      const fragment = 'One of Fords first employees in 1903 and trav';
+      expect(extractCompleteSentences(fragment, 60, 200)).toBeNull();
+    });
+
+    it('identifies modern non-historical and operational process terms', () => {
+      expect(NON_HISTORICAL_TERMS_PATTERN.test('Sigil Trust Engine verification')).toBe(true);
+      expect(NON_HISTORICAL_TERMS_PATTERN.test('Ed25519 signing keys')).toBe(true);
+      expect(NON_HISTORICAL_TERMS_PATTERN.test('Archival Isolation and Technical Ingestion Gaps')).toBe(true);
+      expect(NON_HISTORICAL_TERMS_PATTERN.test('notebook instances create document silos')).toBe(true);
+      expect(NON_HISTORICAL_TERMS_PATTERN.test('Benson Ford Research Center accession files')).toBe(false);
+    });
   });
 
   it('loadMiningQuestions returns the 5 research questions or 4 operational questions based on category', () => {
