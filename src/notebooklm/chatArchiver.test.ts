@@ -5,6 +5,7 @@ import {
   slugifyTitle,
   computeTranscriptHash,
   formatCathrynLaverySynthesis,
+  stripLinkScrubbers,
   archiveNotebook,
   runUniversalChatArchival,
 } from './chatArchiver';
@@ -115,6 +116,38 @@ describe('chatArchiver', () => {
       const md = formatCathrynLaverySynthesis('Willow Run Videos', 'nb-2', sessions, '2026-10-21', 'h');
       expect(md).not.toMatch(/\]\(/);
       expect(md).toContain('(Drafted: RFC) (Resolved: RFC');
+    });
+
+    it('strips all variants of google link scrubber placeholders', () => {
+      expect(stripLinkScrubbers('Link: [suspicious link removed] here')).toBe('Link:  here');
+      expect(stripLinkScrubbers('Link: [? [suspicious link removed] ?] here')).toBe('Link:  here');
+      expect(stripLinkScrubbers('Link: [? [suspicious link removed]] here')).toBe('Link:  here');
+      expect(stripLinkScrubbers('Link: [suspicious+link+removed] here')).toBe('Link:  here');
+      expect(stripLinkScrubbers('Link: %5Bsuspicious%20link%20removed%5D here')).toBe('Link:  here');
+      expect(stripLinkScrubbers('Link: &#91;suspicious link removed&#93; here')).toBe('Link:  here');
+      expect(stripLinkScrubbers('Link: &lbrack;suspicious link removed&rbrack; here')).toBe('Link:  here');
+    });
+
+    it('sanitizes link scrubbers from Cathryn Lavery synthesis queries, answers, and previews', () => {
+      const sessions: nlmCli.ChatSession[] = [
+        {
+          conversation_id: 'conv-scrubbed',
+          turn_count: 1,
+          preview: 'Preview [suspicious link removed] check',
+          transcript: [
+            {
+              turn: 1,
+              query: 'What about [? [suspicious link removed] ?] finding?',
+              answer: 'Confirmed decision: resolved %5Bsuspicious%20link%20removed%5D now.',
+            },
+          ],
+        },
+      ];
+      const md = formatCathrynLaverySynthesis('CIC-KB', 'nb-test', sessions, '2026-10-25', 'sha');
+      expect(md).not.toContain('suspicious link removed');
+      expect(md).not.toContain('%5Bsuspicious%20link%20removed%5D');
+      expect(md).toContain('What about  finding?');
+      expect(md).toContain('Preview  check');
     });
   });
 

@@ -100,6 +100,14 @@ export function getPreviousArchivedHash(vaultRoot: string, slug: string, current
   return null;
 }
 
+/** Regex matching provider link scrubber placeholders in plaintext, encoded, and entity formats. */
+export const LINK_SCRUBBER_REGEX = /(?:\[|%5B|&#91;|&lbrack;)\s*(?:\?\s*)?(?:\[|%5B|&#91;|&lbrack;)?\s*suspicious(?:\s+|%20|\+)+link(?:\s+|%20|\+)+removed\s*(?:\?\s*)?(?:\]|%5D|&#93;|&rbrack;)?\s*(?:\?\s*)?(?:\]|%5D|&#93;|&rbrack;)/gi;
+
+/** Strips link scrubber placeholders injected by cloud security filters. */
+export function stripLinkScrubbers(s: string): string {
+  return s.replace(LINK_SCRUBBER_REGEX, '');
+}
+
 /** `[text](target)` -> `text`; also handles links truncated before the closing paren. */
 export function stripMarkdownLinks(s: string): string {
   return s.replace(/\[([^\]\n]*)\]\([^)\n]*\)?/g, '$1');
@@ -123,8 +131,9 @@ export function formatCathrynLaverySynthesis(
     for (const turn of session.transcript) {
       // Queries/answers carry repo-relative links (e.g. RFC gap links) that are dead from
       // wiki/conversations/<date>/ and get cut mid-target by NotebookLM or the slices below.
-      const q = stripMarkdownLinks(turn.query.trim());
-      const a = stripMarkdownLinks(turn.answer.trim());
+      // Link scrubber placeholders injected by cloud security filters are also stripped.
+      const q = stripLinkScrubbers(stripMarkdownLinks(turn.query.trim()));
+      const a = stripLinkScrubbers(stripMarkdownLinks(turn.answer.trim()));
 
       if (a.toLowerCase().includes('decision') || a.toLowerCase().includes('agreed') || a.toLowerCase().includes('confirmed')) {
         decisions.push(`- **Q:** ${q}\n  **Outcome:** ${a.slice(0, 300)}...`);
@@ -178,11 +187,12 @@ export function formatCathrynLaverySynthesis(
 
   lines.push('', '## Grounded citations & session metadata');
   for (const session of sessions) {
-    lines.push(`- **Session ID:** \`${session.conversation_id}\` (${session.turn_count} turns) — preview: "${session.preview || 'Interactive battery'}"`);
+    const preview = stripLinkScrubbers(session.preview || 'Interactive battery');
+    lines.push(`- **Session ID:** \`${session.conversation_id}\` (${session.turn_count} turns) — preview: "${preview}"`);
   }
   lines.push('');
 
-  return lines.join('\n');
+  return stripLinkScrubbers(lines.join('\n'));
 }
 
 export function archiveNotebook(

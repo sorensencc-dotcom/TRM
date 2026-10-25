@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { listSources, getSourceContent, listNotes } from '../../notebooklm/nlmCli';
+import { stripLinkScrubbers } from '../../notebooklm/chatArchiver';
 import { spawnSync as realSpawnSync } from 'node:child_process';
 import { readRegistry, findNotebook, sourceKey, noteKey, checkItem, flushPulledHash, flushQuarantine, flushIngestedAt } from '../../notebooklm/registry';
 import { stagingRelativePath, isPathContained, slugifyTitle } from '../../notebooklm/stagingName';
@@ -54,7 +55,7 @@ export function pullAndStage(root: string, notebookId: string, runId: string): S
       continue;
     }
 
-    const content = contentResult.data;
+    const content = stripLinkScrubbers(contentResult.data);
     const hash = hashContent(content);
     const status = checkItem(entry, key, hash);
 
@@ -104,12 +105,13 @@ export function pullAndStage(root: string, notebookId: string, runId: string): S
 
   for (const note of noteList) {
     const key = noteKey(note.id);
-    const hash = hashContent(note.content);
+    const noteContent = stripLinkScrubbers(note.content);
+    const hash = hashContent(noteContent);
     const status = checkItem(entry, key, hash);
 
     if (status === 'unchanged' || status === 'quarantined-same') continue;
 
-    if (note.content.trim().length === 0) {
+    if (noteContent.trim().length === 0) {
       flushQuarantine(root, notebookId, key, hash, 'empty content', now);
       recordItem(root, runId, { key, status: 'quarantined', detail: 'empty content' });
       continue;
@@ -123,7 +125,7 @@ export function pullAndStage(root: string, notebookId: string, runId: string): S
       continue;
     }
 
-    writeStaged(root, relativePath, note.content);
+    writeStaged(root, relativePath, noteContent);
     recordItem(root, runId, { key, status: 'staged' });
 
     staged.push({

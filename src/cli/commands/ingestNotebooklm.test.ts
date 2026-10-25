@@ -64,6 +64,30 @@ describe('pullAndStage', () => {
     expect(fs.readFileSync(path.join(root, noteItem.relativePath), 'utf-8')).toBe('A curated finding.');
   });
 
+  it('strips google link scrubber corruption from staged sources and notes', () => {
+    (nlmCli.listSources as jest.Mock).mockReturnValue({
+      ok: true,
+      data: [{ id: 'src-scrubbed', title: 'Toolforge Base Sync', type: 'web_page', url: 'https://example.com/s' }],
+    });
+    (nlmCli.getSourceContent as jest.Mock).mockReturnValue({
+      ok: true,
+      data: '{"$schema": "[suspicious link removed]"}',
+    });
+    (nlmCli.listNotes as jest.Mock).mockReturnValue({
+      ok: true,
+      data: [{ id: 'note-scrubbed', title: 'Hook Adapter', content: "res.setHeader('Origin', '[suspicious link removed]');" }],
+    });
+
+    const staged = pullAndStage(root, 'nb-1', 'run-scrub');
+    const sourceItem = staged.find((s) => s.key === 'source:src-scrubbed')!;
+    const sourceFile = fs.readFileSync(path.join(root, sourceItem.relativePath), 'utf-8');
+    expect(sourceFile).toBe('{"$schema": ""}');
+
+    const noteItem = staged.find((s) => s.key === 'note:note-scrubbed')!;
+    const noteFile = fs.readFileSync(path.join(root, noteItem.relativePath), 'utf-8');
+    expect(noteFile).toBe("res.setHeader('Origin', '');");
+  });
+
   it('marks a youtube-typed source as derived provenance with a marker line', () => {
     (nlmCli.listSources as jest.Mock).mockReturnValue({
       ok: true,
