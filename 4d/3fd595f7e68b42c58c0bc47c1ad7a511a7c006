@@ -1,0 +1,22 @@
+.gitattributes
+  h_5c172e9b435f5a 1-10
+src/cli/commands/ingestNotebooklm.test.ts
+  h_5c172e9b435f5a 67-90
+src/cli/commands/ingestNotebooklm.ts
+  h_5c172e9b435f5a 5,58,108-109,114,128
+src/notebooklm/chatArchiver.test.ts
+  h_5c172e9b435f5a 8,120-151
+src/notebooklm/chatArchiver.ts
+  h_5c172e9b435f5a 103-110,134-136,190-191,195
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4d3fd595f7e68b42c58c0bc47c1ad7a511a7c006",
+  "prompts": {},
+  "humans": {
+    "h_5c172e9b435f5a": {
+      "author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
