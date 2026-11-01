@@ -703,7 +703,7 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
     ? [...dynamicQuestions, ...candidateQuestions.slice(0, Math.max(1, 4 - dynamicQuestions.length))]
     : candidateQuestions;
 
-  const prevQuestionIds = entry.last_mined_answer_keys
+  const prevQuestionIds = (entry.last_mined_answer_keys || [])
     .filter((k) => k.startsWith(`${notebookId}:`))
     .map((k) => k.split(':')[1]);
   const entropy = computeBatteryEntropy(questions.map((q) => q.id), prevQuestionIds);
@@ -714,7 +714,7 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
     console.log(`[ENTROPY-AUDIT] Notebook "${entry.title}" (${notebookId}): Question battery entropy score: ${entropy.toFixed(2)}.`);
   }
   const relativeDocPath = docPathFor(root, slugifyTitle(entry.title));
-  const seenKeys = new Set(entry.last_mined_answer_keys);
+  const seenKeys = new Set(entry.last_mined_answer_keys || []);
   let newEntries = 0;
   let anySuccess = false;
 

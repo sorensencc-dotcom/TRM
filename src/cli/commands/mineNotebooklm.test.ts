@@ -198,6 +198,34 @@ describe('mineNotebooklm', () => {
     expect(result.newEntries).toBe(0);
   });
 
+  it('handles notebooks without last_mined_answer_keys gracefully', () => {
+    fs.writeFileSync(
+      registryPath(root),
+      JSON.stringify({
+        version: 1,
+        notebooks: [
+          {
+            notebook_id: 'nb-unseeded',
+            title: 'Unseeded Notebook',
+            category: 'research',
+            url: 'https://notebooklm.google.com/notebook/nb-unseeded',
+            last_pulled_hashes: {},
+            quarantined: {},
+            last_ingested_at: null,
+            last_mined_at: null,
+          },
+        ],
+      })
+    );
+    fs.writeFileSync(path.join(root, 'TODOS.md'), '# TODOS\n\n## Open\n\n## Completed\n');
+    (nlmCli.queryNotebook as jest.Mock).mockReturnValue({
+      ok: true,
+      data: 'Research answer without urgency',
+    });
+
+    expect(() => runMineNotebooklm(root, 'nb-unseeded', {})).not.toThrow();
+  });
+
   it('dispatches operational questions when notebook category is operational', () => {
     fs.writeFileSync(
       registryPath(root),
