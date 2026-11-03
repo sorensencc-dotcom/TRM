@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import {
   isApprovedNotebook,
@@ -15,10 +16,10 @@ jest.mock('./nlmCli');
 const mockNlmCli = nlmCli as jest.Mocked<typeof nlmCli>;
 
 describe('chatArchiver', () => {
-  const tmpDir = path.join(__dirname, '__test_tmp__');
+  let tmpDir: string;
 
   beforeAll(() => {
-    fs.mkdirSync(tmpDir, { recursive: true });
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'trm-chatarch-'));
   });
 
   afterAll(() => {

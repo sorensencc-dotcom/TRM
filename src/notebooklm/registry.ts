@@ -36,6 +36,7 @@ export interface NotebookRegistryEntry {
   quarantined: Record<string, QuarantineEntry>;
   last_ingested_at: string | null;
   last_mined_at: string | null;
+  last_chatted_at?: string | null;
   last_mined_answer_keys: string[];
   research_queue?: Record<string, ResearchQueueEntry>;
   source_count?: number;
@@ -132,6 +133,12 @@ export function flushQuarantine(
 export function flushIngestedAt(root: string, notebookId: string, timestamp: string): void {
   mutateNotebook(root, notebookId, (entry) => {
     entry.last_ingested_at = timestamp;
+  });
+}
+
+export function flushChattedAt(root: string, notebookId: string, timestamp: string): void {
+  mutateNotebook(root, notebookId, (entry) => {
+    entry.last_chatted_at = timestamp;
   });
 }
 

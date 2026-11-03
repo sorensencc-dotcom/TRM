@@ -10,7 +10,9 @@ import {
   getChatTranscript,
   listNotes,
   createNote,
+  deleteNote,
 } from './nlmCli';
+import { flushChattedAt } from './registry';
 
 export interface ArchivalResult {
   notebookId: string;
@@ -36,6 +38,7 @@ export interface SweepOptions {
   kbVaultRoot?: string;
   localVaultRoot?: string;
   driveMirrorRoot?: string;
+  trmVaultRoot?: string;
 }
 
 const EXCLUDED_PATTERNS = [
@@ -82,7 +85,7 @@ export function getPreviousArchivedHash(vaultRoot: string, slug: string, current
 
   try {
     const dates = fs.readdirSync(convDir)
-      .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && d < currentDateStr)
+      .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && d <= currentDateStr)
       .sort()
       .reverse();
 
@@ -266,6 +269,11 @@ export function archiveNotebook(
   const contentHash = computeTranscriptHash(hydratedSessions);
   const slug = slugifyTitle(notebook.title);
 
+  const trmVaultRoot = options.trmVaultRoot || (fs.existsSync('C:/Users/soren/trm-vault/notebooklm-registry.json') ? 'C:/Users/soren/trm-vault' : undefined);
+  if (trmVaultRoot) {
+    try { flushChattedAt(trmVaultRoot, notebook.id, new Date().toISOString()); } catch {}
+  }
+
   // Check if content is identical to the most recent archived export
   if (!options.force) {
     const prevKbHash = getPreviousArchivedHash(kbVaultRoot, slug, dateStr);
@@ -301,7 +309,11 @@ export function archiveNotebook(
   if (existingNote && !options.force) {
     // Already exists, skip note create
     noteCreated = false;
+    createdNoteId = existingNote.id;
   } else if (!options.dryRun) {
+    if (existingNote && options.force) {
+      deleteNote(notebook.id, existingNote.id);
+    }
     const createRes = createNote(notebook.id, noteTitle, markdown);
     if (createRes.ok) {
       noteCreated = true;
@@ -316,9 +328,13 @@ function writeFileWithRetry(filePath: string, content: string, maxRetries = 3): 
       return;
     } catch (err) {
       if (attempt === maxRetries) throw err;
-      const start = Date.now();
-      while (Date.now() - start < 100 * attempt) {
-        // Synchronous spin backoff for file locks
+      try {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100 * attempt);
+      } catch {
+        const start = Date.now();
+        while (Date.now() - start < 100 * attempt) {
+          // Fallback spin
+        }
       }
     }
   }
@@ -342,6 +358,7 @@ function writeFileWithRetry(filePath: string, content: string, maxRetries = 3): 
   }
 
   let localPath: string | undefined;
+  let localError: string | undefined;
   if (!options.dryRun) {
     for (const target of targets) {
       const isDriveTarget = target.fileName.startsWith('Daily Synthesis Log');
@@ -359,6 +376,9 @@ function writeFileWithRetry(filePath: string, content: string, maxRetries = 3): 
         if (isDriveTarget) {
           driveError = String(err);
           console.error(`[DRIVE-MIRROR-ERROR] Failed to mirror ${notebook.title} (${slug}) to Google Drive: ${err}`);
+        } else {
+          localError = String(err);
+          console.error(`[VAULT-WRITE-ERROR] Failed to write local archive for ${notebook.title} (${slug}): ${err}`);
         }
       }
     }
@@ -376,6 +396,7 @@ function writeFileWithRetry(filePath: string, content: string, maxRetries = 3): 
     drivePath,
     driveError,
     contentHash,
+    error: localError || undefined,
   };
 }
 
