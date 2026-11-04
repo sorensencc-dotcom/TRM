@@ -1,0 +1,20 @@
+schedule-task-wrapper-TRM-Notebooklm-Mine.ps1
+  h_5c172e9b435f5a 1-241
+src/cli/commands/archiveChats.ts
+  h_5c172e9b435f5a 66-71,73,75-77
+src/notebooklm/nlmCli.ts
+  h_5c172e9b435f5a 54
+tests/archiveChats.test.ts
+  h_5c172e9b435f5a 1-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4cf8644792f303d21e10b54f60840a27efb93e5b",
+  "prompts": {},
+  "humans": {
+    "h_5c172e9b435f5a": {
+      "author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
