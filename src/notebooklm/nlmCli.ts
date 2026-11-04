@@ -51,7 +51,7 @@ interface RawSpawnResult {
 
 // Bounds every nlm invocation in this file so a wedged `nlm` process
 // cannot hang dispatch indefinitely.
-const DEFAULT_CALL_TIMEOUT_MS = 180_000;
+const DEFAULT_CALL_TIMEOUT_MS = 60_000;
 
 function runNlm(args: string[], rawText = false, timeoutMs?: number): NlmResult<unknown> {
   const result = spawnSync('nlm', args, {

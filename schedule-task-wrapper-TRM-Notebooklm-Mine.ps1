@@ -9,7 +9,11 @@ param(
     [Parameter(Mandatory = $false)]
     [string]$NotebookId,
     [Parameter(Mandatory = $false)]
-    [switch]$SkipIngest
+    [switch]$SkipIngest,
+    [Parameter(Mandatory = $false)]
+    [int]$BatchSize = 12,
+    [Parameter(Mandatory = $false)]
+    [int]$MaxExecutionMinutes = 90
 )
 
 $ErrorActionPreference = "Continue"
@@ -93,15 +97,37 @@ $TargetNotebooks = if ($NotebookId) {
     }
     $matched
 } else {
-    $Registry.notebooks
+    $sorted = @($Registry.notebooks | Sort-Object -Property @{
+        Expression = {
+            if ($_.last_mined_at) {
+                try { [DateTime]::Parse($_.last_mined_at) } catch { [DateTime]::MinValue }
+            } else {
+                [DateTime]::MinValue
+            }
+        }
+    })
+    if ($BatchSize -gt 0 -and $sorted.Count -gt $BatchSize) {
+        "Target selection: batched to oldest $BatchSize of $($sorted.Count) registered notebooks" | Tee-Object -FilePath $LogFile -Append
+        $sorted[0..($BatchSize - 1)]
+    } else {
+        $sorted
+    }
 }
 
 $TotalTargets = $TargetNotebooks.Count
 $AttemptedCount = 0
 $SucceededNotebooks = @()
 $FailedNotebooks = @()
+$HitTimeCeiling = $false
 
 foreach ($Notebook in $TargetNotebooks) {
+    $elapsedMinutes = ((Get-Date) - $StartTime).TotalMinutes
+    if ($MaxExecutionMinutes -gt 0 -and $elapsedMinutes -ge $MaxExecutionMinutes) {
+        $HitTimeCeiling = $true
+        "⚠️ Mining sweep reached time ceiling of $MaxExecutionMinutes minutes (elapsed: {0:F1}m). Breaking out of loop after attempting $AttemptedCount of $TotalTargets targets to proceed with downstream research and status refresh." -f $elapsedMinutes | Tee-Object -FilePath $LogFile -Append
+        break
+    }
+
     $AttemptedCount++
     $notebookFailed = $false
     "================================================================================" | Tee-Object -FilePath $LogFile -Append
@@ -158,11 +184,13 @@ foreach ($Notebook in $TargetNotebooks) {
 
 "================================================================================" | Tee-Object -FilePath $LogFile -Append
 "=== SWEEP COMPLETENESS & STALENESS AUDIT ===" | Tee-Object -FilePath $LogFile -Append
-"Total Registry Targets: $TotalTargets | Attempted: $AttemptedCount | Succeeded: $($SucceededNotebooks.Count) | Failed: $($FailedNotebooks.Count)" | Tee-Object -FilePath $LogFile -Append
-if ($AttemptedCount -lt $TotalTargets) {
+"Total Registry Targets: $($Registry.notebooks.Count) | Selected Batch Targets: $TotalTargets | Attempted: $AttemptedCount | Succeeded: $($SucceededNotebooks.Count) | Failed: $($FailedNotebooks.Count)" | Tee-Object -FilePath $LogFile -Append
+if ($AttemptedCount -lt $TotalTargets -and -not $HitTimeCeiling) {
     $ExitCode = 1
     $StallMsg = "🚨 CRITICAL: NotebookLM mining sweep stalled prematurely! Only attempted $AttemptedCount of $TotalTargets targets."
     $StallMsg | Tee-Object -FilePath $LogFile -Append
+} elseif ($HitTimeCeiling) {
+    "ℹ️ Mining sweep exited gracefully due to time ceiling ($MaxExecutionMinutes min limit reached)." | Tee-Object -FilePath $LogFile -Append
 }
 if ($FailedNotebooks.Count -gt 0) {
     "Failed Targets: $($FailedNotebooks -join ', ')" | Tee-Object -FilePath $LogFile -Append
