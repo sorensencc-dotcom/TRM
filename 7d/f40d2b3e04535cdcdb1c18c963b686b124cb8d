@@ -1,0 +1,101 @@
+src/cli/index.ts
+  s_4484f74074d8e7::t_f912f3c82e4815 1-4,8-56,59-81,116-360
+tests/cli/ingestDirCli.test.ts
+  s_4484f74074d8e7::t_8496b1794c974d 1-71
+.claude-explore.md
+  s_0c68200015409c::t_e477771dfa74ef 5
+.claude-refactor.md
+  s_0c68200015409c::t_a93e788050cbcd 5
+.gitignore
+  s_0c68200015409c::t_819189e4f137c8 1-16
+.viking-mcp-config.json
+  s_0c68200015409c::t_ec8ea64146c589 11
+TODOS.md
+  s_0c68200015409c::t_5df0a9ff55bddd 10
+config/topic-routing.json
+  s_0c68200015409c::t_7446e3b8379f9c 1-10
+docs/viking-vfs-decision-tree.md
+  s_0c68200015409c::t_b41eeb06429f5c 31
+package.json
+  s_0c68200015409c::t_c69402d014f0fc 1-12,14-49
+scripts/regenerate-wiki-diagrams-cic.mjs
+  s_0c68200015409c::t_119bcc580719de 1-489
+scripts/sync-remote-wiki.mjs
+  s_0c68200015409c::t_908f6c9682e350 45
+scripts/validate-diagram-triplets.mjs
+  s_0c68200015409c::t_d437fe7853d617 56
+src/cli/commands/extract.ts
+  s_0c68200015409c::t_de176382d33a71 1-38,47-90
+src/cli/commands/ingest.ts
+  s_0c68200015409c::t_94379d9c40ee3d 1-65
+src/protocol/researchResultValidator.ts
+  s_0c68200015409c::t_85b21d59cd5dac 31-32
+tests/cli/integration.test.ts
+  s_0c68200015409c::t_15b32a09c00622 1-55
+tests/ingestion/videoExtract/analyzeFrames.test.ts
+  s_0c68200015409c::t_d8d2a5b8dd1b2e 1-201
+tests/protocol/researchResultValidator.test.ts
+  s_0c68200015409c::t_3cd93c88db1c49 1-108
+wiki/2026-07-25-raw-source-json-envelope.md
+  s_0c68200015409c::t_e8edda260fdca3 1-677
+wiki/2026-08-07-pdf-ocr-fallback-design.md
+  s_0c68200015409c::t_e8e818e3276e4a 1-250
+wiki/2026-08-07-pdf-ocr-fallback.md
+  s_0c68200015409c::t_9b73ebc8692fb5 1-1125
+wiki/2026-08-08-video-time-range-keyword-filter-design.md
+  s_0c68200015409c::t_8227a23a195451 1-495
+wiki/2026-08-08-video-time-range-keyword-filter.md
+  s_0c68200015409c::t_dea94941d55a22 1-2580
+wiki/Architecture-&-Data-Model.md
+  s_0c68200015409c::t_b410ecbf01c7f7 1,6-8
+wiki/CLI-Reference-&-Commands.md
+  s_0c68200015409c::t_21b709f65531f9 1,6-8
+wiki/Closed-Loop-Gap-Triage-&-RFC-Synthesis.md
+  s_0c68200015409c::t_06aa8ea3dfbf1f 1,6-8
+wiki/Deployment-&-Automation.md
+  s_0c68200015409c::t_d25a5e0de00ed4 1,6-8
+wiki/Multimodal-Ingestion-&-Media-Pipeline.md
+  s_0c68200015409c::t_694b28e5fc7212 1,6-8
+wiki/NotebookLM-&-Mining-Pipeline.md
+  s_0c68200015409c::t_1de4ca0f895d69 1,6-8
+wiki/Security-Guardrails-&-Root-Safety.md
+  s_0c68200015409c::t_b694088f9b4331 1,6-8
+wiki/Viking-VFS-&-Tiered-Compaction.md
+  s_0c68200015409c::t_a57a03f91c475c 1,6-8,73
+wiki/superpowers/plans/2026-07-25-raw-source-json-envelope.md
+  s_0c68200015409c::t_7875a6611bf3dc 1-677
+wiki/superpowers/plans/2026-08-07-pdf-ocr-fallback.md
+  s_0c68200015409c::t_b28a9cacce564e 1-1125
+wiki/superpowers/plans/2026-08-08-video-time-range-keyword-filter.md
+  s_0c68200015409c::t_409c0a0c7bb0ba 1-2580
+wiki/superpowers/specs/2026-08-07-pdf-ocr-fallback-design.md
+  s_0c68200015409c::t_c4eccd72c437ad 1-250
+wiki/superpowers/specs/2026-08-08-video-time-range-keyword-filter-design.md
+  s_0c68200015409c::t_c5af1fd305ea04 1-495
+wiki/viking-vfs-architecture.html
+  s_0c68200015409c::t_06c76f39085027 167
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7df40d2b3e04535cdcdb1c18c963b686b124cb8d",
+  "prompts": {},
+  "sessions": {
+    "s_0c68200015409c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_0c68200015409c",
+        "model": "unknown"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    },
+    "s_4484f74074d8e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1ada6-794e-7752-a352-c0ef6f87747e",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
