@@ -1,0 +1,19 @@
+.trail/learnings/2026-11-06-line-ending-cleanup-must-carry-the-chris.md
+  s_a25d1823064dd8::t_7adea44d9ba0e6 1-25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "390bfe34e335e30e2ea747437a046e00b2a3c6c8",
+  "prompts": {},
+  "sessions": {
+    "s_a25d1823064dd8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "57aace56-ef3a-4dc6-b05d-312c280ca8f1",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
