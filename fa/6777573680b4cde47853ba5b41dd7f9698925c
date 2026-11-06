@@ -1,0 +1,19 @@
+tests/cli/syncTreatmentCli.test.ts
+  s_4484f74074d8e7::t_0a0b2147bc3ffc 1-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fa6777573680b4cde47853ba5b41dd7f9698925c",
+  "prompts": {},
+  "sessions": {
+    "s_4484f74074d8e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1ada6-794e-7752-a352-c0ef6f87747e",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
