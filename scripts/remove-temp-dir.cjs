@@ -38,4 +38,30 @@ function removeTempDir(dir, { rm = fs.rmSync, warn = console.warn } = {}) {
   }
 }
 
-module.exports = { removeTempDir };
+/**
+ * Remove leftover clones from earlier runs whose own cleanup failed. Only touches
+ * directories that start with `prefix` and are older than `minAgeMs`, so a run
+ * that is still in progress is left alone.
+ */
+function sweepStaleTempDirs(root, prefix, { minAgeMs = 3600000, now = Date.now(), ...opts } = {}) {
+  let removed = 0;
+  let names = [];
+  try {
+    names = fs.readdirSync(root);
+  } catch {
+    return removed;
+  }
+  for (const name of names) {
+    if (!name.startsWith(prefix)) continue;
+    const full = path.join(root, name);
+    try {
+      if (now - fs.statSync(full).mtimeMs < minAgeMs) continue;
+    } catch {
+      continue;
+    }
+    if (removeTempDir(full, opts)) removed += 1;
+  }
+  return removed;
+}
+
+module.exports = { removeTempDir, sweepStaleTempDirs };
