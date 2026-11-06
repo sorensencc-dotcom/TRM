@@ -1,0 +1,48 @@
+verification/lineage/LineageAppend.tla
+  s_354d1af2f80499::t_a68c9f83f6ec8c 8,10,14,22,24,26,40,49,54,58
+  s_354d1af2f80499::t_29fb2d464e7086 36,68
+  s_354d1af2f80499::t_3e8e8faf9dda7a 33,44
+  s_354d1af2f80499::t_75813402c5528f 1-7,9,11-13,15-21,23,25,27-32,34-35,37-39,41-43,45-48,50-53,55-57,59-67,69-73
+verification/lineage/view.mjs
+  s_354d1af2f80499::t_b52d703244d6ef 13-15
+  s_354d1af2f80499::t_1a4412b7d142a0 4-5
+  s_354d1af2f80499::t_0a34b9a622687e 20
+  s_354d1af2f80499::t_8b0c515fa25f6f 1-3,6-11,16-19,21-22,24-28
+  s_354d1af2f80499::t_3e8e8faf9dda7a 12,23
+verification/lineage/LineageAppend.cfg
+  s_354d1af2f80499::t_75813402c5528f 1-4
+src/lineage/hasher.ts
+  s_354d1af2f80499::t_6a8d05cc2ef95d 5,49-63
+verification/lineage/replay-concurrency.ts
+  s_354d1af2f80499::t_8f58a38739dad8 10,15,34
+  s_354d1af2f80499::t_43be26bf0dfbbe 9,24-25
+  s_354d1af2f80499::t_ef1daa67bb3a09 6,12,18-22,30,32
+  s_354d1af2f80499::t_9c11a73487e46e 29
+  s_354d1af2f80499::t_75813402c5528f 1-5,7-8,11,13-14,16-17,23,26-28,31,33,35-36
+.agents/skills/lineage-integrity/SKILL.md
+  s_354d1af2f80499::t_4efb8833cee3e8 19,23,27,29,33
+  s_354d1af2f80499::t_75813402c5528f 1-15,17-18,20,22,24-26,28,30-32,34-35
+  s_354d1af2f80499::t_8b0c515fa25f6f 21
+  s_354d1af2f80499::t_4046b979301381 16
+tests/lineage/hasher.test.ts
+  s_354d1af2f80499::t_b6671a500c5524 5,57-59,62-64,66-73,76-79,81-85
+  s_354d1af2f80499::t_b45b26e0b125c1 61,65,80
+  s_354d1af2f80499::t_43be26bf0dfbbe 60,74-75
+  s_354d1af2f80499::t_068202414dff8b 86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0d402d9887bf40ee4e56c50d1d6c7938fd59010b",
+  "prompts": {},
+  "sessions": {
+    "s_354d1af2f80499": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b1db-d0f9-7d53-8e10-1c72ddf986cd",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
