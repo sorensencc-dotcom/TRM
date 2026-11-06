@@ -1,0 +1,19 @@
+.gitattributes
+  s_a25d1823064dd8::t_bab06867097d21 1-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "01a0f4ca97274585c52e68b5f7ca908f9ef81704",
+  "prompts": {},
+  "sessions": {
+    "s_a25d1823064dd8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "57aace56-ef3a-4dc6-b05d-312c280ca8f1",
+        "model": "unknown"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
