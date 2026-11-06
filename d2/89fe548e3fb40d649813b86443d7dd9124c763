@@ -1,0 +1,24 @@
+scripts/sync-remote-wiki.mjs
+  s_1cf8481fbb7b1e::t_dc8cdaee3efdcd 45
+  s_1cf8481fbb7b1e::t_f1448c9482cae8 5-7
+tests/scripts/remove-temp-dir.test.ts
+  s_1cf8481fbb7b1e::t_ee5f3bd13f08b8 1-56
+scripts/remove-temp-dir.cjs
+  s_1cf8481fbb7b1e::t_fe47babea431b6 1-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d289fe548e3fb40d649813b86443d7dd9124c763",
+  "prompts": {},
+  "sessions": {
+    "s_1cf8481fbb7b1e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2e45a2a8-1a23-48fe-a91c-dd285df12741",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    }
+  }
+}
