@@ -2,6 +2,7 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { nodeDir } from '../core/paths';
+import { acquireLock, releaseLock } from '../sync/lock';
 
 export interface LineageOp {
   id: string;
@@ -44,16 +45,22 @@ export function appendOperation(
   op: { op: string; actor: string; timestamp: string; [key: string]: unknown },
   payload: unknown
 ): LineageOp {
-  const lineage = readLineage(root, topicPath);
-  const opId = `OP-${String(lineage.operations.length + 1).padStart(4, '0')}`;
-  const hash = computeHash(lineage.hash, payload);
-  const fullOp: LineageOp = { ...op, id: opId, hash };
-  lineage.operations.push(fullOp);
-  lineage.hash = hash;
   const file = lineagePath(root, topicPath);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(lineage, null, 2));
-  return fullOp;
+  const lockPath = path.join(path.dirname(file), 'lineage.lock');
+  acquireLock(lockPath, `lineage-${process.pid}-${crypto.randomUUID()}`);
+  try {
+    const lineage = readLineage(root, topicPath);
+    const opId = `OP-${String(lineage.operations.length + 1).padStart(4, '0')}`;
+    const hash = computeHash(lineage.hash, payload);
+    const fullOp: LineageOp = { ...op, id: opId, hash };
+    lineage.operations.push(fullOp);
+    lineage.hash = hash;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(lineage, null, 2));
+    return fullOp;
+  } finally {
+    releaseLock(lockPath);
+  }
 }
 
 export function validateChain(root: string, topicPath: string): { valid: boolean; error?: string } {
