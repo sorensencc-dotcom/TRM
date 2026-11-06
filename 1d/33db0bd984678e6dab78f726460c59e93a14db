@@ -1,5 +1,6 @@
 src/cli/index.ts
   s_4484f74074d8e7::t_f912f3c82e4815 1-4,8-23,25-28,30-57,60-82,117-359,381-382
+  s_a25d1823064dd8::t_44d1678b34b54c 24,29,367,375,377-378
 tests/cli/ingestDirCli.test.ts
   s_4484f74074d8e7::t_8496b1794c974d 1-71
 .claude-explore.md
@@ -94,6 +95,14 @@ wiki/viking-vfs-architecture.html
         "tool": "codex",
         "id": "01a1ada6-794e-7752-a352-c0ef6f87747e",
         "model": "gpt-5.6-terra"
+      },
+      "human_author": "Chris Sorensen <sorensencc@gmail.com>"
+    },
+    "s_a25d1823064dd8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "57aace56-ef3a-4dc6-b05d-312c280ca8f1",
+        "model": "claude-sonnet-5-5"
       },
       "human_author": "Chris Sorensen <sorensencc@gmail.com>"
     }
