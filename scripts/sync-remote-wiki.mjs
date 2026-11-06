@@ -2,6 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 import os from 'node:os';
+import { createRequire } from 'node:module';
+
+const { removeTempDir } = createRequire(import.meta.url)('./remove-temp-dir.cjs');
 
 const repoRoot = process.cwd();
 const wikiDir = path.join(repoRoot, 'wiki');
@@ -39,7 +42,5 @@ try {
     }
   }
 } finally {
-  if (fs.existsSync(tempDir)) {
-    fs.rmSync(tempDir, { recursive: true, force: true });
-  }
+  removeTempDir(tempDir);
 }
