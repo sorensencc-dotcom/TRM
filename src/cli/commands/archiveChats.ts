@@ -63,10 +63,18 @@ export async function runArchiveChats(
   if (options.all) {
     const { results, totalProcessed, totalTurns } = await runUniversalChatArchival(sweepOptions);
     const errors = results.filter((r) => r.error);
+    const totalNotebooks = results.length;
+    // Single-notebook isolation: isolated RPC timeouts/errors do not fail the universal sweep
+    // as long as at least some notebooks succeeded or not all notebooks failed.
+    const isCatastrophicFailure = totalNotebooks > 0 && errors.length === totalNotebooks;
+    const success = !isCatastrophicFailure;
+
     return {
-      success: errors.length === 0,
+      success,
       results,
-      message: `Universal sweep complete: ${totalProcessed} notebook(s) processed, ${totalTurns} total turn(s) ingested, ${errors.length} error(s).`,
+      message: errors.length > 0
+        ? `Universal sweep complete with isolated errors: ${totalProcessed} notebook(s) processed, ${totalTurns} total turn(s) ingested, ${errors.length} isolated error(s) tolerated.`
+        : `Universal sweep complete: ${totalProcessed} notebook(s) processed, ${totalTurns} total turn(s) ingested, 0 errors.`,
     };
   }
 

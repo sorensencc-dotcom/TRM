@@ -81,7 +81,56 @@ describe('nlmCli', () => {
     expect(mockSpawnSync).toHaveBeenCalledWith(
       'nlm',
       ['query', 'notebook', 'nb-1', 'What is unresolved?', '--json', '--timeout', '60'],
-      expect.objectContaining({ encoding: 'utf-8' })
+      expect.objectContaining({ encoding: 'utf-8', timeout: 90000 })
+    );
+  });
+
+  it('queryNotebook passes sourceIds and newConversation flags in QueryNotebookOptions', () => {
+    mockSpawnSync.mockReturnValue({
+      status: 0,
+      stdout: JSON.stringify({ status: 'success', answer: 'Constrained answer.' }),
+      stderr: '',
+    });
+
+    const result = queryNotebook('nb-1', 'What about Dodge v Ford?', {
+      sourceIds: ['src-101', 'src-102'],
+      timeoutSeconds: 180,
+      newConversation: true,
+    });
+
+    expect(result).toEqual({ ok: true, data: 'Constrained answer.' });
+    expect(mockSpawnSync).toHaveBeenCalledWith(
+      'nlm',
+      [
+        'query',
+        'notebook',
+        'nb-1',
+        'What about Dodge v Ford?',
+        '--json',
+        '--source-ids',
+        'src-101,src-102',
+        '--timeout',
+        '180',
+        '--new-conversation',
+      ],
+      expect.objectContaining({ encoding: 'utf-8', timeout: 210000 })
+    );
+  });
+
+  it('queryNotebook uses default 120s timeout when options is empty object', () => {
+    mockSpawnSync.mockReturnValue({
+      status: 0,
+      stdout: JSON.stringify({ status: 'success', answer: 'Default timeout answer.' }),
+      stderr: '',
+    });
+
+    const result = queryNotebook('nb-1', 'General query', {});
+
+    expect(result).toEqual({ ok: true, data: 'Default timeout answer.' });
+    expect(mockSpawnSync).toHaveBeenCalledWith(
+      'nlm',
+      ['query', 'notebook', 'nb-1', 'General query', '--json', '--timeout', '120'],
+      expect.objectContaining({ encoding: 'utf-8', timeout: 150000 })
     );
   });
 

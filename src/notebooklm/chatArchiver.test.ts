@@ -1,10 +1,12 @@
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import {
   isApprovedNotebook,
   slugifyTitle,
   computeTranscriptHash,
   formatCathrynLaverySynthesis,
+  stripLinkScrubbers,
   archiveNotebook,
   runUniversalChatArchival,
 } from './chatArchiver';
@@ -14,10 +16,10 @@ jest.mock('./nlmCli');
 const mockNlmCli = nlmCli as jest.Mocked<typeof nlmCli>;
 
 describe('chatArchiver', () => {
-  const tmpDir = path.join(__dirname, '__test_tmp__');
+  let tmpDir: string;
 
   beforeAll(() => {
-    fs.mkdirSync(tmpDir, { recursive: true });
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'trm-chatarch-'));
   });
 
   afterAll(() => {
@@ -28,6 +30,10 @@ describe('chatArchiver', () => {
 
   afterEach(() => {
     jest.resetAllMocks();
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+      fs.mkdirSync(tmpDir, { recursive: true });
+    } catch (_) {}
   });
 
   describe('isApprovedNotebook', () => {
@@ -91,6 +97,58 @@ describe('chatArchiver', () => {
       expect(md).toContain('## Unresolved questions & open contradictions');
       expect(md).toContain('webhook latency gap');
       expect(md).toContain('## Grounded citations & session metadata');
+    });
+
+    it('emits no markdown links from full or truncated query/answer links', () => {
+      const sessions: nlmCli.ChatSession[] = [
+        {
+          conversation_id: 'conv-2',
+          turn_count: 1,
+          preview: 'gap',
+          transcript: [
+            {
+              turn: 1,
+              query: 'Resolve gap (Drafted: [RFC](wiki/research/rfc-gap-03.md)) (Resolved: [RFC](wiki/research/rfc-gap-07-wi',
+              answer: 'Open gap? See [doc](wik',
+            },
+          ],
+        },
+      ];
+      const md = formatCathrynLaverySynthesis('Willow Run Videos', 'nb-2', sessions, '2026-10-21', 'h');
+      expect(md).not.toMatch(/\]\(/);
+      expect(md).toContain('(Drafted: RFC) (Resolved: RFC');
+    });
+
+    it('strips all variants of google link scrubber placeholders', () => {
+      expect(stripLinkScrubbers('Link: [suspicious link removed] here')).toBe('Link:  here');
+      expect(stripLinkScrubbers('Link: [? [suspicious link removed] ?] here')).toBe('Link:  here');
+      expect(stripLinkScrubbers('Link: [? [suspicious link removed]] here')).toBe('Link:  here');
+      expect(stripLinkScrubbers('Link: [suspicious+link+removed] here')).toBe('Link:  here');
+      expect(stripLinkScrubbers('Link: %5Bsuspicious%20link%20removed%5D here')).toBe('Link:  here');
+      expect(stripLinkScrubbers('Link: &#91;suspicious link removed&#93; here')).toBe('Link:  here');
+      expect(stripLinkScrubbers('Link: &lbrack;suspicious link removed&rbrack; here')).toBe('Link:  here');
+    });
+
+    it('sanitizes link scrubbers from Cathryn Lavery synthesis queries, answers, and previews', () => {
+      const sessions: nlmCli.ChatSession[] = [
+        {
+          conversation_id: 'conv-scrubbed',
+          turn_count: 1,
+          preview: 'Preview [suspicious link removed] check',
+          transcript: [
+            {
+              turn: 1,
+              query: 'What about [? [suspicious link removed] ?] finding?',
+              answer: 'Confirmed decision: resolved %5Bsuspicious%20link%20removed%5D now.',
+            },
+          ],
+        },
+      ];
+      const md = formatCathrynLaverySynthesis('CIC-KB', 'nb-test', sessions, '2026-10-25', 'sha');
+      expect(md).not.toContain('suspicious link removed');
+      expect(md).not.toContain('%5Bsuspicious%20link%20removed%5D');
+      expect(md).toContain('What about  finding?');
+      expect(md).toContain('Preview  check');
     });
   });
 
@@ -166,6 +224,41 @@ describe('chatArchiver', () => {
       expect(fs.existsSync(writtenFile)).toBe(true);
     });
 
+    it('does not archive a partial result when any transcript cannot be retrieved', () => {
+      mockNlmCli.listChats.mockReturnValue({
+        ok: true,
+        data: {
+          notebook_id: 'nb-1',
+          sessions: [
+            { conversation_id: 'conv-good', turn_count: 1 },
+            { conversation_id: 'conv-timeout', turn_count: 1 },
+          ],
+        },
+      });
+      mockNlmCli.getChatTranscript.mockImplementation((_notebookId, conversationId) =>
+        conversationId === 'conv-good'
+          ? {
+              ok: true,
+              data: {
+                conversation_id: 'conv-good',
+                turn_count: 1,
+                transcript: [{ turn: 1, query: 'Q', answer: 'A' }],
+              },
+            }
+          : { ok: false, error: 'ETIMEDOUT' }
+      );
+
+      const result = archiveNotebook(
+        { id: 'nb-1', title: 'KB - Operations' },
+        { kbVaultRoot: tmpDir, localVaultRoot: tmpDir, date: '2026-09-19' }
+      );
+
+      expect(result.skipped).toBe(true);
+      expect(result.error).toContain('conv-timeout');
+      expect(mockNlmCli.createNote).not.toHaveBeenCalled();
+      expect(fs.existsSync(path.join(tmpDir, 'conversations'))).toBe(false);
+    });
+
     it('mirrors dated synthesis log to Google Drive mirror root when provided', () => {
       mockNlmCli.listChats.mockReturnValue({
         ok: true,
@@ -236,7 +329,50 @@ describe('chatArchiver', () => {
 
       expect(result.skipped).toBe(false);
       expect(result.noteCreated).toBe(false);
-      expect(mockNlmCli.createNote).not.toHaveBeenCalled();
+    });
+
+    it('skips archival when transcript is unchanged from prior day archive', () => {
+      mockNlmCli.listChats.mockReturnValue({
+        ok: true,
+        data: {
+          notebook_id: 'nb-1',
+          sessions: [{ conversation_id: 'conv-1', turn_count: 1 }],
+        },
+      });
+
+      mockNlmCli.getChatTranscript.mockReturnValue({
+        ok: true,
+        data: {
+          conversation_id: 'conv-1',
+          turn_count: 1,
+          transcript: [{ turn: 1, query: 'Q', answer: 'A' }],
+        },
+      });
+
+      mockNlmCli.listNotes.mockReturnValue({ ok: true, data: [] });
+      mockNlmCli.createNote.mockReturnValue({ ok: true, data: { noteId: 'note-1' } });
+
+      // First run for 2026-09-19
+      const run1 = archiveNotebook(
+        { id: 'nb-1', title: 'KB - Operations' },
+        { kbVaultRoot: tmpDir, localVaultRoot: tmpDir, date: '2026-09-19' }
+      );
+      expect(run1.skipped).toBe(false);
+
+      // Second run on 2026-09-20 with unchanged transcript
+      const run2 = archiveNotebook(
+        { id: 'nb-1', title: 'KB - Operations' },
+        { kbVaultRoot: tmpDir, localVaultRoot: tmpDir, date: '2026-09-20' }
+      );
+      expect(run2.skipped).toBe(true);
+      expect(run2.skipReason).toContain('Transcript unchanged from prior archive');
+
+      // But with force: true, it does not skip
+      const run3 = archiveNotebook(
+        { id: 'nb-1', title: 'KB - Operations' },
+        { kbVaultRoot: tmpDir, localVaultRoot: tmpDir, date: '2026-09-20', force: true }
+      );
+      expect(run3.skipped).toBe(false);
     });
   });
 

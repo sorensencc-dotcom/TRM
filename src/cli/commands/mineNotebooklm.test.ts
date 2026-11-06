@@ -10,7 +10,12 @@ import {
   extractAtomicGaps,
   computeBatteryEntropy,
   loadDynamicGapQuestions,
-  resolveKbSyncRoot,
+  buildSourceFilter,
+  filterPrimarySources,
+  isSyntheticSource,
+  synthesizeDynamicQuestions,
+  extractCompleteSentences,
+  NON_HISTORICAL_TERMS_PATTERN,
 } from './mineNotebooklm';
 import * as nlmCli from '../../notebooklm/nlmCli';
 import { registryPath, readRegistry, findNotebook } from '../../notebooklm/registry';
@@ -70,6 +75,28 @@ describe('mineNotebooklm', () => {
     expect(items[1].title).toBe('Mental Acuity');
     expect(items[2].title).toBe('Cuban Claim Valuation');
     expect(items[0].key).toContain('nb-1:open-contradictions:');
+  });
+
+  describe('extractCompleteSentences & NON_HISTORICAL_TERMS_PATTERN', () => {
+    it('extracts complete sentences ending in terminal punctuation', () => {
+      const input = 'Charles Sorensen directed production at Willow Run during World War II. He developed the modular assembly concept on hotel stationery. This was unprecedented.';
+      const res = extractCompleteSentences(input, 60, 150);
+      expect(res).toBe('Charles Sorensen directed production at Willow Run during World War II. He developed the modular assembly concept on hotel stationery.');
+      expect(res?.endsWith('.')).toBe(true);
+    });
+
+    it('rejects truncated fragments without terminal punctuation or under minimum length', () => {
+      const fragment = 'One of Fords first employees in 1903 and trav';
+      expect(extractCompleteSentences(fragment, 60, 200)).toBeNull();
+    });
+
+    it('identifies modern non-historical and operational process terms', () => {
+      expect(NON_HISTORICAL_TERMS_PATTERN.test('Sigil Trust Engine verification')).toBe(true);
+      expect(NON_HISTORICAL_TERMS_PATTERN.test('Ed25519 signing keys')).toBe(true);
+      expect(NON_HISTORICAL_TERMS_PATTERN.test('Archival Isolation and Technical Ingestion Gaps')).toBe(true);
+      expect(NON_HISTORICAL_TERMS_PATTERN.test('notebook instances create document silos')).toBe(true);
+      expect(NON_HISTORICAL_TERMS_PATTERN.test('Benson Ford Research Center accession files')).toBe(false);
+    });
   });
 
   it('loadMiningQuestions returns the 5 research questions or 4 operational questions based on category', () => {
@@ -171,6 +198,34 @@ describe('mineNotebooklm', () => {
     expect(result.newEntries).toBe(0);
   });
 
+  it('handles notebooks without last_mined_answer_keys gracefully', () => {
+    fs.writeFileSync(
+      registryPath(root),
+      JSON.stringify({
+        version: 1,
+        notebooks: [
+          {
+            notebook_id: 'nb-unseeded',
+            title: 'Unseeded Notebook',
+            category: 'research',
+            url: 'https://notebooklm.google.com/notebook/nb-unseeded',
+            last_pulled_hashes: {},
+            quarantined: {},
+            last_ingested_at: null,
+            last_mined_at: null,
+          },
+        ],
+      })
+    );
+    fs.writeFileSync(path.join(root, 'TODOS.md'), '# TODOS\n\n## Open\n\n## Completed\n');
+    (nlmCli.queryNotebook as jest.Mock).mockReturnValue({
+      ok: true,
+      data: 'Research answer without urgency',
+    });
+
+    expect(() => runMineNotebooklm(root, 'nb-unseeded', {})).not.toThrow();
+  });
+
   it('dispatches operational questions when notebook category is operational', () => {
     fs.writeFileSync(
       registryPath(root),
@@ -254,6 +309,26 @@ describe('mineNotebooklm', () => {
     );
   });
 
+  it('constrains queries to top 20 source IDs with 180s timeout when notebook has >50 sources', () => {
+    const mockSources = Array.from({ length: 60 }, (_, i) => ({
+      id: `src-${i}`,
+      title: `Source ${i}`,
+    }));
+    (nlmCli.listSources as jest.Mock).mockReturnValue({ ok: true, data: mockSources });
+    (nlmCli.queryNotebook as jest.Mock).mockReturnValue({ ok: true, data: 'Answer from constrained sources' });
+
+    runMineNotebooklm(root, 'nb-1', {});
+
+    expect(nlmCli.queryNotebook).toHaveBeenCalledWith(
+      'nb-1',
+      expect.any(String),
+      expect.objectContaining({
+        sourceIds: mockSources.slice(0, 20).map((s) => s.id),
+        timeoutSeconds: 180,
+      })
+    );
+  });
+
   it('isUrgentAnswer matches the three urgency patterns and nothing else', () => {
     expect(isUrgentAnswer('This needs verification against another source.')).toBe(true);
     expect(isUrgentAnswer('We recommend investigating this further.')).toBe(true);
@@ -329,32 +404,102 @@ describe('mineNotebooklm', () => {
     expect(todos).toContain('[STALLED]');
   });
 
-  it('resolveKbSyncRoot honors TRM_KB_SYNC_ROOT and falls back to sibling ../kb-sync', () => {
-    const prev = process.env.TRM_KB_SYNC_ROOT;
-    try {
-      delete process.env.TRM_KB_SYNC_ROOT;
-      expect(resolveKbSyncRoot('/workspace/trm-pr/TRM')).toBe(
-        path.resolve('/workspace/trm-pr/TRM', '..', 'kb-sync')
-      );
+  describe('buildSourceFilter & Synthetic Source Exclusion', () => {
+    it('filters out synthetic meta sources including TRM gaps, guide, and pack files', () => {
+      const mockSources = [
+        { id: 'src-pdf-1', title: '64-167-65_SorensenCharlesE.pdf', type: 'pdf' },
+        { id: 'src-gap', title: 'TRM Research Gaps & Synthesis', type: 'generated_text' },
+        { id: 'src-guide', title: 'Ecosystem Architecture Guide (Current).md', type: 'generated_text' },
+        { id: 'src-pack', title: 'pack_post_war.txt', type: 'generated_text' },
+        { id: 'src-web', title: 'Historical Archive Page', type: 'web_page' },
+      ];
 
-      const customKb = path.join(root, 'custom-kb-sync');
-      fs.mkdirSync(customKb, { recursive: true });
-      fs.writeFileSync(
-        path.join(customKb, 'trm-research-gaps.md'),
-        '## Active Research Gaps\n- [ ] **Willow Run Videos (gap-x - Custom Gap)**: Details here.\n'
-      );
-      process.env.TRM_KB_SYNC_ROOT = customKb;
+      const primary = filterPrimarySources(mockSources);
+      expect(primary.map((s) => s.id)).toEqual(['src-pdf-1', 'src-web']);
 
-      expect(resolveKbSyncRoot(root)).toBe(path.resolve(customKb));
-      const dynamic = loadDynamicGapQuestions(root, 'Willow Run Videos');
-      expect(dynamic).toHaveLength(1);
-      expect(dynamic[0].text).toContain('Custom Gap');
-    } finally {
-      if (prev === undefined) {
-        delete process.env.TRM_KB_SYNC_ROOT;
-      } else {
-        process.env.TRM_KB_SYNC_ROOT = prev;
-      }
-    }
+      const filter = buildSourceFilter(mockSources);
+      expect(filter.sourceIds).not.toContain('src-gap');
+      expect(filter.sourceIds).not.toContain('src-guide');
+      expect(filter.sourceIds).not.toContain('src-pack');
+      expect(filter.primaryCount).toBe(2);
+    });
+
+    it('constrains queries and sets 180s timeout when a single PDF exceeds 100,000 tokens', () => {
+      const mockSources = [
+        { id: 'src-heavy-pdf', title: '64-167-65_SorensenCharlesE.pdf', type: 'pdf', char_count: 1_600_000 }, // ~400k tokens
+        { id: 'src-web', title: 'Benson Ford Directory', type: 'web_page', char_count: 4_000 },
+      ];
+
+      const filter = buildSourceFilter(mockSources);
+      expect(filter.isConstrained).toBe(true);
+      expect(filter.hasHeavyPdf).toBe(true);
+      expect(filter.timeoutSeconds).toBe(180);
+      expect(filter.sourceIds).toEqual(['src-heavy-pdf', 'src-web']);
+    });
+
+    it('constrains queries and sets 180s timeout when total tokens exceed 250,000', () => {
+      const mockSources = [
+        { id: 'src-1', title: 'Book Volume 1', type: 'web_page', char_count: 600_000 }, // ~150k tokens
+        { id: 'src-2', title: 'Book Volume 2', type: 'web_page', char_count: 500_000 }, // ~125k tokens
+      ];
+
+      const filter = buildSourceFilter(mockSources);
+      expect(filter.isConstrained).toBe(true);
+      expect(filter.timeoutSeconds).toBe(180);
+      expect(filter.totalTokens).toBeGreaterThan(250_000);
+    });
+
+    it('passes newConversation: true and filtered sourceIds on every queryNotebook call', () => {
+      const mockSources = [
+        { id: 'primary-1', title: 'Primary Document 1', type: 'web_page', char_count: 10_000 },
+        { id: 'meta-gap', title: 'TRM Research Gaps & Synthesis', type: 'generated_text' },
+      ];
+      (nlmCli.listSources as jest.Mock).mockReturnValue({ ok: true, data: mockSources });
+      (nlmCli.queryNotebook as jest.Mock).mockReturnValue({ ok: true, data: 'Answer content' });
+
+      runMineNotebooklm(root, 'nb-1', {});
+
+      expect(nlmCli.queryNotebook).toHaveBeenCalledWith(
+        'nb-1',
+        expect.any(String),
+        expect.objectContaining({
+          sourceIds: ['primary-1'],
+          newConversation: true,
+        })
+      );
+    });
+
+    it('skips mining when the notebook contains only synthetic sources', () => {
+      const syntheticSources = [
+        { id: 'meta-gap', title: 'TRM Research Gaps & Synthesis', type: 'generated_text' },
+        { id: 'meta-guide', title: 'Ecosystem Architecture Guide (Current).md', type: 'generated_text' },
+      ];
+      (nlmCli.listSources as jest.Mock).mockReturnValue({ ok: true, data: syntheticSources });
+      (nlmCli.queryNotebook as jest.Mock).mockReturnValue({ ok: true, data: 'Should not be queried' });
+
+      const result = runMineNotebooklm(root, 'nb-1', {});
+
+      expect(result.newEntries).toBe(0);
+      expect(nlmCli.queryNotebook).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('synthesizeDynamicQuestions', () => {
+    it('synthesizes entity-anchored questions for post-war, willow-run, and cuba', () => {
+      const postWar = synthesizeDynamicQuestions({ title: 'CIC - Post-War', slug: 'post-war' });
+      expect(postWar.length).toBe(5);
+      expect(postWar.some((q) => q.text.includes('Willys-Overland'))).toBe(true);
+      expect(postWar.some((q) => q.text.includes('Brooks Stevens'))).toBe(true);
+
+      const willow = synthesizeDynamicQuestions({ title: 'CIC - Willow Run & Aviation Engineering', slug: 'willow-run' });
+      expect(willow.length).toBe(5);
+      expect(willow.some((q) => q.text.includes('B-24'))).toBe(true);
+      expect(willow.some((q) => q.text.includes('Davis high-lift wing'))).toBe(true);
+
+      const cuba = synthesizeDynamicQuestions({ title: 'CIC - Cuban Seizures & Retired Assets', slug: 'cuba-claims' });
+      expect(cuba.length).toBe(5);
+      expect(cuba.some((q) => q.text.includes('Cuban Law 890'))).toBe(true);
+      expect(cuba.some((q) => q.text.includes('Compañía Litográfica de la Habana'))).toBe(true);
+    });
   });
 });

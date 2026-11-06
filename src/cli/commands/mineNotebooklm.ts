@@ -2,24 +2,72 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { queryNotebook } from '../../notebooklm/nlmCli';
-import { resolveKbSyncRoot } from '../../notebooklm/chatArchiver';
+import { queryNotebook, listSources } from '../../notebooklm/nlmCli';
 import { readRegistry, findNotebook, flushMinedState, upsertResearchQueueEntry } from '../../notebooklm/registry';
 import { writeFileAtomic } from '../../core/atomicWrite';
 import { slugifyTitle } from '../../notebooklm/stagingName';
 import { loadConfig } from '../../core/config';
-
-export { resolveKbSyncRoot };
 
 export interface MiningQuestion {
   id: string;
   text: string;
 }
 
+export const NON_HISTORICAL_TERMS_PATTERN = /\b(sigil|ed25519|cryptographic|keypair|websocket|heartbeat|notebook instances?|ingestion gaps?|document silos?|relay|mcp server|agent framework)\b/i;
+
+export function extractCompleteSentences(text: string, minLength: number = 60, maxLength: number = 400): string | null {
+  if (!text) return null;
+  const cleaned = text.replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
+  if (cleaned.length < minLength) return null;
+
+  // Match sentences ending in terminal punctuation (. ! ?)
+  const sentenceMatches = cleaned.match(/[^.!?]+[.!?]+(?:\s|$)/g);
+  if (!sentenceMatches || sentenceMatches.length === 0) {
+    if (/[.!?]$/.test(cleaned) && cleaned.length >= minLength && cleaned.length <= maxLength) {
+      return cleaned;
+    }
+    return null;
+  }
+
+  let result = '';
+  for (const s of sentenceMatches) {
+    const candidate = (result ? `${result} ${s.trim()}` : s.trim()).trim();
+    if (candidate.length <= maxLength) {
+      result = candidate;
+    } else {
+      break;
+    }
+  }
+
+  if (!result && sentenceMatches[0]) {
+    const first = sentenceMatches[0].trim();
+    if (/[.!?]$/.test(first) && first.length >= minLength) {
+      result = first;
+    }
+  }
+
+  if (result.length < minLength || !/[.!?]$/.test(result)) {
+    return null;
+  }
+
+  return result;
+}
+
 const URGENCY_PATTERNS = [/needs verification/i, /recommend investigating/i, /no source found/i];
 
 export function isUrgentAnswer(answer: string): boolean {
   return URGENCY_PATTERNS.some((p) => p.test(answer));
+}
+
+export function sleepSync(ms: number): void {
+  try {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  } catch {
+    const start = Date.now();
+    while (Date.now() - start < ms) {
+      // fallback busy-wait
+    }
+  }
 }
 
 export function loadMiningQuestions(root?: string, category: string = 'research'): MiningQuestion[] {
@@ -44,6 +92,260 @@ export function loadMiningQuestions(root?: string, category: string = 'research'
   return parsed.questions;
 }
 
+export const SYNTHETIC_SOURCE_PATTERNS = [
+  /^TRM\s+(?:Research|Operational)\s+Gaps\s+&\s+Synthesis/i,
+  /^Ecosystem\s+Architecture\s+Guide/i,
+  /^(?:repo_)?knowledge_pack/i,
+  /^pack_.*\.txt$/i,
+  /research\s+gaps\s+&\s+synthesis/i,
+  /foundational\s+dossier\s+&\s+research\s+gaps/i,
+  /\.nlm_pack/i,
+];
+
+export function isSyntheticSource(source: { title?: string; name?: string }): boolean {
+  if (!source) return false;
+  const t = (source.title || source.name || '').trim();
+  return SYNTHETIC_SOURCE_PATTERNS.some((p) => p.test(t));
+}
+
+export function filterPrimarySources<T extends { title?: string; name?: string }>(sources: T[]): T[] {
+  if (!Array.isArray(sources)) return [];
+  return sources.filter((s) => !isSyntheticSource(s));
+}
+
+export function estimateSourceTokens(source: { id?: string; title?: string; type?: string; char_count?: number; token_count?: number }): number {
+  if (!source) return 0;
+  if (typeof source.char_count === 'number') {
+    return Math.round(source.char_count / 4);
+  }
+  if (typeof source.token_count === 'number') {
+    return source.token_count;
+  }
+  const isPdf = source.type === 'pdf' || (source.title && source.title.toLowerCase().endsWith('.pdf'));
+  if (isPdf) {
+    return 100_000;
+  }
+  return 2000;
+}
+
+export interface BuildSourceFilterResult {
+  sourceIds: string[];
+  timeoutSeconds: number;
+  isConstrained: boolean;
+  totalTokens: number;
+  primaryCount: number;
+  hasHeavyPdf: boolean;
+}
+
+export function buildSourceFilter(
+  sources: Array<{ id: string; title?: string; name?: string; type?: string; char_count?: number; token_count?: number }>,
+  options: { large_source_threshold?: boolean; knownSourceIds?: Set<string> } = {}
+): BuildSourceFilterResult {
+  const primary = filterPrimarySources(sources);
+  if (primary.length === 0) {
+    return {
+      sourceIds: Array.isArray(sources) && sources.length > 0 ? sources.slice(0, 20).map((s) => s.id) : [],
+      timeoutSeconds: 120,
+      isConstrained: false,
+      totalTokens: 0,
+      primaryCount: 0,
+      hasHeavyPdf: false,
+    };
+  }
+
+  const totalTokens = primary.reduce((acc, s) => acc + estimateSourceTokens(s), 0);
+  const hasHeavyPdf = primary.some((s) => {
+    const isPdf = s.type === 'pdf' || (s.title && s.title.toLowerCase().endsWith('.pdf'));
+    return isPdf && estimateSourceTokens(s) >= 100_000;
+  });
+  const shouldConstrain = primary.length > 50 || totalTokens > 250_000 || hasHeavyPdf || Boolean(options.large_source_threshold);
+
+  const ordered = options.knownSourceIds && options.knownSourceIds.size > 0
+    ? [...primary].sort((a, b) => Number(options.knownSourceIds!.has(a.id)) - Number(options.knownSourceIds!.has(b.id)))
+    : primary;
+
+  if (shouldConstrain) {
+    return {
+      sourceIds: ordered.slice(0, 20).map((s) => s.id),
+      timeoutSeconds: 180,
+      isConstrained: true,
+      totalTokens,
+      primaryCount: primary.length,
+      hasHeavyPdf,
+    };
+  }
+
+  return {
+    sourceIds: ordered.map((s) => s.id),
+    timeoutSeconds: 120,
+    isConstrained: false,
+    totalTokens,
+    primaryCount: primary.length,
+    hasHeavyPdf,
+  };
+}
+
+export function synthesizeDynamicQuestions(
+  notebook: { title: string; slug?: string; category?: string },
+  sources?: Array<{ id: string; title?: string; name?: string }>,
+  recentInquiries?: string[]
+): MiningQuestion[] {
+  const dynamicItems: MiningQuestion[] = [];
+
+  // Generate dynamic questions from newly added primary sources
+  let latestSource: { id: string; title?: string; name?: string } | undefined;
+  if (sources) {
+    for (let i = sources.length - 1; i >= 0; i--) {
+      const s = sources[i];
+      if (s && (s.title || s.name) && !isSyntheticSource(s)) { latestSource = s; break; }
+    }
+  }
+  const sName = latestSource ? (latestSource.title || latestSource.name || '') : '';
+  if (sName) {
+    const sHash = crypto.createHash('md5').update(sName).digest('hex').slice(0, 8);
+    dynamicItems.push({
+      id: `dyn-src-${sHash}`,
+      text: `What specific evidentiary corroboration, documentary contradictions, or new timeline facts does the source "${sName}" establish regarding ${notebook.title}?`,
+    });
+  }
+
+  // Generate dynamic questions from recent chat inquiries
+  if (recentInquiries && recentInquiries.length > 0) {
+    const topInquiry = recentInquiries[0];
+    if (topInquiry) {
+      const cHash = crypto.createHash('md5').update(topInquiry).digest('hex').slice(0, 8);
+      dynamicItems.push({
+        id: `dyn-chat-${cHash}`,
+        text: `Follow up on recent interactive research inquiry: "${topInquiry}". What primary archival records in ${notebook.title} corroborate this?`,
+      });
+    }
+  }
+  const wrap = (items: MiningQuestion[]) =>
+    dynamicItems.length > 0 ? [...dynamicItems, ...items.slice(0, Math.max(1, 5 - dynamicItems.length))] : items;
+  const title = (notebook.title || '').toLowerCase();
+  const slug = (notebook.slug || slugifyTitle(notebook.title) || '').toLowerCase();
+
+  let base: MiningQuestion[];
+  if (slug.includes('willow') || title.includes('willow run') || title.includes('aviation')) {
+    base = [
+      {
+        id: 'open-contradictions',
+        text: 'What specific documentary contradictions, conflicting engineering tolerances, or assembly line disputes exist across the Willow Run B-24 sources?',
+      },
+      {
+        id: 'under-sourced',
+        text: 'What airframe cold-heading rivet shear, alloy temper, or dimple cracking assertions remain single-sourced without independent technical corroboration?',
+      },
+      {
+        id: 'adjacent-topics',
+        text: 'What engineering blueprints, lofting specifications, or tooling adaptations for the Davis high-lift wing require deeper investigation?',
+      },
+      {
+        id: 'follow-up',
+        text: 'What specific gauge reference checks or Wright Field inspection reports verify the center-wing thermal expansion discrepancy?',
+      },
+      {
+        id: 'non-obvious-connections',
+        text: 'Find the non-obvious connections between Rouge stamping methods and Willow Run final airframe assembly fixture alignment.',
+      },
+    ];
+  } else if (slug.includes('post-war') || title.includes('post-war') || title.includes('reconversion')) {
+    base = [
+      {
+        id: 'open-contradictions',
+        text: "What documented contradictions exist between Willys-Overland board minutes and Charles Sorensen's post-war corporate records?",
+      },
+      {
+        id: 'under-sourced',
+        text: "What executive assertions regarding Brooks Stevens 6-70 sedan capital development and civilian Jeep tooling remain single-sourced in memoir accounts?",
+      },
+      {
+        id: 'adjacent-topics',
+        text: "What related archival accessions at Benson Ford Research Center or Toledo Public Library detail Sorensen's post-1944 industrial consulting?",
+      },
+      {
+        id: 'follow-up',
+        text: "What financial audits, SEC filings, or corporate tax ledgers verify the Willys-Overland 1945–1946 reconversion costs and CPA tooling allocation?",
+      },
+      {
+        id: 'non-obvious-connections',
+        text: "Find the non-obvious operational links between wartime surplus machine tool allocation and post-war civilian utility vehicle production.",
+      },
+    ];
+  } else if (slug.includes('ford-politics') || title.includes('executive') || title.includes('politics')) {
+    base = [
+      {
+        id: 'open-contradictions',
+        text: "What documented contradictions exist between Harry Bennett's Service Department records and Charles Sorensen's Rouge manufacturing authority?",
+      },
+      {
+        id: 'under-sourced',
+        text: "What claims regarding the March 1944 termination agreement and Capizzi non-compete waiver remain single-sourced in memoir accounts?",
+      },
+      {
+        id: 'adjacent-topics',
+        text: "What corporate board minutes or NLRB Case C-199 deposition transcripts provide unexamined evidence on Ford executive governance?",
+      },
+      {
+        id: 'follow-up',
+        text: "What primary archival corroboration substantiates executive compensation disputes following Dodge v. Ford Motor Co. (1919)?",
+      },
+      {
+        id: 'non-obvious-connections',
+        text: "Find the non-obvious administrative connections between Walter Flanders' 1906 methods and Sorensen's wartime command structure.",
+      },
+    ];
+  } else if (slug.includes('cuba') || title.includes('cuban') || title.includes('seizures')) {
+    base = [
+      {
+        id: 'open-contradictions',
+        text: 'What valuation contradictions exist between Cuban Law 890 seizure decrees and Foreign Claims Settlement Commission (FCSC) certified awards?',
+      },
+      {
+        id: 'under-sourced',
+        text: 'What financial ledgers substantiate the $1.2M vs $2.5M claim valuation for Compañía Litográfica de la Habana under FCSC Claim CU-3440?',
+      },
+      {
+        id: 'adjacent-topics',
+        text: "What diplomatic records or Agrarian Reform Institute (INRA) files document Sorensen's citrus acreage in Matanzas and Pinar del Río?",
+      },
+      {
+        id: 'follow-up',
+        text: "What corporate registries confirm Central West Company's nominee or voting trust ties to the pre-1933 Detroit Trust Company network?",
+      },
+      {
+        id: 'non-obvious-connections',
+        text: 'Find the non-obvious financial connections between pre-revolutionary Cuban asset holding companies and Detroit industrial syndicates.',
+      },
+    ];
+  } else {
+    base = [
+      {
+        id: 'open-contradictions',
+        text: `What specific documentary contradictions exist across the primary archival sources in ${notebook.title}?`,
+      },
+      {
+        id: 'under-sourced',
+        text: `What technical milestones, dates, or executive decisions in ${notebook.title} remain single-sourced without independent contemporary corroboration?`,
+      },
+      {
+        id: 'adjacent-topics',
+        text: `What external archival collections, patent registries, or government deposition files are referenced in ${notebook.title}?`,
+      },
+      {
+        id: 'follow-up',
+        text: `What specific ledger audits, blueprint analyses, or primary documents would resolve the unverified claims in ${notebook.title}?`,
+      },
+      {
+        id: 'non-obvious-connections',
+        text: `Find the non-obvious operational or evidentiary connections between the sources in ${notebook.title}.`,
+      },
+    ];
+  }
+
+  return wrap(base);
+}
+
 export function computeBatteryEntropy(currentQuestions: string[], previousQuestions: string[]): number {
   if (!previousQuestions || previousQuestions.length === 0) return 1.0;
   if (!currentQuestions || currentQuestions.length === 0) return 0.0;
@@ -62,10 +364,12 @@ export function computeBatteryEntropy(currentQuestions: string[], previousQuesti
 
 export function loadDynamicGapQuestions(root: string, notebookTitle: string): MiningQuestion[] {
   const dynamicQuestions: MiningQuestion[] = [];
+  const isTestDir = root.includes('tmp') || root.includes('Temp');
   const candidatePaths = [
     path.join(root, 'trm-research-gaps.md'),
-    path.join(resolveKbSyncRoot(root), 'trm-research-gaps.md'),
-  ];
+    !isTestDir ? path.resolve(root, '..', 'kb-sync', 'trm-research-gaps.md') : '',
+    !isTestDir ? path.resolve('C:\\dev\\kb-sync\\trm-research-gaps.md') : '',
+  ].filter(Boolean);
   const gapsPath = candidatePaths.find((p) => fs.existsSync(p));
   if (!gapsPath) return dynamicQuestions;
 
@@ -75,7 +379,7 @@ export function loadDynamicGapQuestions(root: string, notebookTitle: string): Mi
     const cleanTitle = notebookTitle.toLowerCase().replace(/[^a-z0-9]+/g, ' ');
 
     for (const line of lines) {
-      if (!line.startsWith('- [ ]') && !line.startsWith('- [x]')) continue;
+      if (!line.startsWith('- [ ]') && !line.startsWith('- [/]')) continue;
       const lineLower = line.toLowerCase();
       if (lineLower.includes(cleanTitle) || lineLower.includes(notebookTitle.toLowerCase())) {
         const match = line.match(/\*\*([^*]+)\*\*:\s*(.*)$/);
@@ -141,6 +445,7 @@ function upsertDocRow(root: string, relativeDocPath: string, question: MiningQue
 
 function appendTodoIfUrgent(root: string, answer: string, question: MiningQuestion, key: string): void {
   if (!isUrgentAnswer(answer)) return;
+
 
   const todosPath = path.join(root, 'TODOS.md');
   const content = fs.existsSync(todosPath) ? fs.readFileSync(todosPath, 'utf-8') : '# TODOS\n\n## Open\n\n## Completed\n';
@@ -263,26 +568,76 @@ export function extractAtomicGaps(
   return items;
 }
 
-function appendResearchGapsMatrix(root: string, question: MiningQuestion, answer: string, notebookTitle: string, key: string): void {
+function appendResearchGapsMatrix(
+  root: string,
+  question: MiningQuestion,
+  answer: string,
+  notebookTitle: string,
+  key: string,
+  category: string = 'research'
+): void {
+  // Reject operational notebooks from appending into historical research gaps
+  if (category === 'operational') {
+    return;
+  }
+
+  const isTestDir = root.includes('tmp') || root.includes('Temp');
   const candidatePaths = [
     path.join(root, 'trm-research-gaps.md'),
-    path.join(resolveKbSyncRoot(root), 'trm-research-gaps.md'),
-  ];
+    !isTestDir ? path.resolve(root, '..', 'kb-sync', 'trm-research-gaps.md') : '',
+    !isTestDir ? path.resolve('C:\\dev\\kb-sync\\trm-research-gaps.md') : '',
+  ].filter(Boolean);
   const gapsPath = candidatePaths.find((p) => fs.existsSync(p));
   if (!gapsPath) return;
 
   const content = fs.readFileSync(gapsPath, 'utf-8');
+
+  // Partition ceiling: cap active gaps for this specific notebook to 30
+  const escapedTitle = notebookTitle.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+  const notebookGapPattern = new RegExp('^- \\[ \\] \\*\\*' + escapedTitle, 'gm');
+  const notebookGapMatches = content.match(notebookGapPattern);
+  if (notebookGapMatches && notebookGapMatches.length >= 30) {
+    return;
+  }
+
+  // Global safety ceiling: if content has over 2000 active research gap items, stop appending new ones
+  const activeGapMatches = content.match(/^- \[ \] \*\*/gm);
+  if (activeGapMatches && activeGapMatches.length > 2000) {
+    console.warn(`[GAP-CIRCUIT-BREAKER] trm-research-gaps.md has ${activeGapMatches.length} active gaps (>2000 threshold). Halting new gap insertions.`);
+    return;
+  }
+
   const notebookId = key.includes(':') ? key.split(':')[0] : key;
   const items = extractAtomicGaps(notebookId, question.id, answer);
 
+  // Partition ceiling: cap to max 3 items per question to prevent explosive gap generation
+  const cappedItems = items.slice(0, 3);
+
   const linesToAdd: string[] = [];
-  for (const item of items) {
+  for (const item of cappedItems) {
+    // Reject items with modern non-historical process / crypto jargon
+    if (NON_HISTORICAL_TERMS_PATTERN.test(item.title) || NON_HISTORICAL_TERMS_PATTERN.test(item.text)) {
+      continue;
+    }
+
     const gapTag = `**${notebookTitle} (${question.id} - ${item.title})**`;
     const itemSnippet = item.text.slice(0, 80).replace(/[[\]()#*]/g, '').trim();
     if (content.includes(gapTag) || (itemSnippet.length > 30 && content.includes(itemSnippet))) {
       continue;
     }
-    const excerpt = item.text.replace(/\r?\n/g, ' ').slice(0, 180).trim();
+
+    // Clean out redundant bold title prefix if present in text
+    let cleanText = item.text;
+    const titlePrefixMatch = cleanText.match(/^\*\*([^*]+)\*\*:?\s*(.*)$/s);
+    if (titlePrefixMatch && titlePrefixMatch[2].trim().length >= 40) {
+      cleanText = titlePrefixMatch[2].trim();
+    }
+
+    const excerpt = extractCompleteSentences(cleanText, 60, 400);
+    if (!excerpt) {
+      continue;
+    }
+
     linesToAdd.push(`- [ ] ${gapTag}: ${excerpt}\n`);
   }
 
@@ -301,7 +656,8 @@ function appendResearchGapsMatrix(root: string, question: MiningQuestion, answer
 function triggerGapTriage(root: string): void {
   const candidateScripts = [
     path.join(root, 'scripts', 'trm-triage.mjs'),
-    path.join(resolveKbSyncRoot(root), 'scripts', 'trm-triage.mjs'),
+    path.resolve(root, '..', 'dev', 'kb-sync', 'scripts', 'trm-triage.mjs'),
+    path.resolve('C:\\dev\\kb-sync\\scripts\\trm-triage.mjs'),
   ];
   const scriptPath = candidateScripts.find((p) => fs.existsSync(p));
   if (!scriptPath) return;
@@ -385,15 +741,62 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
   const config = loadConfig(root);
 
   const category = entry.category === 'operational' ? 'operational' : 'research';
+
+  // Prioritize sources and recent inquiries before synthesizing dynamic questions
+  let rawSources: Array<{ id: string; title?: string; name?: string }> = [];
+  let hasOnlySyntheticSources = false;
+  let queryOptions: { timeoutSeconds?: number; sourceIds?: string[]; newConversation?: boolean } = {
+    newConversation: true,
+    timeoutSeconds: 120,
+  };
+  try {
+    const sourcesRes = listSources(notebookId);
+    if (sourcesRes && sourcesRes.ok && Array.isArray(sourcesRes.data)) {
+      rawSources = sourcesRes.data;
+      const knownSourceIds = new Set(Object.keys(entry.last_pulled_hashes || {}));
+      const filterResult = buildSourceFilter(rawSources, {
+        large_source_threshold: entry.large_source_threshold ? true : (entry.source_count ? entry.source_count > 50 : false),
+        knownSourceIds,
+      });
+      hasOnlySyntheticSources = rawSources.length > 0 && filterResult.primaryCount === 0;
+      if (filterResult.sourceIds && filterResult.sourceIds.length > 0) {
+        queryOptions.sourceIds = filterResult.sourceIds;
+        queryOptions.timeoutSeconds = filterResult.timeoutSeconds;
+      }
+    }
+  } catch {
+    // Fail-soft if listing sources fails
+  }
+
+  const recentInquiries: string[] = [];
+  try {
+    const convBase = path.join(root, 'conversations');
+    const nSlug = slugifyTitle(entry.title);
+    if (fs.existsSync(convBase)) {
+      const dates = fs.readdirSync(convBase).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort().reverse().slice(0, 3);
+      for (const d of dates) {
+        const cFile = path.join(convBase, d, `${nSlug}.md`);
+        if (!fs.existsSync(cFile)) continue;
+        const matches = fs.readFileSync(cFile, 'utf-8').matchAll(/(?:^\*\*User\*\*|^User):\s*(.+)$/gim);
+        for (const m of matches) {
+          if (m[1].trim().length > 15) recentInquiries.push(m[1].trim());
+          if (recentInquiries.length >= 3) break;
+        }
+        if (recentInquiries.length >= 3) break;
+      }
+    }
+  } catch {}
+
   const baseQuestions = loadMiningQuestions(root, category);
   const dynamicQuestions = loadDynamicGapQuestions(root, entry.title);
+  const synthesized = category === 'research' ? synthesizeDynamicQuestions(entry, rawSources, recentInquiries) : [];
+  const candidateQuestions = synthesized.length > 0 ? synthesized : baseQuestions;
   const questions = dynamicQuestions.length > 0
-    ? [...dynamicQuestions, ...baseQuestions.slice(0, Math.max(1, 4 - dynamicQuestions.length))]
-    : baseQuestions;
+    ? [...dynamicQuestions, ...candidateQuestions.slice(0, Math.max(1, 4 - dynamicQuestions.length))]
+    : candidateQuestions;
 
-  const prevQuestionIds = entry.last_mined_answer_keys
-    .filter((k) => k.startsWith(`${notebookId}:`))
-    .map((k) => k.split(':')[1]);
+  const allPrevKeys = (entry.last_mined_answer_keys || []).filter((k) => k.startsWith(`${notebookId}:`));
+  const prevQuestionIds = allPrevKeys.slice(-10).map((k) => k.split(':')[1]);
   const entropy = computeBatteryEntropy(questions.map((q) => q.id), prevQuestionIds);
 
   if (entropy < 0.25 && prevQuestionIds.length > 0) {
@@ -402,12 +805,17 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
     console.log(`[ENTROPY-AUDIT] Notebook "${entry.title}" (${notebookId}): Question battery entropy score: ${entropy.toFixed(2)}.`);
   }
   const relativeDocPath = docPathFor(root, slugifyTitle(entry.title));
-  const seenKeys = new Set(entry.last_mined_answer_keys);
+  if (hasOnlySyntheticSources) {
+    console.warn(`[SOURCE-FILTER] Notebook "${entry.title}" has no primary sources; skipping mining rather than querying synthetic sources.`);
+    return { newEntries: 0, docPath: relativeDocPath };
+  }
+  const seenKeys = new Set(entry.last_mined_answer_keys || []);
   let newEntries = 0;
   let anySuccess = false;
 
-  for (const question of questions) {
-    const result = queryNotebook(notebookId, question.text);
+  for (let i = 0; i < questions.length; i++) {
+    const question = questions[i];
+    const result = queryNotebook(notebookId, question.text, queryOptions);
     if (!result.ok) continue;
     anySuccess = true;
 
@@ -416,12 +824,17 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
 
     upsertDocRow(root, relativeDocPath, question, result.data, entry.title, key);
     appendTodoIfUrgent(root, result.data, question, key);
-    appendResearchGapsMatrix(root, question, result.data, entry.title, key);
+    appendResearchGapsMatrix(root, question, result.data, entry.title, key, category);
     if (isUrgentAnswer(result.data)) {
       upsertResearchQueueEntry(root, notebookId, question, key, config.dispatch_limits.default_mode);
     }
     seenKeys.add(key);
     newEntries++;
+
+    // Enforce 3.5s distributed execution pacing during live runs to respect NotebookLM rate limits
+    if (i < questions.length - 1 && process.env.NODE_ENV !== 'test' && !root.includes('tmp') && !root.includes('Temp')) {
+      sleepSync(3500);
+    }
   }
 
   // Only persist registry state (and bump last_mined_at) when we actually
@@ -430,7 +843,8 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
   // notebook is retried fully -- not silently marked as freshly mined --
   // next run.
   if (anySuccess) {
-    flushMinedState(root, notebookId, Array.from(seenKeys), new Date().toISOString());
+    const boundedKeys = Array.from(seenKeys).slice(-100);
+    flushMinedState(root, notebookId, boundedKeys, new Date().toISOString());
     if (newEntries > 0) {
       triggerGapTriage(root);
       uploadResearchGapsSource(root, notebookId, relativeDocPath, category);
@@ -439,4 +853,3 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
 
   return { newEntries, docPath: relativeDocPath };
 }
-

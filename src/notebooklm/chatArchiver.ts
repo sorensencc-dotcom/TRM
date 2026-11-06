@@ -10,7 +10,9 @@ import {
   getChatTranscript,
   listNotes,
   createNote,
+  deleteNote,
 } from './nlmCli';
+import { flushChattedAt } from './registry';
 
 export interface ArchivalResult {
   notebookId: string;
@@ -36,6 +38,7 @@ export interface SweepOptions {
   kbVaultRoot?: string;
   localVaultRoot?: string;
   driveMirrorRoot?: string;
+  trmVaultRoot?: string;
 }
 
 const EXCLUDED_PATTERNS = [
@@ -73,6 +76,46 @@ export function computeTranscriptHash(sessions: ChatSession[]): string {
   return crypto.createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
 }
 
+/**
+ * Finds the latest existing archived transcript hash for a notebook across prior dates.
+ */
+export function getPreviousArchivedHash(vaultRoot: string, slug: string, currentDateStr: string): string | null {
+  const convDir = path.join(vaultRoot, 'conversations');
+  if (!fs.existsSync(convDir)) return null;
+
+  try {
+    const dates = fs.readdirSync(convDir)
+      .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && d <= currentDateStr)
+      .sort()
+      .reverse();
+
+    for (const d of dates) {
+      const filePath = path.join(convDir, d, `${slug}.md`);
+      if (fs.existsSync(filePath)) {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const match = content.match(/\|\s*\*\*Content SHA-256\*\*\s*\|\s*`([a-f0-9]{16})/i);
+        if (match) {
+          return match[1];
+        }
+      }
+    }
+  } catch {}
+  return null;
+}
+
+/** Regex matching provider link scrubber placeholders in plaintext, encoded, and entity formats. */
+export const LINK_SCRUBBER_REGEX = /(?:\[|%5B|&#91;|&lbrack;)\s*(?:\?\s*)?(?:\[|%5B|&#91;|&lbrack;)?\s*suspicious(?:\s+|%20|\+)+link(?:\s+|%20|\+)+removed\s*(?:\?\s*)?(?:\]|%5D|&#93;|&rbrack;)?\s*(?:\?\s*)?(?:\]|%5D|&#93;|&rbrack;)/gi;
+
+/** Strips link scrubber placeholders injected by cloud security filters. */
+export function stripLinkScrubbers(s: string): string {
+  return s.replace(LINK_SCRUBBER_REGEX, '');
+}
+
+/** `[text](target)` -> `text`; also handles links truncated before the closing paren. */
+export function stripMarkdownLinks(s: string): string {
+  return s.replace(/\[([^\]\n]*)\]\([^)\n]*\)?/g, '$1');
+}
+
 export function formatCathrynLaverySynthesis(
   notebookTitle: string,
   notebookId: string,
@@ -89,8 +132,11 @@ export function formatCathrynLaverySynthesis(
   for (const session of sessions) {
     if (!session.transcript) continue;
     for (const turn of session.transcript) {
-      const q = turn.query.trim();
-      const a = turn.answer.trim();
+      // Queries/answers carry repo-relative links (e.g. RFC gap links) that are dead from
+      // wiki/conversations/<date>/ and get cut mid-target by NotebookLM or the slices below.
+      // Link scrubber placeholders injected by cloud security filters are also stripped.
+      const q = stripLinkScrubbers(stripMarkdownLinks(turn.query.trim()));
+      const a = stripLinkScrubbers(stripMarkdownLinks(turn.answer.trim()));
 
       if (a.toLowerCase().includes('decision') || a.toLowerCase().includes('agreed') || a.toLowerCase().includes('confirmed')) {
         decisions.push(`- **Q:** ${q}\n  **Outcome:** ${a.slice(0, 300)}...`);
@@ -144,11 +190,12 @@ export function formatCathrynLaverySynthesis(
 
   lines.push('', '## Grounded citations & session metadata');
   for (const session of sessions) {
-    lines.push(`- **Session ID:** \`${session.conversation_id}\` (${session.turn_count} turns) — preview: "${session.preview || 'Interactive battery'}"`);
+    const preview = stripLinkScrubbers(session.preview || 'Interactive battery');
+    lines.push(`- **Session ID:** \`${session.conversation_id}\` (${session.turn_count} turns) — preview: "${preview}"`);
   }
   lines.push('');
 
-  return lines.join('\n');
+  return stripLinkScrubbers(lines.join('\n'));
 }
 
 export function resolveKbSyncRoot(root: string = process.cwd()): string {
@@ -205,11 +252,26 @@ export function archiveNotebook(
 
   // Hydrate sessions with transcripts
   const hydratedSessions: ChatSession[] = [];
+  const failedConversations: string[] = [];
   for (const session of activeSessions) {
     const transRes = getChatTranscript(notebook.id, session.conversation_id);
     if (transRes.ok && transRes.data && transRes.data.transcript && transRes.data.transcript.length > 0) {
       hydratedSessions.push(transRes.data);
+    } else {
+      failedConversations.push(session.conversation_id);
     }
+  }
+
+  if (failedConversations.length > 0) {
+    return {
+      notebookId: notebook.id,
+      notebookTitle: notebook.title,
+      sessionCount: 0,
+      totalTurns: 0,
+      noteCreated: false,
+      skipped: true,
+      error: `Failed to retrieve complete transcripts for conversation(s): ${failedConversations.join(', ')}`,
+    };
   }
 
   if (hydratedSessions.length === 0) {
@@ -226,6 +288,33 @@ export function archiveNotebook(
 
   const totalTurns = hydratedSessions.reduce((acc, s) => acc + (s.transcript ? s.transcript.length : 0), 0);
   const contentHash = computeTranscriptHash(hydratedSessions);
+  const slug = slugifyTitle(notebook.title);
+
+  const trmVaultRoot = options.trmVaultRoot || (fs.existsSync('C:/Users/soren/trm-vault/notebooklm-registry.json') ? 'C:/Users/soren/trm-vault' : undefined);
+  if (trmVaultRoot) {
+    try { flushChattedAt(trmVaultRoot, notebook.id, new Date().toISOString()); } catch {}
+  }
+
+  // Check if content is identical to the most recent archived export
+  if (!options.force) {
+    const prevKbHash = getPreviousArchivedHash(kbVaultRoot, slug, dateStr);
+    const prevLocalHash = getPreviousArchivedHash(localVaultRoot, slug, dateStr);
+    const prevHash = prevKbHash || prevLocalHash;
+
+    if (prevHash && contentHash.startsWith(prevHash)) {
+      return {
+        notebookId: notebook.id,
+        notebookTitle: notebook.title,
+        sessionCount: hydratedSessions.length,
+        totalTurns,
+        noteCreated: false,
+        skipped: true,
+        skipReason: `Transcript unchanged from prior archive (hash: ${prevHash}...)`,
+        contentHash,
+      };
+    }
+  }
+
   const noteTitle = `Daily Synthesis Log - ${dateStr}`;
   const markdown = formatCathrynLaverySynthesis(notebook.title, notebook.id, hydratedSessions, dateStr, contentHash);
 
@@ -241,7 +330,11 @@ export function archiveNotebook(
   if (existingNote && !options.force) {
     // Already exists, skip note create
     noteCreated = false;
+    createdNoteId = existingNote.id;
   } else if (!options.dryRun) {
+    if (existingNote && options.force) {
+      deleteNote(notebook.id, existingNote.id);
+    }
     const createRes = createNote(notebook.id, noteTitle, markdown);
     if (createRes.ok) {
       noteCreated = true;
@@ -256,16 +349,19 @@ function writeFileWithRetry(filePath: string, content: string, maxRetries = 3): 
       return;
     } catch (err) {
       if (attempt === maxRetries) throw err;
-      const start = Date.now();
-      while (Date.now() - start < 100 * attempt) {
-        // Synchronous spin backoff for file locks
+      try {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100 * attempt);
+      } catch {
+        const start = Date.now();
+        while (Date.now() - start < 100 * attempt) {
+          // Fallback spin
+        }
       }
     }
   }
 }
 
   // Write local markdown files for knowledge.db ingestion and Google Drive mirror
-  const slug = slugifyTitle(notebook.title);
   const driveMirrorRoot = options.driveMirrorRoot !== undefined
     ? options.driveMirrorRoot
     : (fs.existsSync(path.join('G:', 'My Drive', 'notebooklm')) ? path.join('G:', 'My Drive', 'notebooklm') : undefined);
@@ -283,6 +379,7 @@ function writeFileWithRetry(filePath: string, content: string, maxRetries = 3): 
   }
 
   let localPath: string | undefined;
+  let localError: string | undefined;
   if (!options.dryRun) {
     for (const target of targets) {
       const isDriveTarget = target.fileName.startsWith('Daily Synthesis Log');
@@ -300,6 +397,9 @@ function writeFileWithRetry(filePath: string, content: string, maxRetries = 3): 
         if (isDriveTarget) {
           driveError = String(err);
           console.error(`[DRIVE-MIRROR-ERROR] Failed to mirror ${notebook.title} (${slug}) to Google Drive: ${err}`);
+        } else {
+          localError = String(err);
+          console.error(`[VAULT-WRITE-ERROR] Failed to write local archive for ${notebook.title} (${slug}): ${err}`);
         }
       }
     }
@@ -317,6 +417,7 @@ function writeFileWithRetry(filePath: string, content: string, maxRetries = 3): 
     drivePath,
     driveError,
     contentHash,
+    error: localError || undefined,
   };
 }
 

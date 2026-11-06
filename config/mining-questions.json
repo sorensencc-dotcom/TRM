@@ -3,19 +3,19 @@
   "questions": [
     {
       "id": "open-contradictions",
-      "text": "What open questions or unresolved contradictions exist across these sources?"
+      "text": "What specific documentary contradictions, conflicting executive records, or corporate deposition disputes exist across these sources?"
     },
     {
       "id": "under-sourced",
-      "text": "What claims are asserted but single-sourced or under-corroborated?"
+      "text": "What technical claims, timeline dates, or financial valuations rely on single-source memoir assertions without independent contemporary corroboration?"
     },
     {
       "id": "adjacent-topics",
-      "text": "What adjacent topics do these sources point to that aren't covered yet?"
+      "text": "What external archival collections, patent records, government inquiries, or corporate accessions are referenced that require deeper investigation?"
     },
     {
       "id": "follow-up",
-      "text": "What follow-up research would most strengthen current findings?"
+      "text": "What specific documentary verification, ledger audits, or blueprint technical analyses would resolve the unverified claims in this collection?"
     },
     {
       "id": "non-obvious-connections",
