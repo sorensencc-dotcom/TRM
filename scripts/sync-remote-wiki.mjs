@@ -2,6 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 import os from 'node:os';
+import { createRequire } from 'node:module';
+
+const { removeTempDir, sweepStaleTempDirs } = createRequire(import.meta.url)('./remove-temp-dir.cjs');
 
 const repoRoot = process.cwd();
 const wikiDir = path.join(repoRoot, 'wiki');
@@ -10,6 +13,7 @@ console.log('[WIKI-SYNC] Step 1: Validating local diagram triplets...');
 execSync('node scripts/validate-diagram-triplets.mjs', { stdio: 'inherit', cwd: repoRoot });
 
 const remoteWikiUrl = 'https://github.com/sorensencc-dotcom/TRM.wiki.git';
+sweepStaleTempDirs(os.tmpdir(), 'trm-wiki-sync-');
 const tempDir = path.join(os.tmpdir(), `trm-wiki-sync-${Date.now()}`);
 
 try {
@@ -39,7 +43,5 @@ try {
     }
   }
 } finally {
-  if (fs.existsSync(tempDir)) {
-    fs.rmSync(tempDir, { recursive: true, force: true });
-  }
+  removeTempDir(tempDir);
 }
