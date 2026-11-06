@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { appendOperation, readLineage, validateChain } from '../../src/lineage/hasher';
+import { acquireLock, LockConflictError, releaseLock } from '../../src/sync/lock';
 
 describe('lineage hasher', () => {
   function makeRoot() {
@@ -52,5 +53,21 @@ describe('lineage hasher', () => {
     const result = validateChain(root, 'cuba');
     expect(result.valid).toBe(false);
     expect(result.error).toMatch(/OP-0001/);
+  });
+
+  it('rejects a concurrent append instead of overwriting the first append', () => {
+    const root = makeRoot();
+    appendOperation(root, 'cuba', { op: 'INGEST', actor: 'A', timestamp: 't1', source_id: 'A' }, { source_id: 'A' });
+    const lockPath = path.join(root, 'topics', 'cuba', 'lineage', 'lineage.lock');
+    acquireLock(lockPath, 'test-lock');
+
+    try {
+      expect(() => appendOperation(root, 'cuba', { op: 'EXTRACT', actor: 'B', timestamp: 't2', source_id: 'B' }, { source_id: 'B' })).toThrow(LockConflictError);
+    } finally {
+      releaseLock(lockPath);
+    }
+
+    expect(readLineage(root, 'cuba').operations).toHaveLength(1);
+    expect(validateChain(root, 'cuba')).toEqual({ valid: true });
   });
 });
