@@ -246,11 +246,26 @@ export function archiveNotebook(
 
   // Hydrate sessions with transcripts
   const hydratedSessions: ChatSession[] = [];
+  const failedConversations: string[] = [];
   for (const session of activeSessions) {
     const transRes = getChatTranscript(notebook.id, session.conversation_id);
     if (transRes.ok && transRes.data && transRes.data.transcript && transRes.data.transcript.length > 0) {
       hydratedSessions.push(transRes.data);
+    } else {
+      failedConversations.push(session.conversation_id);
     }
+  }
+
+  if (failedConversations.length > 0) {
+    return {
+      notebookId: notebook.id,
+      notebookTitle: notebook.title,
+      sessionCount: 0,
+      totalTurns: 0,
+      noteCreated: false,
+      skipped: true,
+      error: `Failed to retrieve complete transcripts for conversation(s): ${failedConversations.join(', ')}`,
+    };
   }
 
   if (hydratedSessions.length === 0) {

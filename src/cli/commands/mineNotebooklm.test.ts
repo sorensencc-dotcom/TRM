@@ -468,6 +468,20 @@ describe('mineNotebooklm', () => {
         })
       );
     });
+
+    it('skips mining when the notebook contains only synthetic sources', () => {
+      const syntheticSources = [
+        { id: 'meta-gap', title: 'TRM Research Gaps & Synthesis', type: 'generated_text' },
+        { id: 'meta-guide', title: 'Ecosystem Architecture Guide (Current).md', type: 'generated_text' },
+      ];
+      (nlmCli.listSources as jest.Mock).mockReturnValue({ ok: true, data: syntheticSources });
+      (nlmCli.queryNotebook as jest.Mock).mockReturnValue({ ok: true, data: 'Should not be queried' });
+
+      const result = runMineNotebooklm(root, 'nb-1', {});
+
+      expect(result.newEntries).toBe(0);
+      expect(nlmCli.queryNotebook).not.toHaveBeenCalled();
+    });
   });
 
   describe('synthesizeDynamicQuestions', () => {

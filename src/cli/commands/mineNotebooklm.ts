@@ -744,6 +744,7 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
 
   // Prioritize sources and recent inquiries before synthesizing dynamic questions
   let rawSources: Array<{ id: string; title?: string; name?: string }> = [];
+  let hasOnlySyntheticSources = false;
   let queryOptions: { timeoutSeconds?: number; sourceIds?: string[]; newConversation?: boolean } = {
     newConversation: true,
     timeoutSeconds: 120,
@@ -757,6 +758,7 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
         large_source_threshold: entry.large_source_threshold ? true : (entry.source_count ? entry.source_count > 50 : false),
         knownSourceIds,
       });
+      hasOnlySyntheticSources = rawSources.length > 0 && filterResult.primaryCount === 0;
       if (filterResult.sourceIds && filterResult.sourceIds.length > 0) {
         queryOptions.sourceIds = filterResult.sourceIds;
         queryOptions.timeoutSeconds = filterResult.timeoutSeconds;
@@ -803,6 +805,10 @@ export function runMineNotebooklm(root: string, notebookId: string, _opts: { top
     console.log(`[ENTROPY-AUDIT] Notebook "${entry.title}" (${notebookId}): Question battery entropy score: ${entropy.toFixed(2)}.`);
   }
   const relativeDocPath = docPathFor(root, slugifyTitle(entry.title));
+  if (hasOnlySyntheticSources) {
+    console.warn(`[SOURCE-FILTER] Notebook "${entry.title}" has no primary sources; skipping mining rather than querying synthetic sources.`);
+    return { newEntries: 0, docPath: relativeDocPath };
+  }
   const seenKeys = new Set(entry.last_mined_answer_keys || []);
   let newEntries = 0;
   let anySuccess = false;

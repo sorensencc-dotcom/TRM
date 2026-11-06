@@ -224,6 +224,41 @@ describe('chatArchiver', () => {
       expect(fs.existsSync(writtenFile)).toBe(true);
     });
 
+    it('does not archive a partial result when any transcript cannot be retrieved', () => {
+      mockNlmCli.listChats.mockReturnValue({
+        ok: true,
+        data: {
+          notebook_id: 'nb-1',
+          sessions: [
+            { conversation_id: 'conv-good', turn_count: 1 },
+            { conversation_id: 'conv-timeout', turn_count: 1 },
+          ],
+        },
+      });
+      mockNlmCli.getChatTranscript.mockImplementation((_notebookId, conversationId) =>
+        conversationId === 'conv-good'
+          ? {
+              ok: true,
+              data: {
+                conversation_id: 'conv-good',
+                turn_count: 1,
+                transcript: [{ turn: 1, query: 'Q', answer: 'A' }],
+              },
+            }
+          : { ok: false, error: 'ETIMEDOUT' }
+      );
+
+      const result = archiveNotebook(
+        { id: 'nb-1', title: 'KB - Operations' },
+        { kbVaultRoot: tmpDir, localVaultRoot: tmpDir, date: '2026-09-19' }
+      );
+
+      expect(result.skipped).toBe(true);
+      expect(result.error).toContain('conv-timeout');
+      expect(mockNlmCli.createNote).not.toHaveBeenCalled();
+      expect(fs.existsSync(path.join(tmpDir, 'conversations'))).toBe(false);
+    });
+
     it('mirrors dated synthesis log to Google Drive mirror root when provided', () => {
       mockNlmCli.listChats.mockReturnValue({
         ok: true,
